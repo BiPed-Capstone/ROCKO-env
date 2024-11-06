@@ -1,0 +1,9 @@
+<library path="rocko_env">
+  <class name="rocko_env/Motor12Volt"
+         type="rocko_env::Motor12Volt"
+         base_class_type="hardware_interface::ActuatorInterface">
+    <description>
+      The ros2_control robot with 2 separate actuators which can be controlled by 2 different endpoints.
+    </description>
+  </class>
+</library>

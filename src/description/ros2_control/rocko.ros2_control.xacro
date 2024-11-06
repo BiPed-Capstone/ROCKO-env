@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="rocko_ros2_control" params="name prefix use_mock_hardware">
+
+    <ros2_control name="LeftDriveMotor" type="actuator">
+      <hardware>
+        <plugin>rocko_env/Motor12Volt</plugin>
+        <param name="pinNumber">1</param>
+      </hardware>
+      <joint name="left_wheel_joint">
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+    <ros2_control name="RightDriveMotor" type="actuator">
+      <hardware>
+        <plugin>rocko_env/Motor12Volt</plugin>
+        <param name="pinNumber">2</param>
+      </hardware>
+      <joint name="right_wheel_joint">
+        <command_interface name="velocity"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+  </xacro:macro>
+
+</robot>
