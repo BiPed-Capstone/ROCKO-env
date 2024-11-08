@@ -27,6 +27,7 @@ endif()
 # find dependencies
 find_package(backward_ros REQUIRED)
 find_package(ament_cmake REQUIRED)
+find_package(Python REQUIRED Development)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
@@ -36,16 +37,19 @@ add_library(
   rocko_env
   SHARED
   hardware/motors/Motor12Volt.cpp
+  hardware/gpio-interface/GPIOInterface.cpp
 )
 target_compile_features(rocko_env PUBLIC cxx_std_17)
 target_include_directories(rocko_env PUBLIC
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/hardware/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/hardware/motors/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/hardware/gpio-interface/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 ament_target_dependencies(
   rocko_env PUBLIC
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
+target_link_libraries(rocko_env PRIVATE Python::Python)
 
 # Export hardware plugins
 pluginlib_export_plugin_description_file(hardware_interface rocko_env.xml)
@@ -53,7 +57,11 @@ pluginlib_export_plugin_description_file(hardware_interface rocko_env.xml)
 # INSTALL
 install(
   DIRECTORY hardware/motors/include/
-  DESTINATION include/motors/rocko_env
+  DESTINATION include/rocko_env
+)
+install(
+  DIRECTORY hardware/gpio-interface/include/
+  DESTINATION include/rocko_env
 )
 install(
   DIRECTORY description/launch description/ros2_control description/urdf

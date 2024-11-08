@@ -1,5 +1,3 @@
-
-
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -13,7 +11,8 @@
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "include/rocko_env/Motor12Volt.hpp"
+#include "rocko_env/Motor12Volt.hpp"
+#include "rocko_env/GPIOInterface.hpp"
 
 namespace rocko_env
 {
@@ -46,6 +45,9 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
   }
 
   _wheel.setup(info.joints[0].name, 0);
+
+  int res = GPIOInterface::getInstance().setupPin("test", true);
+  RCLCPP_INFO(get_logger(), "Python returned %d", res);
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
