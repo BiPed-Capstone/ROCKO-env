@@ -19,10 +19,17 @@ namespace rocko_env
 hardware_interface::CallbackReturn Motor12Volt::on_init(
   const hardware_interface::HardwareInfo & info)
 {
-  // Check that we have a pin number parameter
-  if (!(info.hardware_parameters.count("pinNumber") > 0)) {
+  // Check that we have pin names for speed and direction
+  if (!(info.hardware_parameters.count(PIN_NAME_SPEED_KEY) > 0)) {
     RCLCPP_FATAL(
-      get_logger(), "Hardware '%s' does not have a pinNumber parameter.", info.name.c_str()
+      get_logger(), "Hardware '%s' does not have a '%s' parameter.", info.name.c_str(),
+      PIN_NAME_SPEED_KEY.c_str()
+    );
+    return hardware_interface::CallbackReturn::ERROR;
+  } else if (!(info.hardware_parameters.count(PIN_NAME_DIRECTION_KEY) > 0)) {
+    RCLCPP_FATAL(
+      get_logger(), "Hardware '%s' does not have a '%s' parameter.", info.name.c_str(),
+      PIN_NAME_DIRECTION_KEY.c_str()
     );
     return hardware_interface::CallbackReturn::ERROR;
   }
@@ -67,6 +74,9 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
     }
   }
 
+  _pinNameSpeed = info.hardware_parameters.at(PIN_NAME_SPEED_KEY);
+  _pinNameDirection = info.hardware_parameters.at(PIN_NAME_DIRECTION_KEY);
+
   _wheel.setup(info.joints[0].name, 0);
 
   if (!GPIOInterface::getInstance().initSuccessful()) {
@@ -74,6 +84,13 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn Motor12Volt::on_configure(
+  const rclcpp_lifecycle::State & previous_state)
+{
+  /* GPTOInterface::getInstance().setupPin(_pinNumber, */
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 

@@ -23,6 +23,9 @@ public:
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareInfo & info) override;
 
+  hardware_interface::CallbackReturn on_configure(
+    const rclcpp_lifecycle::State & previous_state) override;
+
   std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
 
   std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
@@ -40,7 +43,12 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
+  std::string PIN_NAME_SPEED_KEY = "pinNameSpeed";
+  std::string PIN_NAME_DIRECTION_KEY = "pinNameDirection";
+
   Wheel _wheel;
+  std::string _pinNameSpeed;
+  std::string _pinNameDirection;
 };
 
 }  // namespace rocko_env
