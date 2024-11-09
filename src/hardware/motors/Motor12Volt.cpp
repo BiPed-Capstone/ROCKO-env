@@ -19,6 +19,14 @@ namespace rocko_env
 hardware_interface::CallbackReturn Motor12Volt::on_init(
   const hardware_interface::HardwareInfo & info)
 {
+  // Check that we have a pin number parameter
+  if (!(info.hardware_parameters.count("pinNumber") > 0)) {
+    RCLCPP_FATAL(
+      get_logger(), "Hardware '%s' does not have a pinNumber parameter.", info.name.c_str()
+    );
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
   // Check that we have a motor
   if (info.joints.size() != 1) {
     RCLCPP_FATAL(
@@ -27,12 +35,17 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Check that each motor has one command and one state
+  // Check that each motor has one command and two states
   for (hardware_interface::ComponentInfo joint : info.joints) {
     if (joint.command_interfaces.size() != 1) {
       RCLCPP_FATAL(
         get_logger(), "Joint '%s' has %zu command interfaces found. 1 expected.", joint.name.c_str(),
         joint.command_interfaces.size());
+      return hardware_interface::CallbackReturn::ERROR;
+    } else if (joint.command_interfaces[0].name != hardware_interface::HW_IF_VELOCITY) {
+      RCLCPP_FATAL(
+        get_logger(), "Joint '%s' has a '%s' command interface. Expected a '%s' command interface.", joint.name.c_str(),
+        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_VELOCITY);
       return hardware_interface::CallbackReturn::ERROR;
     }
 
@@ -41,12 +54,22 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
         get_logger(), "Joint '%s' has %zu state interfaces found. 2 expected.", joint.name.c_str(),
         joint.state_interfaces.size());
       return hardware_interface::CallbackReturn::ERROR;
+    } else if (joint.state_interfaces[0].name != hardware_interface::HW_IF_POSITION) {
+      RCLCPP_FATAL(
+        get_logger(), "Joint '%s' has a '%s' state interface as the first interface. Expected a '%s' state interface.", joint.name.c_str(),
+        joint.state_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
+      return hardware_interface::CallbackReturn::ERROR;
+    } else if (joint.state_interfaces[1].name != hardware_interface::HW_IF_VELOCITY) {
+      RCLCPP_FATAL(
+        get_logger(), "Joint '%s' has a '%s' state interface as the second interface. Expected a '%s' state interface.", joint.name.c_str(),
+        joint.state_interfaces[1].name.c_str(), hardware_interface::HW_IF_VELOCITY);
+      return hardware_interface::CallbackReturn::ERROR;
     }
   }
 
   _wheel.setup(info.joints[0].name, 0);
 
-  if (GPIOInterface::getInstance().initSuccessful()) {
+  if (!GPIOInterface::getInstance().initSuccessful()) {
     RCLCPP_FATAL(get_logger(), "Python GPIO library failed to initialize");
     return hardware_interface::CallbackReturn::ERROR;
   }
