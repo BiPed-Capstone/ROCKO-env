@@ -67,8 +67,8 @@ class GPIOInterface
             initSuccessfulVar = true;
         }
 
-        bool getPythonFunction(PyObject *pyModule, PyObject* func, char* name) {
-            func = PyObject_GetAttrString(pyModule, name);
+        bool getPythonFunction(PyObject *pyModule, PyObject* func, string name) {
+            func = PyObject_GetAttrString(pyModule, name.data());
             if (PyCallable_Check(func) == 0) {
                 initSuccessfulVar = false;
                 PyErr_Print();
