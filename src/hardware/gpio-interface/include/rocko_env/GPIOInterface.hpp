@@ -30,7 +30,7 @@ class GPIOInterface
             return instance;
         }
 
-        bool initSuccessful() { return initSuccessful; }
+        bool initSuccessful() { return initSuccessfulVar; }
 
         // Python wrapper functions
         int setupPin(string pinName, bool isOut);
@@ -60,7 +60,7 @@ class GPIOInterface
         void operator=(GPIOInterface const&); // Don't implement
 
         PyObject* setupPinFunc, startPWMFunc, setDutyCycleFunc, stopFunc;
-        bool initSuccessful;
+        bool initSuccessfulVar;
 };
 }
 

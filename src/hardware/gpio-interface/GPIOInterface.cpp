@@ -13,7 +13,7 @@ namespace rocko_env
 
         // Free the memory holding objects we are done with
         Py_DECREF(result);
-        return ret
+        return ret;
     }
 
     void GPIOInterface::startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge) {
