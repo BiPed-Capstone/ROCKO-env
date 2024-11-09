@@ -46,8 +46,10 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
 
   _wheel.setup(info.joints[0].name, 0);
 
-  int res = GPIOInterface::getInstance().setupPin("test", true);
-  RCLCPP_INFO(get_logger(), "Python returned %d", res);
+  if (GPIOInterface::getInstance().initSuccessful()) {
+    RCLCPP_FATAL(get_logger(), "Python GPIO library failed to initialize");
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }

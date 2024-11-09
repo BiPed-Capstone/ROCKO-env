@@ -30,23 +30,37 @@ class GPIOInterface
             return instance;
         }
 
+        bool initSuccessful() { return initSuccessful; }
+
+        // Python wrapper functions
         int setupPin(string pinName, bool isOut);
+        void startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge);
+        void setDutyCycle(string pinName, int dutyCycle);
+        void stop(string pinName);
 
     private:
         GPIOInterface() {
             Py_Initialize();
+            // Add the path to the python module from the cwd
             PyObject * sysPath = PySys_GetObject("path");
             PyList_Insert(sysPath, 0, PyUnicode_FromString("src/hardware/gpio-interface"));
 
+            // Get the python module
             PyObject * gpioModule = PyImport_ImportModule("gpio_interface");
             PyErr_Print();
+
+            // Get the python functions
             setupPinFunc = PyObject_GetAttrString(gpioModule, "setupPin");
-            PyErr_Print();
+            if (setupPinFunc == NULL) {
+                PyErr_Print();
+                return;
+            }
         }
         GPIOInterface(GPIOInterface const&); // Don't Implement.
         void operator=(GPIOInterface const&); // Don't implement
 
-        PyObject* setupPinFunc;
+        PyObject* setupPinFunc, startPWMFunc, setDutyCycleFunc, stopFunc;
+        bool initSuccessful;
 };
 }
 
