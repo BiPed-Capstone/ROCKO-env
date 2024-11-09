@@ -42,32 +42,26 @@ class GPIOInterface
     private:
         GPIOInterface() {
             Py_Initialize();
-            // Add the path to the python module from the cwd
+            // Add the path to the Python module from the cwd
             PyObject * sysPath = PySys_GetObject("path");
             PyList_Insert(sysPath, 0, PyUnicode_FromString("src/hardware/gpio-interface"));
 
-            // Get the python module
+            // Get the Python module
             PyObject * gpioModule = PyImport_ImportModule("gpio_interface");
             PyErr_Print();
 
-            // Get the python functions
-            if (!getPythonFunction(gpioModule, setupPinFunc, "setupPin")) {
-                return;
-            }
-            if (!getPythonFunction(gpioModule, startPWMFunc, "startPWM")) {
-                return;
-            }
-            if (!getPythonFunction(gpioModule, setDutyCycleFunc, "setDutyCycle")) {
-                return;
-            }
-            if (!getPythonFunction(gpioModule, stopFunc, "stop")) {
+            // Get the Python functions
+            if (!initPythonFunction(gpioModule, setupPinFunc, "setupPin") ||
+                !initPythonFunction(gpioModule, startPWMFunc, "startPWM") ||
+                !initPythonFunction(gpioModule, setDutyCycleFunc, "setDutyCycle") ||
+                !initPythonFunction(gpioModule, stopFunc, "stop")) {
                 return;
             }
 
             initSuccessfulVar = true;
         }
 
-        bool getPythonFunction(PyObject *pyModule, PyObject* func, string name) {
+        bool initPythonFunction(PyObject *pyModule, PyObject *func, string name) {
             func = PyObject_GetAttrString(pyModule, name.data());
             if (PyCallable_Check(func) == 0) {
                 initSuccessfulVar = false;
