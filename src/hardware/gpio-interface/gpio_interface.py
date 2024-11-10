@@ -1,8 +1,8 @@
 # import Adafruit_BBIO.GPIO as GPIO
 # import Adafruit_BBIO.PWM as PWM
 
-def setupPin(pinName:str, isOut:bool):
-    # dir = GPIO.OUT if isOut else GPIO.IN
+def setup_pin(pin_name:str, is_out:bool):
+    # dir = GPIO.OUT if is_out else GPIO.IN
     # GPIO.setup(str, dir)
     return 0 # remove the return after this is implemented
 
@@ -10,15 +10,15 @@ def cleanup():
     # GPIO.cleanup()
     return 0 # remove the return after this is implemented
 
-def startPWM(pinName:str, dutyCycle:int, freq:int, isFallingEdge:bool):
-    # PWM.start(pinName, dutyCycle, freq, isFallingEdge)
+def start_pwm(pin_name:str, duty_cycle:int, freq:int, is_falling_edge:bool):
+    # PWM.start(pin_name, duty_cycle, freq, is_falling_edge)
     return 0
 
-def stopPWM(pinName:str):
-    # PWM.stop(pinName)
+def stop_pwm(pin_name:str):
+    # PWM.stop(pin_name)
     return 0
 
-def setDutyCycle(pinName:str, dutyCycle:int):
-    # PWM.set_duty_cycle(pinName, dutyCycle)
+def set_duty_cycle(pinName:str, duty_cycle:int):
+    # PWM.set_duty_cycle(pinName, duty_cycle)
     return 0
 

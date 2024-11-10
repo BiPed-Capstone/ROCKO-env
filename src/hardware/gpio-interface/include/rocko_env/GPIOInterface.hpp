@@ -51,11 +51,11 @@ class GPIOInterface
             PyErr_Print();
 
             // Get the Python functions
-            if (!initPythonFunction(gpioModule, setupPinFunc, "setupPin") ||
+            if (!initPythonFunction(gpioModule, setupPinFunc, "setup_pin") ||
                 !initPythonFunction(gpioModule, cleanupFunc, "cleanup") ||
-                !initPythonFunction(gpioModule, startPWMFunc, "startPWM") ||
-                !initPythonFunction(gpioModule, stopPWMFunc, "stopPWM") ||
-                !initPythonFunction(gpioModule, setDutyCycleFunc, "setDutyCycle")) {
+                !initPythonFunction(gpioModule, startPWMFunc, "start_pwm") ||
+                !initPythonFunction(gpioModule, stopPWMFunc, "stop_pwm") ||
+                !initPythonFunction(gpioModule, setDutyCycleFunc, "set_duty_cycle")) {
                 return;
             }
 
