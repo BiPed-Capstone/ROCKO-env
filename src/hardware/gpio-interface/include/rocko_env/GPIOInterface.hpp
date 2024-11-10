@@ -14,7 +14,6 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 
 #include "rclcpp/macros.hpp"
-#include "rclcpp/rclcpp.hpp"
 
 #include "Python.h"
 
@@ -34,7 +33,7 @@ class GPIOInterface
         bool initSuccessful() { return initSuccessfulVar; }
 
         // Python wrapper functions
-        int setupPin(string pinName, bool isOut);
+        void setupPin(string pinName, bool isOut);
         void startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge);
         void setDutyCycle(string pinName, int dutyCycle);
         void stop(string pinName);

@@ -90,7 +90,8 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
 hardware_interface::CallbackReturn Motor12Volt::on_configure(
   const rclcpp_lifecycle::State & previous_state)
 {
-  /* GPTOInterface::getInstance().setupPin(_pinNumber, */
+  GPIOInterface::getInstance().setupPin(_pinNameSpeed, true);
+  GPIOInterface::getInstance().setupPin(_pinNameDirection, true);
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
