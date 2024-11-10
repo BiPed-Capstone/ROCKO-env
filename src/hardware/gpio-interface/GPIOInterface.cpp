@@ -22,8 +22,13 @@ namespace rocko_env
         return true;
     }
 
-    void GPIOInterface::startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge) {
-
+    bool GPIOInterface::startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge) {
+        PyObject *result = PyObject_CallFunction(startPWMFunc, "siib", pinName, dutyCycle, isFallingEdge);
+        if (result == NULL) {
+            PyErr_Print();
+            return false;
+        }
+        return true;
     }
         
     void GPIOInterface::setDutyCycle(string pinName, int dutyCycle) {

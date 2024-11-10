@@ -133,10 +133,12 @@ std::vector<hardware_interface::CommandInterface> Motor12Volt::export_command_in
 hardware_interface::CallbackReturn Motor12Volt::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // Set up pin directions
+  bool result = GPIOInterface::getInstance().startPWM(_pinNameSpeed, 0, 2000, false) && GPIOInterface::getInstance().startPWM(_pinNameDirection, 0, 2000, false); // TODO: frequency and isFallingEdge?
+  if (!result) {
+    return hardware_interface::CallbackReturn::ERROR;
+  }
 
   RCLCPP_INFO(get_logger(), "Successfully activated!");
-
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
