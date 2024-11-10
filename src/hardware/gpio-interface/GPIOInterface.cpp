@@ -23,7 +23,7 @@ namespace rocko_env
     }
 
     bool GPIOInterface::startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge) {
-        PyObject *result = PyObject_CallFunction(startPWMFunc, "siib", pinName, dutyCycle, isFallingEdge);
+        PyObject *result = PyObject_CallFunction(startPWMFunc, "siib", pinName, dutyCycle, freq, isFallingEdge);
         if (result == NULL) {
             PyErr_Print();
             return false;
