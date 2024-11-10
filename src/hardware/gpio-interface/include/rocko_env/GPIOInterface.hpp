@@ -33,8 +33,8 @@ class GPIOInterface
         bool initSuccessful() { return initSuccessfulVar; }
 
         // Python wrapper functions
-        void setupPin(string pinName, bool isOut);
-        void cleanup();
+        bool setupPin(string pinName, bool isOut);
+        bool cleanup();
         void startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge);
         void setDutyCycle(string pinName, int dutyCycle);
         void stop(string pinName);

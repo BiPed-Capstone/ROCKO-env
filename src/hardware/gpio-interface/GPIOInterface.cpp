@@ -3,14 +3,23 @@
 
 namespace rocko_env
 {
-    void GPIOInterface::setupPin(string pinName, bool isOut) {
+    bool GPIOInterface::setupPin(string pinName, bool isOut) {
         // Call the function
-        PyObject_CallFunction(setupPinFunc, "sb", pinName.c_str(), isOut);
-        PyErr_Print();
+        PyObject *result = PyObject_CallFunction(setupPinFunc, "sb", pinName.c_str(), isOut);
+        if (result == NULL) {
+            PyErr_Print();
+            return false;
+        }
+        return true;
     }
 
-    void GPIOInterface::cleanup() {
-        PyObject_CallFunction(cleanupFunc, "");
+    bool GPIOInterface::cleanup() {
+        PyObject *result = PyObject_CallFunction(cleanupFunc, "");
+        if (result == NULL) {
+            PyErr_Print();
+            return false;
+        }
+        return true;
     }
 
     void GPIOInterface::startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge) {
