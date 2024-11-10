@@ -4,7 +4,11 @@
 def setupPin(pinName:str, isOut:bool):
     # dir = GPIO.OUT if isOut else GPIO.IN
     # GPIO.setup(str, dir)
-    return 5
+    return 0 # remove the return after this is implemented
+
+def cleanup():
+    # GPIO.cleanup()
+    return 0 # remove the return after this is implemented
 
 def startPWM(pinName:str, dutyCycle:int, freq:int, isFallingEdge:bool):
     # PWM.start(pinName, dutyCycle, freq, isFallingEdge)

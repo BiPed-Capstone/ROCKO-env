@@ -9,6 +9,10 @@ namespace rocko_env
         PyErr_Print();
     }
 
+    void GPIOInterface::cleanup() {
+        PyObject_CallFunction(cleanupFunc, "");
+    }
+
     void GPIOInterface::startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge) {
 
     }
