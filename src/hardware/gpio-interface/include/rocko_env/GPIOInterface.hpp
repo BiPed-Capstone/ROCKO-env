@@ -36,8 +36,8 @@ class GPIOInterface
         bool setupPin(string pinName, bool isOut);
         bool cleanup();
         bool startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge);
+        bool stopPWM(string pinName);
         void setDutyCycle(string pinName, int dutyCycle);
-        void stop(string pinName);
 
     private:
         GPIOInterface() {
@@ -54,8 +54,8 @@ class GPIOInterface
             if (!initPythonFunction(gpioModule, setupPinFunc, "setupPin") ||
                 !initPythonFunction(gpioModule, cleanupFunc, "cleanup") ||
                 !initPythonFunction(gpioModule, startPWMFunc, "startPWM") ||
-                !initPythonFunction(gpioModule, setDutyCycleFunc, "setDutyCycle") ||
-                !initPythonFunction(gpioModule, stopFunc, "stop")) {
+                !initPythonFunction(gpioModule, stopPWMFunc, "stopPWM") ||
+                !initPythonFunction(gpioModule, setDutyCycleFunc, "setDutyCycle")) {
                 return;
             }
 
@@ -74,7 +74,7 @@ class GPIOInterface
         GPIOInterface(GPIOInterface const&); // Don't Implement.
         void operator=(GPIOInterface const&); // Don't implement
 
-        PyObject *setupPinFunc, *startPWMFunc, *setDutyCycleFunc, *stopFunc, *cleanupFunc;
+        PyObject *setupPinFunc, *cleanupFunc, *startPWMFunc, *stopPWMFunc, *setDutyCycleFunc;
         bool initSuccessfulVar;
 };
 }

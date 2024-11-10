@@ -30,12 +30,17 @@ namespace rocko_env
         }
         return true;
     }
-        
-    void GPIOInterface::setDutyCycle(string pinName, int dutyCycle) {
 
+    bool GPIOInterface::stopPWM(string pinName) {
+        PyObject *result = PyObject_CallFunction(stopPWMFunc, "s", pinName);
+        if (result == NULL) {
+            PyErr_Print();
+            return false;
+        }
+        return true;
     }
         
-    void GPIOInterface::stop(string pinName) {
+    void GPIOInterface::setDutyCycle(string pinName, int dutyCycle) {
 
     }
 }

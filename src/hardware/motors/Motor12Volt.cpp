@@ -145,6 +145,11 @@ hardware_interface::CallbackReturn Motor12Volt::on_activate(
 hardware_interface::CallbackReturn Motor12Volt::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  bool result = GPIOInterface::getInstance().stopPWM(_pinNameSpeed) && GPIOInterface::getInstance().stopPWM(_pinNameDirection);
+  if (!result) {
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
