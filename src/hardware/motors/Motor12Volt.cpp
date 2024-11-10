@@ -156,7 +156,10 @@ hardware_interface::CallbackReturn Motor12Volt::on_deactivate(
 hardware_interface::return_type Motor12Volt::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // Read info from hardware for all states and store them inside export_state_interfaces
+  // Read info from hardware for all states and store them inside the variables used in export_state_interfaces
+  // TODO
+  _wheel.vel = 1;
+  _wheel.pos = 0;
 
   return hardware_interface::return_type::OK;
 }
