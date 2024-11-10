@@ -40,7 +40,12 @@ namespace rocko_env
         return true;
     }
         
-    void GPIOInterface::setDutyCycle(string pinName, int dutyCycle) {
-
+    bool GPIOInterface::setDutyCycle(string pinName, int dutyCycle) {
+        PyObject *result = PyObject_CallFunction(setDutyCycleFunc, "si", pinName, dutyCycle);
+        if (result == NULL) {
+            PyErr_Print();
+            return false;
+        }
+        return true;
     }
 }

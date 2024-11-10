@@ -156,8 +156,8 @@ hardware_interface::CallbackReturn Motor12Volt::on_deactivate(
 hardware_interface::return_type Motor12Volt::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // Read info from hardware for all states and store them inside the variables used in export_state_interfaces
-  // TODO
+  // Read info from hardware for all states and store them inside the variables used in export_state_interfaces (update the state)
+  // TODO: read the info
   _wheel.vel = 1;
   _wheel.pos = 0;
 
@@ -168,6 +168,11 @@ hardware_interface::return_type Motor12Volt::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   // command the hardware to do things based on inputs in export_command_interfaces
+  // TODO: write based on command interface
+  bool result = GPIOInterface::getInstance().setDutyCycle(_pinNameSpeed, 10) && GPIOInterface::getInstance().setDutyCycle(_pinNameDirection, 100);
+  if (!result) {
+    return hardware_interface::return_type::ERROR;
+  }
 
   return hardware_interface::return_type::OK;
 }

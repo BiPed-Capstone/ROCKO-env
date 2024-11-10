@@ -37,7 +37,7 @@ class GPIOInterface
         bool cleanup();
         bool startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge);
         bool stopPWM(string pinName);
-        void setDutyCycle(string pinName, int dutyCycle);
+        bool setDutyCycle(string pinName, int dutyCycle);
 
     private:
         GPIOInterface() {
