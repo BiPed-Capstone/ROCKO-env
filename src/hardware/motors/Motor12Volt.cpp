@@ -79,7 +79,7 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
 
   _wheel.setup(info.joints[0].name, 0);
 
-  if (!GPIOInterface::getInstance().initSuccessful()) {
+  if (!GPIOInterface::getInstance().init()) {
     RCLCPP_FATAL(get_logger(), "Python GPIO library failed to initialize");
     return hardware_interface::CallbackReturn::ERROR;
   }
@@ -100,10 +100,6 @@ hardware_interface::CallbackReturn Motor12Volt::on_configure(
 hardware_interface::CallbackReturn Motor12Volt::on_cleanup(
   const rclcpp_lifecycle::State & /* previous_state */)
 {
-  bool result = GPIOInterface::getInstance().cleanup();
-  if (!result) {
-    return hardware_interface::CallbackReturn::ERROR;
-  }
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -134,6 +130,7 @@ hardware_interface::CallbackReturn Motor12Volt::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   bool result = GPIOInterface::getInstance().startPWM(_pinNameSpeed, 0, 2000, false) && GPIOInterface::getInstance().startPWM(_pinNameDirection, 0, 2000, false); // TODO: frequency and isFallingEdge?
+
   if (!result) {
     return hardware_interface::CallbackReturn::ERROR;
   }
@@ -169,10 +166,11 @@ hardware_interface::return_type Motor12Volt::write(
 {
   // command the hardware to do things based on inputs in export_command_interfaces
   // TODO: write based on command interface
-  bool result = GPIOInterface::getInstance().setDutyCycle(_pinNameSpeed, 10) && GPIOInterface::getInstance().setDutyCycle(_pinNameDirection, 100);
-  if (!result) {
-    return hardware_interface::return_type::ERROR;
-  }
+  // GPIOInterface::getInstance().startPWM(_pinNameSpeed, 0, 2000, false) && GPIOInterface::getInstance().startPWM(_pinNameDirection, 0, 2000, false); // TODO: frequency and isFallingEdge?
+  // if (!result) {
+  //   return hardware_interface::return_type::ERROR;
+  // }
+  // RCLCPP_INFO(get_logger(), "Duty cycle: ");
 
   return hardware_interface::return_type::OK;
 }

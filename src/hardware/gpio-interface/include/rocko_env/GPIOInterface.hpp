@@ -30,17 +30,9 @@ class GPIOInterface
             return instance;
         }
 
-        bool initSuccessful() { return initSuccessfulVar; }
-
-        // Python wrapper functions
-        bool setupPin(string pinName, bool isOut);
-        bool cleanup();
-        bool startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge);
-        bool stopPWM(string pinName);
-        bool setDutyCycle(string pinName, int dutyCycle);
-
-    private:
-        GPIOInterface() {
+        bool init() {
+            if (initSuccessfulVar) return true;
+            
             Py_Initialize();
             // Add the path to the Python module from the cwd
             PyObject * sysPath = PySys_GetObject("path");
@@ -51,20 +43,60 @@ class GPIOInterface
             PyErr_Print();
 
             // Get the Python functions
-            if (!initPythonFunction(gpioModule, setupPinFunc, "setup_pin") ||
-                !initPythonFunction(gpioModule, cleanupFunc, "cleanup") ||
-                !initPythonFunction(gpioModule, startPWMFunc, "start_pwm") ||
-                !initPythonFunction(gpioModule, stopPWMFunc, "stop_pwm") ||
-                !initPythonFunction(gpioModule, setDutyCycleFunc, "set_duty_cycle")) {
-                return;
+            // if (!initPythonFunction(gpioModule, setupPinFunc, "setup_pin") ||
+            //     !initPythonFunction(gpioModule, startPWMFunc, "start_pwm") ||
+            //     !initPythonFunction(gpioModule, stopPWMFunc, "stop_pwm") ||
+            //     !initPythonFunction(gpioModule, setDutyCycleFunc, "set_duty_cycle")) {
+            //     return;
+            // }
+            setupPinFunc = PyObject_GetAttrString(gpioModule, "setup_pin");
+            if (!PyCallable_Check(setupPinFunc)) {
+                initSuccessfulVar = false;
+                PyErr_Print();
+                return false;
+            }
+
+            startPWMFunc = PyObject_GetAttrString(gpioModule, "start_pwm");
+            if (!PyCallable_Check(startPWMFunc)) {
+                initSuccessfulVar = false;
+                PyErr_Print();
+                return false;
+            }
+
+            stopPWMFunc = PyObject_GetAttrString(gpioModule, "stop_pwm");
+            if (!PyCallable_Check(stopPWMFunc)) {
+                initSuccessfulVar = false;
+                PyErr_Print();
+                return false;
+            }
+
+            setDutyCycleFunc = PyObject_GetAttrString(gpioModule, "set_duty_cycle");
+            if (!PyCallable_Check(setDutyCycleFunc)) {
+                initSuccessfulVar = false;
+                PyErr_Print();
+                return false;
             }
 
             initSuccessfulVar = true;
+            return true;
+        }
+
+        bool initSuccessful() { return initSuccessfulVar; }
+
+        // Python wrapper functions
+        bool setupPin(string pinName, bool isOut);
+        bool startPWM(string pinName, int dutyCycle, int freq, bool isFallingEdge);
+        bool stopPWM(string pinName);
+        bool setDutyCycle(string pinName, int dutyCycle);
+
+    private:
+        GPIOInterface() {
+
         }
 
         bool initPythonFunction(PyObject *pyModule, PyObject *func, string name) {
-            func = PyObject_GetAttrString(pyModule, name.data());
-            if (PyCallable_Check(func) == 0) {
+            func = PyObject_GetAttrString(pyModule, name.c_str());
+            if (!PyCallable_Check(func)) {
                 initSuccessfulVar = false;
                 PyErr_Print();
                 return false;
