@@ -12,7 +12,8 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "rocko_env/Motor12Volt.hpp"
-#include "rocko_env/GPIOInterface.hpp"
+#include <wiringPi.h>
+#include <softPwm.h>
 
 namespace rocko_env
 {
@@ -20,16 +21,16 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
   const hardware_interface::HardwareInfo & info)
 {
   // Check that we have pin names for speed and direction
-  if (!(info.hardware_parameters.count(PIN_NAME_SPEED_KEY) > 0)) {
+  if (!(info.hardware_parameters.count(PIN_NUMBER_SPEED_KEY) > 0)) {
     RCLCPP_FATAL(
       get_logger(), "Hardware '%s' does not have a '%s' parameter.", info.name.c_str(),
-      PIN_NAME_SPEED_KEY.c_str()
+      PIN_NUMBER_SPEED_KEY.c_str()
     );
     return hardware_interface::CallbackReturn::ERROR;
-  } else if (!(info.hardware_parameters.count(PIN_NAME_DIRECTION_KEY) > 0)) {
+  } else if (!(info.hardware_parameters.count(PIN_NUMBER_DIRECTION_KEY) > 0)) {
     RCLCPP_FATAL(
       get_logger(), "Hardware '%s' does not have a '%s' parameter.", info.name.c_str(),
-      PIN_NAME_DIRECTION_KEY.c_str()
+      PIN_NUMBER_DIRECTION_KEY.c_str()
     );
     return hardware_interface::CallbackReturn::ERROR;
   }
@@ -74,15 +75,13 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
     }
   }
 
-  _pinNameSpeed = info.hardware_parameters.at(PIN_NAME_SPEED_KEY);
-  _pinNameDirection = info.hardware_parameters.at(PIN_NAME_DIRECTION_KEY);
+  _speedPin = stoi(info.hardware_parameters.at(PIN_NUMBER_SPEED_KEY));
+  _dirPin = stoi(info.hardware_parameters.at(PIN_NUMBER_DIRECTION_KEY));
 
   _wheel.setup(info.joints[0].name, 0);
 
-  if (!GPIOInterface::getInstance().init()) {
-    RCLCPP_FATAL(get_logger(), "Python GPIO library failed to initialize");
-    return hardware_interface::CallbackReturn::ERROR;
-  }
+  // Set up pins to have BCM numberings
+  wiringPiSetupGpio();
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -90,16 +89,10 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
 hardware_interface::CallbackReturn Motor12Volt::on_configure(
   const rclcpp_lifecycle::State & /* previous_state */)
 {
-  bool result = GPIOInterface::getInstance().setupPin(_pinNameSpeed, true) && GPIOInterface::getInstance().setupPin(_pinNameDirection, true);
-  if (!result) {
-    return hardware_interface::CallbackReturn::ERROR;
-  }
-  return hardware_interface::CallbackReturn::SUCCESS;
-}
+  // Set up the speed pin to be PWM and the dir pin to be output
+  pinMode(_speedPin, SOFT_PWM_OUTPUT);
+  pinMode(_dirPin, OUTPUT);
 
-hardware_interface::CallbackReturn Motor12Volt::on_cleanup(
-  const rclcpp_lifecycle::State & /* previous_state */)
-{
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -129,23 +122,17 @@ std::vector<hardware_interface::CommandInterface> Motor12Volt::export_command_in
 hardware_interface::CallbackReturn Motor12Volt::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  bool result = GPIOInterface::getInstance().startPWM(_pinNameSpeed, 0, 2000, false) && GPIOInterface::getInstance().startPWM(_pinNameDirection, 0, 2000, false); // TODO: frequency and isFallingEdge?
+  // Set up PWM
+  softPwmCreate(_speedPin, 0, SPEED_TO_PWM_COEFF);
 
-  if (!result) {
-    return hardware_interface::CallbackReturn::ERROR;
-  }
-
-  RCLCPP_INFO(get_logger(), "Successfully activated!");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn Motor12Volt::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  bool result = GPIOInterface::getInstance().stopPWM(_pinNameSpeed) && GPIOInterface::getInstance().stopPWM(_pinNameDirection);
-  if (!result) {
-    return hardware_interface::CallbackReturn::ERROR;
-  }
+  // Stop PWM here
+  softPwmStop(_speedPin);
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -153,8 +140,7 @@ hardware_interface::CallbackReturn Motor12Volt::on_deactivate(
 hardware_interface::return_type Motor12Volt::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // Read info from hardware for all states and store them inside the variables used in export_state_interfaces (update the state)
-  // TODO: read the info
+  // Read the encoders to find speed and pos, and update the wheel object, which gets read when states are exported
   _wheel.vel = 1;
   _wheel.pos = 0;
 
@@ -164,13 +150,19 @@ hardware_interface::return_type Motor12Volt::read(
 hardware_interface::return_type Motor12Volt::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // command the hardware to do things based on inputs in export_command_interfaces
-  // TODO: write based on command interface
-  // GPIOInterface::getInstance().startPWM(_pinNameSpeed, 0, 2000, false) && GPIOInterface::getInstance().startPWM(_pinNameDirection, 0, 2000, false); // TODO: frequency and isFallingEdge?
-  // if (!result) {
-  //   return hardware_interface::return_type::ERROR;
-  // }
-  // RCLCPP_INFO(get_logger(), "Duty cycle: ");
+  // handle any conversions here (assuming we have percent speed right now)
+  int pwmVal = std::abs(_wheel.cmd * SPEED_TO_PWM_COEFF); // _wheel.cmd holds the speed we want to go
+
+  // Set direction
+  if (_wheel.cmd >= 0) {
+    digitalWrite(_dirPin, HIGH);
+  } else {
+    digitalWrite(_dirPin, LOW);
+  }
+
+  // Set speed
+  softPwmWrite(_speedPin, pwmVal);
+
 
   return hardware_interface::return_type::OK;
 }

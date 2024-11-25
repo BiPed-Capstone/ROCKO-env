@@ -6,8 +6,8 @@
     <ros2_control name="LeftDriveMotor" type="actuator">
       <hardware>
         <plugin>rocko_env/Motor12Volt</plugin>
-        <param name="pinNameSpeed">1</param>
-        <param name="pinNameDirection">1</param>
+        <param name="pinNumberSpeed">1</param>
+        <param name="pinNumberDirection">1</param>
       </hardware>
       <joint name="left_wheel_joint">
         <command_interface name="velocity"/>
@@ -18,8 +18,8 @@
     <ros2_control name="RightDriveMotor" type="actuator">
       <hardware>
         <plugin>rocko_env/Motor12Volt</plugin>
-        <param name="pinNameSpeed">2</param>
-        <param name="pinNameDirection">1</param>
+        <param name="pinNumberSpeed">2</param>
+        <param name="pinNumberDirection">1</param>
       </hardware>
       <joint name="right_wheel_joint">
         <command_interface name="velocity"/>
