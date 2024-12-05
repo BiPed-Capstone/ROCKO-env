@@ -163,6 +163,7 @@ hardware_interface::return_type Motor12Volt::write(
   // Set speed
   softPwmWrite(_speedPin, pwmVal);
 
+  RCLCPP_INFO(get_logger(), "Set speed to %3.2f", _wheel.cmd);
 
   return hardware_interface::return_type::OK;
 }
