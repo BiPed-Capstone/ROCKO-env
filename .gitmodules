@@ -1,6 +1,3 @@
-[submodule "src/hardware/hardware"]
-	path = src/hardware/hardware
-	url = https://github.com/WiringPi/WiringPi.git
-[submodule "src/hardware/Wiringpi"]
-	path = src/hardware/Wiringpi
+[submodule "src/hardware/WiringPi"]
+	path = src/hardware/WiringPi
 	url = https://github.com/WiringPi/WiringPi.git

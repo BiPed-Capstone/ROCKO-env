@@ -35,8 +35,8 @@ endforeach()
 add_library(
   rocko_env
   SHARED
-  hardware/motors/Motor12Volt.cpp
-  hardware/Wiringpi/wiringPi/wiringPi.h
+  hardware/motors/DriveWheel.cpp
+  hardware/WiringPi/wiringPi/wiringPi.h
 )
 target_compile_features(rocko_env PUBLIC cxx_std_17)
 target_include_directories(rocko_env PUBLIC

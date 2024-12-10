@@ -15,10 +15,10 @@
 
 namespace rocko_env
 {
-class Motor12Volt : public hardware_interface::ActuatorInterface
+class DriveWheel : public hardware_interface::ActuatorInterface
 {
 public:
-  RCLCPP_SHARED_PTR_DEFINITIONS(Motor12Volt);
+  RCLCPP_SHARED_PTR_DEFINITIONS(DriveWheel);
 
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareInfo & info) override;
@@ -43,13 +43,22 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
+  void calcCurrentEncVal();
+
   std::string PIN_NUMBER_SPEED_KEY = "pinNumberSpeed";
   std::string PIN_NUMBER_DIRECTION_KEY = "pinNumberDirection";
+  std::string PIN_NUMBER_A_KEY = "pinNumberAChannel";
+  std::string PIN_NUMBER_B_KEY = "pinNumberBChannel";
+
   int SPEED_TO_PWM_COEFF = 100;
 
   Wheel _wheel;
   int _speedPin;
   int _dirPin;
+  int _aPin;
+  int _bPin;
+
+  uint8_t _encState;
 };
 
 }  // namespace rocko_env

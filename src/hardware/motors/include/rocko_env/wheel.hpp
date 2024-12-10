@@ -35,7 +35,9 @@ class Wheel
       return enc * rads_per_count;
     }
 
-
+    double getPosition() {
+      return enc;
+    }
 
 };
 
