@@ -80,8 +80,8 @@ hardware_interface::CallbackReturn Motor12Volt::on_init(
 
   _wheel.setup(info.joints[0].name, 0);
 
-  // Set up pins to have BCM numberings
-  wiringPiSetupGpio();
+  // Set up pins to have WiringPi numberings
+  wiringPiSetup();
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -163,7 +163,7 @@ hardware_interface::return_type Motor12Volt::write(
   // Set speed
   softPwmWrite(_speedPin, pwmVal);
 
-  RCLCPP_INFO(get_logger(), "Set speed to %3.2f", _wheel.cmd);
+  RCLCPP_INFO(get_logger(), "Set speed to PWM %d", pwmVal);
 
   return hardware_interface::return_type::OK;
 }
