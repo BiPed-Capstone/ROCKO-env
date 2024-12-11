@@ -35,12 +35,12 @@ endforeach()
 add_library(
   rocko_env
   SHARED
-  hardware/DriveWheel.cpp
+  hardware/motors/DriveWheel.cpp
   hardware/WiringPi/wiringPi/wiringPi.h
 )
 target_compile_features(rocko_env PUBLIC cxx_std_17)
 target_include_directories(rocko_env PUBLIC
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/hardware/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/hardware/motors/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 ament_target_dependencies(
@@ -55,7 +55,7 @@ pluginlib_export_plugin_description_file(hardware_interface rocko_env.xml)
 
 # INSTALL
 install(
-  DIRECTORY hardware/include/
+  DIRECTORY hardware/motors/include/
   DESTINATION include/rocko_env
 )
 install(
