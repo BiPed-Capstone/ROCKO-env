@@ -31,16 +31,6 @@
         <state_interface name="velocity"/>
       </joint>
     </ros2_control>
-    <ros2_control name="LeftDriveEncoder" type="sensor">
-      <hardware>
-        <plugin>rocko_env/QuadratureEncoder</plugin>
-        <param name="pinNumberAChannel">5</param>
-        <param name="pinNumberBChannel">6</param>
-      </hardware>
-      <sensor name="right_wheel_encoder">
-        <state_interface name="position"/>
-      </sensor>
-      </ros2_control>
   </xacro:macro>
 
 </robot>
