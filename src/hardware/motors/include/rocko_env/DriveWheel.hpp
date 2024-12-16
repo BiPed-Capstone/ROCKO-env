@@ -15,10 +15,10 @@
 
 namespace rocko_env
 {
-class DriveWheel : public hardware_interface::ActuatorInterface
+class Motor12VoltQuadEncoder : public hardware_interface::ActuatorInterface
 {
 public:
-  RCLCPP_SHARED_PTR_DEFINITIONS(DriveWheel);
+  RCLCPP_SHARED_PTR_DEFINITIONS(Motor12VoltQuadEncoder);
 
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareInfo & info) override;

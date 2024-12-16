@@ -5,7 +5,7 @@
 
     <ros2_control name="LeftDriveMotor" type="actuator">
       <hardware>
-        <plugin>rocko_env/DriveWheel</plugin>
+        <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
         <param name="pinNumberSpeed">1</param>
         <param name="pinNumberDirection">2</param>
         <param name="pinNumberAChannel">5</param>
@@ -19,7 +19,7 @@
     </ros2_control>
     <ros2_control name="RightDriveMotor" type="actuator">
       <hardware>
-        <plugin>rocko_env/DriveWheel</plugin>
+        <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
         <param name="pinNumberSpeed">3</param>
         <param name="pinNumberDirection">4</param>
         <param name="pinNumberAChannel">7</param>

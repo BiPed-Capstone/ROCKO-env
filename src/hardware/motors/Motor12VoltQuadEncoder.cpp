@@ -11,13 +11,13 @@
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "rocko_env/DriveWheel.hpp"
+#include "rocko_env/Motor12VoltQuadEncoder.hpp"
 #include <wiringPi.h>
 #include <softPwm.h>
 
 namespace rocko_env
 {
-hardware_interface::CallbackReturn DriveWheel::on_init(
+hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_init(
   const hardware_interface::HardwareInfo & info)
 {
   // Check that we have pin names for speed and direction
@@ -88,7 +88,7 @@ hardware_interface::CallbackReturn DriveWheel::on_init(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn DriveWheel::on_configure(
+hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_configure(
   const rclcpp_lifecycle::State & /* previous_state */)
 {
   // Set up the speed pin to be PWM and the dir pin to be output
@@ -98,7 +98,7 @@ hardware_interface::CallbackReturn DriveWheel::on_configure(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface> DriveWheel::export_state_interfaces()
+std::vector<hardware_interface::StateInterface> Motor12VoltQuadEncoder::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
 
@@ -111,7 +111,7 @@ std::vector<hardware_interface::StateInterface> DriveWheel::export_state_interfa
   return state_interfaces;
 }
 
-std::vector<hardware_interface::CommandInterface> DriveWheel::export_command_interfaces()
+std::vector<hardware_interface::CommandInterface> Motor12VoltQuadEncoder::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> command_interfaces;
 
@@ -121,7 +121,7 @@ std::vector<hardware_interface::CommandInterface> DriveWheel::export_command_int
   return command_interfaces;
 }
 
-hardware_interface::CallbackReturn DriveWheel::on_activate(
+hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   // Set up PWM
@@ -130,7 +130,7 @@ hardware_interface::CallbackReturn DriveWheel::on_activate(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn DriveWheel::on_deactivate(
+hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   // Stop PWM here
@@ -139,7 +139,7 @@ hardware_interface::CallbackReturn DriveWheel::on_deactivate(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::return_type DriveWheel::read(
+hardware_interface::return_type Motor12VoltQuadEncoder::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   // Read the encoders to find speed and pos, and update the wheel object, which gets read when states are exported
@@ -151,7 +151,7 @@ hardware_interface::return_type DriveWheel::read(
   return hardware_interface::return_type::OK;
 }
 
-hardware_interface::return_type DriveWheel::write(
+hardware_interface::return_type Motor12VoltQuadEncoder::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   // handle any conversions here (assuming we have percent speed right now)
@@ -170,7 +170,7 @@ hardware_interface::return_type DriveWheel::write(
   return hardware_interface::return_type::OK;
 }
 
-void DriveWheel::calcCurrentEncVal() {
+void Motor12VoltQuadEncoder::calcCurrentEncVal() {
     uint8_t p1val = digitalRead(_aPin);
     uint8_t p2val = digitalRead(_bPin);
     uint8_t s = _encState & 3;
@@ -199,4 +199,4 @@ void DriveWheel::calcCurrentEncVal() {
 #include "pluginlib/class_list_macros.hpp"
 
 PLUGINLIB_EXPORT_CLASS(
-  rocko_env::DriveWheel, hardware_interface::ActuatorInterface)
+  rocko_env::Motor12VoltQuadEncoder, hardware_interface::ActuatorInterface)
