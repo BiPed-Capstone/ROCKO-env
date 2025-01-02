@@ -14,6 +14,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   pluginlib
   rclcpp
   rclcpp_lifecycle
+  rclpy
 )
 
 # Specify the required version of ros2_control
@@ -26,6 +27,7 @@ endif()
 # find dependencies
 find_package(backward_ros REQUIRED)
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(Python REQUIRED Development)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
@@ -35,12 +37,12 @@ endforeach()
 add_library(
   rocko_env
   SHARED
-  hardware/motors/Motor12VoltQuadEncoder.cpp
-  hardware/WiringPi/wiringPi.h
+  rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp
+  rocko_env/hardware/WiringPi/wiringPi.h
 )
 target_compile_features(rocko_env PUBLIC cxx_std_17)
 target_include_directories(rocko_env PUBLIC
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/hardware/motors/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 ament_target_dependencies(
@@ -55,22 +57,30 @@ pluginlib_export_plugin_description_file(hardware_interface rocko_env.xml)
 
 # INSTALL
 install(
-  DIRECTORY hardware/motors/include/
-  DESTINATION include/rocko_env
+  DIRECTORY rocko_env/hardware/motors/include/
+  DESTINATION include
 )
 install(
-  DIRECTORY description/launch description/ros2_control description/urdf
-  DESTINATION share/rocko_env
+  DIRECTORY rocko_env/description/launch rocko_env/description/ros2_control rocko_env/description/urdf
+  DESTINATION share
 )
 install(
-  DIRECTORY bringup/launch bringup/config
-  DESTINATION share/rocko_env
+  DIRECTORY rocko_env/bringup/launch rocko_env/bringup/config
+  DESTINATION share
 )
 install(TARGETS rocko_env
   EXPORT export_rocko_env
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+
+# Python stuff
+ament_python_install_package(${PROJECT_NAME})
+
+install(PROGRAMS
+  rocko_env/hardware/sensors/ICM20948.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 ## EXPORTS
