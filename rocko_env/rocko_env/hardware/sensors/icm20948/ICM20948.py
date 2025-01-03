@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-# import board
-# import adafruit_icm20x
+import board
+import adafruit_icm20x
 
 from rocko_interfaces.srv import Icm20948Data
 
@@ -17,8 +17,8 @@ class MinimalPublisher(Node):
 
         # Initialize the gyro board
         # TODO: Get lib to work and init board here
-        # i2c = board.I2C()   # uses board.SCL and board.SDA
-        # self.icm = adafruit_icm20x.ICM20649(i2c)
+        i2c = board.I2C()   # uses board.SCL and board.SDA
+        self.icm = adafruit_icm20x.ICM20649(i2c)
 
     def imu_callback(self, request, response):
         # Grab IMU data and send it to the topic
