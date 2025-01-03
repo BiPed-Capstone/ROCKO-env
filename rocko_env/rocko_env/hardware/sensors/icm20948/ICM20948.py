@@ -6,9 +6,8 @@ import adafruit_icm20x
 
 from rocko_interfaces.srv import Icm20948Data
 
-
-class MinimalPublisher(Node):
-    i = 0
+# Documentation for gyro lib: https://docs.circuitpython.org/projects/icm20x/en/latest/
+class ICM20948(Node):
 
     def __init__(self):
         # Create a new service called /icm20948 for posting IMU info
@@ -18,30 +17,28 @@ class MinimalPublisher(Node):
         # Initialize the gyro board
         # TODO: Get lib to work and init board here
         i2c = board.I2C()   # uses board.SCL and board.SDA
-        self.icm = adafruit_icm20x.ICM20649(i2c)
+        self.icm = adafruit_icm20x.ICM20948(i2c)
 
     def imu_callback(self, request, response):
         # Grab IMU data and send it to the topic
         # TODO: Call gyro object to get data for message
-        response.x = self.i
-        response.y = 0
-        response.z = 0
-
-        self.i += 1
+        response.x = self.icm.gyro[0]
+        response.y = self.icm.gyro[1]
+        response.z = self.icm.gyro[2]
 
         return response
 
 def main(args=None):
     rclpy.init(args=args)
 
-    minimal_publisher = MinimalPublisher()
+    imu = ICM20948()
 
-    rclpy.spin(minimal_publisher)
+    rclpy.spin(imu)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    minimal_publisher.destroy_node()
+    imu.destroy_node()
 
     rclpy.shutdown()
 
