@@ -35,7 +35,7 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "use_mock_hardware",
-            default_value="false",
+            default_value="true",
             description="Start robot with mock hardware mirroring command to its states.",
         )
     )
@@ -123,12 +123,18 @@ def generate_launch_description():
         )
     )
 
+    gyro = Node(
+        package="rocko_env",
+        executable="ICM20948.py",
+    )
+
     nodes = [
         control_node,
         robot_state_pub_node,
         robot_controller_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
+        gyro
     ]
 
     return LaunchDescription(declared_arguments + nodes)
