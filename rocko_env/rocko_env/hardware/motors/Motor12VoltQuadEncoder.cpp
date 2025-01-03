@@ -83,7 +83,7 @@ hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_init(
   _wheel.setup(info.joints[0].name, 0);
 
   // Set up pins to have WiringPi numberings
-  // wiringPiSetup();
+  wiringPiSetup();
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -92,8 +92,8 @@ hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_configure(
   const rclcpp_lifecycle::State & /* previous_state */)
 {
   // Set up the speed pin to be PWM and the dir pin to be output
-  // pinMode(_speedPin, SOFT_PWM_OUTPUT);
-  // pinMode(_dirPin, OUTPUT);
+  pinMode(_speedPin, SOFT_PWM_OUTPUT);
+  pinMode(_dirPin, OUTPUT);
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }

@@ -29,7 +29,16 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
-    
+  std::string _prefix = "";
+
+  rclcpp::Client<rocko_interfaces::srv::Icm20948Data>::SharedPtr _client;
+  std::shared_ptr<rclcpp::Node> _node;
+
+  std::string X_STATE_KEY = "x";
+  std::string Y_STATE_KEY = "y";
+  std::string Z_STATE_KEY = "z";
+
+  double _x, _y, _z = 0;
 };
 
 }  // namespace rocko_env

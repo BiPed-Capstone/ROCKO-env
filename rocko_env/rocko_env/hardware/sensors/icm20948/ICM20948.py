@@ -8,11 +8,12 @@ from rocko_interfaces.srv import Icm20948Data
 
 
 class MinimalPublisher(Node):
+    i = 0
 
     def __init__(self):
         # Create a new service called /icm20948 for posting IMU info
         super().__init__('icm20948_node')
-        self.srv = self.create_service(Icm20948Data, 'icm20948', self.imu_callback)
+        self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
 
         # Initialize the gyro board
         # TODO: Get lib to work and init board here
@@ -22,9 +23,11 @@ class MinimalPublisher(Node):
     def imu_callback(self, request, response):
         # Grab IMU data and send it to the topic
         # TODO: Call gyro object to get data for message
-        response.x = 0
+        response.x = self.i
         response.y = 0
         response.z = 0
+
+        self.i += 1
 
         return response
 
