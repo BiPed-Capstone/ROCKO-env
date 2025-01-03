@@ -41,7 +41,7 @@ std::vector<hardware_interface::StateInterface> ICM20948::export_state_interface
 hardware_interface::return_type ICM20948::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-    // Grab data from the gyro topic and save to member level vars
+    // Ask gyro for its data
 
     return hardware_interface::return_type::OK;
 }

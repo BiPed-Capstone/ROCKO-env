@@ -15,6 +15,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp
   rclcpp_lifecycle
   rclpy
+  rocko_interfaces
 )
 
 # Specify the required version of ros2_control

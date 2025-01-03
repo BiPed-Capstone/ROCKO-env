@@ -11,6 +11,8 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/macros.hpp"
 
+#include "rocko_interfaces/srv/icm20948_data.hpp"
+
 namespace rocko_env
 {
 class ICM20948 : public hardware_interface::SensorInterface
