@@ -6,4 +6,11 @@
       The ros2_control robot with 2 separate actuators which can be controlled by 2 different endpoints.
     </description>
   </class>
+  <class name="rocko_env/ICM20948"
+         type="rocko_env::ICM20948"
+         base_class_type="hardware_interface::SensorInterface">
+    <description>
+      The ros2_control robot with 2 separate actuators which can be controlled by 2 different endpoints.
+    </description>
+  </class>
 </library>

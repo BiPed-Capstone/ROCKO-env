@@ -19,7 +19,9 @@ namespace rocko_env
 hardware_interface::CallbackReturn ICM20948::on_init(
     const hardware_interface::HardwareInfo & )
 {
-    // Handle any setup, which seems to be none since we don't actually have the hardware here
+    // Set up connection to client
+    std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared("icm20948_client");
+    rclcpp::Client<rocko_interfaces::srv::Icm20948Data>::SharedPtr client = node->create_client<rocko_interfaces::srv::Icm20948Data>("icm20948");
 
     return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -42,6 +44,30 @@ hardware_interface::return_type ICM20948::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
     // Ask gyro for its data
+
+
+
+    // auto request = std::make_shared<example_interfaces::srv::AddTwoInts::Request>();
+    // request->a = atoll(argv[1]);
+    // request->b = atoll(argv[2]);
+
+    // while (!client->wait_for_service(1s)) {
+    //   if (!rclcpp::ok()) {
+    //     RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
+    //     return 0;
+    //   }
+    //   RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+    // }
+
+    // auto result = client->async_send_request(request);
+    // // Wait for the result.
+    // if (rclcpp::spin_until_future_complete(node, result) ==
+    //   rclcpp::FutureReturnCode::SUCCESS)
+    // {
+    //   RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Sum: %ld", result.get()->sum);
+    // } else {
+    //   RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service add_two_ints");
+    // }
 
     return hardware_interface::return_type::OK;
 }

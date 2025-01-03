@@ -31,6 +31,16 @@
         <state_interface name="velocity"/>
       </joint>
     </ros2_control>
+     <ros2_control name="Gyro" type="sensor">
+      <hardware>
+        <plugin>rocko_env/ICM20948</plugin>
+      </hardware>
+      <sensor name="icm20948">
+        <state_interface name="x"/>
+        <state_interface name="y"/>
+        <state_interface name="z"/>
+      </sensor>
+    </ros2_control>
   </xacro:macro>
 
 </robot>
