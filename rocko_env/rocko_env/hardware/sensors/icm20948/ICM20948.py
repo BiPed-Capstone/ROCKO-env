@@ -24,19 +24,25 @@ class ICM20948(Node):
 
         # Set up AHRS equation
         self.ekf = EKF()
-        num_samples = 1000              # Assuming sensors have 1000 samples each
-        self.current_sample_idx = 0
-        self.Q = np.zeros((num_samples, 4))  # Allocate array for quaternions
+        self.num_samples = 1000              # Assuming sensors have 1000 samples each
+        self.current_sample_idx = 1
+        self.Q = np.zeros((self.num_samples, 4))  # Allocate array for quaternions
+        self.Q[0] = acc2q(self.icm.accelerometer) 
 
     def imu_callback(self, request, response):
         # Grab IMU data and send it to the topic
-        Q[t] = ekf.update(Q[self.current_sample_idx], self.icm.gyro, self.icm.accelerometer)
+        self.Q[self.current_sample_idx] = self.ekf.update(Q[self.current_sample_idx - 1], self.icm.gyro, self.icm.accelerometer)
         
-        self.get_logger().info('shape :' + ekf.Q.shape)
+        self.get_logger().info('shape :' + self.ekf.Q.shape)
 
         response.x = self.icm.gyro[0]
         response.y = self.icm.gyro[1]
         response.z = self.icm.gyro[2]
+
+        self.current_sample_idx += 1
+
+        if (self.current_sample_idx == self.num_samples):
+            self.current_sample_idx = 1
 
         return response
 
