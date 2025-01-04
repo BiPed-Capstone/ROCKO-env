@@ -4,6 +4,10 @@ from rclpy.node import Node
 import board
 import adafruit_icm20x
 
+import numpy as np
+from ahrs.filters import EKF
+from ahrs.common.orientation import acc2q
+
 from rocko_interfaces.srv import Icm20948Data
 
 # Documentation for gyro lib: https://docs.circuitpython.org/projects/icm20x/en/latest/
@@ -15,13 +19,21 @@ class ICM20948(Node):
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
 
         # Initialize the gyro board
-        # TODO: Get lib to work and init board here
         i2c = board.I2C()   # uses board.SCL and board.SDA
         self.icm = adafruit_icm20x.ICM20948(i2c)
 
+        # Set up AHRS equation
+        self.ekf = EKF()
+        num_samples = 1000              # Assuming sensors have 1000 samples each
+        self.current_sample_idx = 0
+        self.Q = np.zeros((num_samples, 4))  # Allocate array for quaternions
+
     def imu_callback(self, request, response):
         # Grab IMU data and send it to the topic
-        # TODO: Call gyro object to get data for message
+        Q[t] = ekf.update(Q[self.current_sample_idx], self.icm.gyro, self.icm.accelerometer)
+        
+        self.get_logger().info('shape :' + ekf.Q.shape)
+
         response.x = self.icm.gyro[0]
         response.y = self.icm.gyro[1]
         response.z = self.icm.gyro[2]
