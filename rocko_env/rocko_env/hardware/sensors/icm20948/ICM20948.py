@@ -7,6 +7,8 @@ import adafruit_icm20x
 import numpy as np
 from ahrs.filters import EKF
 from ahrs.common.orientation import acc2q
+from ahrs import Quaternion
+
 
 from rocko_interfaces.srv import Icm20948Data
 
