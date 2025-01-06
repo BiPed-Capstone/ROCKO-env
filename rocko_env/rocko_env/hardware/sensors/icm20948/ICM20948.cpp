@@ -34,13 +34,13 @@ std::vector<hardware_interface::StateInterface> ICM20948::export_state_interface
   std::vector<hardware_interface::StateInterface> state_interfaces;
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    _prefix, X_STATE_KEY, &_x));
+    _prefix, YAW_KEY, &_yaw));
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    _prefix, Y_STATE_KEY, &_y));
+    _prefix, PITCH_KEY, &_pitch));
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    _prefix, Z_STATE_KEY, &_z));
+    _prefix, ROLL_KEY, &_roll));
 
   return state_interfaces;
 }
@@ -66,11 +66,11 @@ hardware_interface::return_type ICM20948::read(
       rclcpp::FutureReturnCode::SUCCESS) && result.valid())
     {
       auto res = result.get();
-      _x = res->x;
-      _y = res->y;
-      _z = res->z;
+      _yaw = res->yaw;
+      _pitch = res->pitch;
+      _roll = res->roll;
 
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "x: %3.2f y: %3.2f z: %3.2f\n", _x, _y, _z);
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "yaw: %3.2f pitch: %3.2f roll: %3.2f\n", _yaw, _pitch, _roll);
     } else {
       RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service icm20948_data");
     }

@@ -34,11 +34,11 @@ private:
   rclcpp::Client<rocko_interfaces::srv::Icm20948Data>::SharedPtr _client;
   std::shared_ptr<rclcpp::Node> _node;
 
-  std::string X_STATE_KEY = "x";
-  std::string Y_STATE_KEY = "y";
-  std::string Z_STATE_KEY = "z";
+  std::string YAW_KEY = "yaw";
+  std::string PITCH_KEY = "pitch";
+  std::string ROLL_KEY = "roll";
 
-  double _x, _y, _z = 0;
+  double _yaw, _pitch, _roll = 0;
 };
 
 }  // namespace rocko_env

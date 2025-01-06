@@ -3,7 +3,7 @@
 
   <xacro:macro name="rocko_ros2_control" params="name prefix use_mock_hardware">
 
-    <!-- <ros2_control name="LeftDriveMotor" type="actuator">
+    <ros2_control name="LeftDriveMotor" type="actuator">
       <hardware>
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
         <param name="pinNumberSpeed">1</param>
@@ -30,15 +30,15 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
-    </ros2_control> -->
+    </ros2_control>
      <ros2_control name="Gyro" type="sensor">
       <hardware>
         <plugin>rocko_env/ICM20948</plugin>
       </hardware>
       <sensor name="icm20948">
-        <state_interface name="x"/>
-        <state_interface name="y"/>
-        <state_interface name="z"/>
+        <state_interface name="yaw"/>
+        <state_interface name="pitch"/>
+        <state_interface name="roll"/>
       </sensor>
     </ros2_control>
   </xacro:macro>

@@ -16,7 +16,7 @@ from rocko_interfaces.srv import Icm20948Data
 class ICM20948(Node):
 
     def __init__(self):
-        # Create a new service called /icm20948 for posting IMU info
+        # Create a new service called /icm20948_data for posting IMU positional data
         super().__init__('icm20948_node')
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
 
@@ -24,7 +24,7 @@ class ICM20948(Node):
         i2c = board.I2C()   # uses board.SCL and board.SDA
         self.icm = adafruit_icm20x.ICM20948(i2c)
 
-        # Set up AHRS equation
+        # Set up extended kalman filter equation
         self.ekf = EKF()
         self.num_samples = 1000              # Assuming sensors have 1000 samples each
         self.current_sample_idx = 1
@@ -32,13 +32,16 @@ class ICM20948(Node):
         self.Q[0] = acc2q(self.icm.acceleration)
 
     def imu_callback(self, request, response):
-        # Grab IMU data and send it to the topic
+        # Fuse data from IMU into a quaternion
         self.Q[self.current_sample_idx] = self.ekf.update(self.Q[self.current_sample_idx - 1], self.icm.gyro, self.icm.acceleration, self.icm.magnetic)
 
+        # Convert quaternion into euler angles
         euler_angles = np.degrees(Quaternion(self.Q[self.current_sample_idx]).to_angles())
-        response.x = euler_angles[0]
-        response.y = euler_angles[1]
-        response.z = euler_angles[2]
+
+        # Prepare data for sending
+        response.yaw = euler_angles[0]
+        response.roll = euler_angles[1]
+        response.pitch = euler_angles[2]
 
         self.current_sample_idx += 1
 
