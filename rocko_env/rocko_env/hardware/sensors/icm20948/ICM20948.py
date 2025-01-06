@@ -27,17 +27,16 @@ class ICM20948(Node):
         self.num_samples = 1000              # Assuming sensors have 1000 samples each
         self.current_sample_idx = 1
         self.Q = np.zeros((self.num_samples, 4))  # Allocate array for quaternions
-        self.Q[0] = acc2q(self.icm.accelerometer) 
+        self.Q[0] = acc2q(self.icm.acceleration)
 
     def imu_callback(self, request, response):
         # Grab IMU data and send it to the topic
-        self.Q[self.current_sample_idx] = self.ekf.update(Q[self.current_sample_idx - 1], self.icm.gyro, self.icm.accelerometer)
-        
-        self.get_logger().info('shape :' + self.ekf.Q.shape)
+        self.Q[self.current_sample_idx] = self.ekf.update(self.Q[self.current_sample_idx - 1], self.icm.gyro, self.icm.acceleration, self.icm.magnetic)
 
-        response.x = self.icm.gyro[0]
-        response.y = self.icm.gyro[1]
-        response.z = self.icm.gyro[2]
+        euler_angles = np.degrees(Quaternion(self.Q[self.current_sample_idx]).to_angles())
+        response.x = euler_angles[0]
+        response.y = euler_angles[1]
+        response.z = euler_angles[2]
 
         self.current_sample_idx += 1
 
