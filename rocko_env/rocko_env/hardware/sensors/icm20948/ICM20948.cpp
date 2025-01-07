@@ -28,7 +28,7 @@ hardware_interface::CallbackReturn ICM20948::on_init(
     while (!_client->wait_for_service(std::chrono::seconds(1))) {
       if (!rclcpp::ok()) {
         RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
-        return hardware_interface::return_type::ERROR;
+        return hardware_interface::CallbackReturn::ERROR;
       }
       RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
     }
