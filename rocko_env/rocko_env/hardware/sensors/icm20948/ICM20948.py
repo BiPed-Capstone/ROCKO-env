@@ -44,7 +44,10 @@ class ICM20948(Node):
 
 
     def imu_callback(self, request, response):
-        current_q = Complementary(self.icm.gyro, self.icm.acceleration, self.icm.magnetic).Q[0]
+        g = [self.icm.gyro]
+        a = [self.icm.acceleration]
+        m = [self.icm.magnetic]
+        current_q = Complementary(g, a, m).Q[0]
         diff = np.subtract(current_q, self.initial_q)
         angles = Quaternion(diff).to_angles()
 
