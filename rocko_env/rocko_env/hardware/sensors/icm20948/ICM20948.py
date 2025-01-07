@@ -36,7 +36,7 @@ class ICM20948(Node):
             sleep(0.01)
 
         # Calculate median
-        self.initial_position = np.median(Complementary(gyr_arr, acc_arr, mag_arr))
+        self.initial_q = np.median(Complementary(gyr_arr, acc_arr, mag_arr).Q, axis=0)
 
         # Create a new service called /icm20948_data for posting IMU positional data
         super().__init__('icm20948_node')
@@ -44,16 +44,14 @@ class ICM20948(Node):
 
 
     def imu_callback(self, request, response):
-        # Fuse data from IMU into a quaternion
-        # self.Q[self.current_idx] = self.ekf.update(self.Q[self.prev_idx], self.icm.gyro, self.icm.acceleration, self.icm.magnetic)
-
-        # # Convert quaternion into euler angles
-        # euler_angles = np.degrees(Quaternion(self.Q[self.current_idx]).to_angles())
+        current_q = Complementary(self.icm.gyro, self.icm.acceleration, self.icm.magnetic).Q[0]
+        diff = np.subtract(current_q, self.initial_q)
+        angles = Quaternion(diff).to_angles()
 
         # Prepare data for sending
-        response.yaw = self.initial_position[0]
-        response.roll = self.initial_position[1]
-        response.pitch = self.initial_position[2]
+        response.yaw = self.angles[0]
+        response.roll = self.angles[1]
+        response.pitch = self.angles[2]
 
         return response
 
