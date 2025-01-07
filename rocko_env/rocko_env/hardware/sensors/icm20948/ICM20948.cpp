@@ -24,6 +24,14 @@ hardware_interface::CallbackReturn ICM20948::on_init(
     // Set up connection to client
     _node = rclcpp::Node::make_shared("icm20948_client");
     _client = _node->create_client<rocko_interfaces::srv::Icm20948Data>("icm20948_data");
+    
+    while (!_client->wait_for_service(std::chrono::seconds(1))) {
+      if (!rclcpp::ok()) {
+        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
+        return hardware_interface::return_type::ERROR;
+      }
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+    }
 
     return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -51,14 +59,6 @@ hardware_interface::return_type ICM20948::read(
     // Ask gyro for its data
 
     auto request = std::make_shared<rocko_interfaces::srv::Icm20948Data::Request>();
-
-    while (!_client->wait_for_service(std::chrono::seconds(1))) {
-      if (!rclcpp::ok()) {
-        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
-        return hardware_interface::return_type::ERROR;
-      }
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
-    }
 
     auto result = _client->async_send_request(request);
     // Wait for the result.
