@@ -51,7 +51,7 @@ class ICM20948(Node):
                 for i in file:
                     self.calibration_results.append(i)
         except:
-            self.get_logger().warn('No magnetometer calibration data found, proceeding anyway.')
+            # self.get_logger().warn('No magnetometer calibration data found, proceeding anyway.')
             for i in range(3):
                 self.calibration_results.append(0)
 
@@ -61,21 +61,22 @@ class ICM20948(Node):
 
 
     def imu_callback(self, request, response):
-        g = np.array([self.icm.gyro])
-        a = np.array([self.icm.acceleration])
-        m = np.array([self.icm.magnetic])
-
+        g = np.array(self.icm.gyro)
+        a = np.array(self.icm.acceleration)
+        m = np.array(self.icm.magnetic)
+    
         # Apply calibration to m
-        for i in range(3):
-            m[i] = m[i] + self.calibration_results[i]
+        # for i in range(3):
+        #     m[i] = m[i] + self.calibration_results[i]
 
-        current_q = self.madgwick.updateIMU(self.prev_q, g, a, 0.01)
-        angles = Quaternion(current_q).to_angles()
+        current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
+        self.prev_q = current_q
+        angles = np.degrees(Quaternion(current_q).to_angles())
 
         # Prepare data for sending
-        response.yaw = self.angles[0]
-        response.roll = self.angles[1]
-        response.pitch = self.angles[2]
+        response.yaw = angles[0]
+        response.roll = angles[1]
+        response.pitch = angles[2]
 
         return response
 
