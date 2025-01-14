@@ -52,9 +52,9 @@ class ICM20948(Node):
         angles = Quaternion(diff).to_angles()
 
         # Prepare data for sending
-        response.yaw = self.angles[0]
-        response.roll = self.angles[1]
-        response.pitch = self.angles[2]
+        response.yaw = angles[0]
+        response.roll = angles[1]
+        response.pitch = angles[2]
 
         return response
 
