@@ -3,8 +3,6 @@ Custom script meant to be run once to generate magnetometer hard offset data.
 Should be carried out with all hardware installed on the robot sans the legs
 for convenience. 
 
-Outputs "hard_offset" within the same directory.
-
 Adapted from the following jupyter notebook: https://github.com/adafruit/Adafruit_SensorLab/blob/master/notebooks/Mag_Gyro_Calibration.ipynb 
 '''
 import board
@@ -22,13 +20,13 @@ def __init__(self, memory=None):
         self.mag_arr = np.zeros((self.memory, 3))
 
 def capture_dataset(self):
-    self.get_logger().info('Starting magnetometer capture.')   
+    print('Starting magnetometer capture.')   
     for i in range(0, self.memory):
         # Add data to sample arrays
         self.mag_arr[i] = self.icm.magnetic
         # Wait for 10ms for new data to be gathered
         sleep(0.01) 
-    self.get_logger().info('Magnetometer capture done.')   
+    print('Magnetometer capture done.')   
 
 def calibrate_dataset(self):
     min_x = min(t[0] for t in self.mag_arr)
