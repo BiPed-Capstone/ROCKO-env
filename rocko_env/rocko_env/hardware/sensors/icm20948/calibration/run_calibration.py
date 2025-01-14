@@ -1,5 +1,5 @@
-import calibrate_magnetometer
+from calibrate_magnetometer import MagCalibrator
 
 input('Press any key to begin calibration.')
-calibrate_magnetometer.capture_dataset()
-calibrate_magnetometer.calibrate_dataset()
+MagCalibrator.capture_dataset()
+MagCalibrator.calibrate_dataset()
