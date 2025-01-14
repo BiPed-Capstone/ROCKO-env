@@ -8,7 +8,7 @@ import adafruit_icm20x
 
 import numpy as np
 from time import sleep
-from ahrs.filters import Complementary
+from ahrs.filters import Madgwick
 from ahrs.common.orientation import acc2q
 from ahrs import Quaternion
 
@@ -38,7 +38,8 @@ class ICM20948(Node):
             sleep(0.01)
 
         # Calculate median
-        self.initial_q = np.median(Complementary(gyr_arr, acc_arr, mag_arr).Q, axis=0)
+        self.madgwick = Madgwick(gyr_arr, acc_arr, mag_arr)
+        self.prev_q = np.median(self.madgwick.Q, axis=0)
 
         # Check filesystem for magnetometer calibration data
         path = os.path.join('calibration', 'hard_offset')
@@ -68,9 +69,8 @@ class ICM20948(Node):
         for i in range(3):
             m[i] = m[i] + self.calibration_results[i]
 
-        current_q = Complementary(g, a, m).Q[0]
-        diff = np.subtract(current_q, self.initial_q)
-        angles = Quaternion(diff).to_angles()
+        current_q = self.madgwick.updateIMU(self.prev_q, g, a, 0.01)
+        angles = Quaternion(current_q).to_angles()
 
         # Prepare data for sending
         response.yaw = self.angles[0]
