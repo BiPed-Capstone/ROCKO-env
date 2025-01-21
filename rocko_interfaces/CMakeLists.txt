@@ -28,6 +28,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Icm20948Data.srv"
+  "srv/Pid4991Data.srv"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

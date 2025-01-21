@@ -11,7 +11,7 @@ from ahrs.common.orientation import acc2q
 from ahrs import Quaternion
 
 
-from rocko_interfaces.srv import Icm20948Data
+from rocko_interfaces.srv import Pid4991Data
 
 class PID4991(Node):
 
@@ -20,7 +20,7 @@ class PID4991(Node):
 
         # Create a new service to send data to ros2_control
         super().__init__('node')
-        self.srv = self.create_service(<ServiceType>, 'serviceName', self.callback)
+        self.srv = self.create_service(Pid4991Data, 'pid4991_data', self.callback)
 
 
     def callback(self, request, response):
