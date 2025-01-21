@@ -15,19 +15,21 @@
 namespace rocko_env
 {
 hardware_interface::CallbackReturn PID4991::on_init(
-    const hardware_interface::HardwareInfo & /*info*/)
+    const hardware_interface::HardwareInfo & info)
 {
+    _prefix = info.sensors[0].name;
+
     // Set up connection to client
     _node = rclcpp::Node::make_shared("pid4991_client");
-    
-    _client = _node->create_client<rocko_interfaces::srv::Pid4991Data>("pid4991_data");
-    
+    std::string s = _prefix + "_data";
+    _client = _node->create_client<rocko_interfaces::srv::Pid4991Data>(s);
+
     while (!_client->wait_for_service(std::chrono::seconds(1))) {
       if (!rclcpp::ok()) {
-        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
+        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the %s service. Exiting.", s);
         return hardware_interface::CallbackReturn::ERROR;
       }
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "%s service not available, waiting again...", s);
     }
 
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -38,8 +40,6 @@ hardware_interface::return_type PID4991::read(
 {
     auto request = std::make_shared<rocko_interfaces::srv::Pid4991Data::Request>();
 
-    // TODO: Fill in data for your request
-
     auto result = _client->async_send_request(request);
     // Wait for the result.
     if ((rclcpp::spin_until_future_complete(_node, result) ==
@@ -47,6 +47,8 @@ hardware_interface::return_type PID4991::read(
     {
       auto res = result.get();
       // TODO: Grab the response data and put into variables for you to use
+      _position = res->position;
+      _velocity = res->velocity;
       
     } else {
       RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service PID4991");
@@ -58,6 +60,12 @@ hardware_interface::return_type PID4991::read(
 std::vector<hardware_interface::StateInterface> PID4991::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
+
+  state_interfaces.emplace_back(hardware_interface::StateInterface(
+    _prefix, POSITION_KEY, &_position));
+
+  state_interfaces.emplace_back(hardware_interface::StateInterface(
+    _prefix, VELOCITY_KEY, &_velocity));
 
   return state_interfaces;
 }

@@ -13,4 +13,11 @@
       The ros2_control robot with 2 separate actuators which can be controlled by 2 different endpoints.
     </description>
   </class>
+  <class name="rocko_env/PID4991"
+         type="rocko_env::PID4991"
+         base_class_type="hardware_interface::SensorInterface">
+    <description>
+      A quadrature decoder.
+    </description>
+  </class>
 </library>
