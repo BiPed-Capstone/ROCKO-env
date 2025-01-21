@@ -66,10 +66,10 @@ class ICM20948(Node):
         m = np.array(self.icm.magnetic)
     
         # Apply calibration to m
-        for i in range(3):
-            m[i] = m[i] + self.calibration_results[i]
+        # for i in range(3):
+        #     m[i] = m[i] + self.calibration_results[i]
 
-        current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a, mag=m)
+        current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
         self.prev_q = current_q
         angles = np.degrees(Quaternion(current_q).to_angles())
 
