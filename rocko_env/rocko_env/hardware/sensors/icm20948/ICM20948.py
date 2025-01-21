@@ -28,17 +28,15 @@ class ICM20948(Node):
         num_calib_samples = 100
         gyr_arr = np.zeros((num_calib_samples, 3))
         acc_arr = np.zeros((num_calib_samples, 3))
-        mag_arr = np.zeros((num_calib_samples, 3))
         for i in range(0, num_calib_samples):
             # Add data to sample arrays
             gyr_arr[i] = self.icm.gyro
             acc_arr[i] = self.icm.acceleration
-            mag_arr[i] = self.icm.magnetic
             # Wait for 10ms for new data to be gathered
             sleep(0.01)
 
         # Calculate median
-        self.madgwick = Madgwick(gyr_arr, acc_arr, mag_arr)
+        self.madgwick = Madgwick(gyr_arr, acc_arr)
         self.prev_q = np.median(self.madgwick.Q, axis=0)
 
         # Check filesystem for magnetometer calibration data
@@ -63,11 +61,6 @@ class ICM20948(Node):
     def imu_callback(self, request, response):
         g = np.array(self.icm.gyro)
         a = np.array(self.icm.acceleration)
-        m = np.array(self.icm.magnetic)
-    
-        # Apply calibration to m
-        # for i in range(3):
-        #     m[i] = m[i] + self.calibration_results[i]
 
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
         self.prev_q = current_q
