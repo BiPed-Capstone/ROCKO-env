@@ -41,6 +41,22 @@
         <state_interface name="roll"/>
       </sensor>
     </ros2_control>
+    <ros2_control name="LeftAbsEncoder" type="sensor">
+      <hardware>
+        <plugin>rocko_env/AS5600</plugin>
+      </hardware>
+      <sensor name="left_as5600">
+        <state_interface name="angle"/>
+      </sensor>
+    </ros2_control>
+    <ros2_control name="RightAbsEncoder" type="sensor">
+      <hardware>
+        <plugin>rocko_env/AS5600</plugin>
+      </hardware>
+      <sensor name="right_as5600">
+        <state_interface name="angle"/>
+      </sensor>
+    </ros2_control>
   </xacro:macro>
 
 </robot>

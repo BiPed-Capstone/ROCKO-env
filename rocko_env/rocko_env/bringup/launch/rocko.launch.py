@@ -123,9 +123,22 @@ def generate_launch_description():
         )
     )
 
+    # PYTHON HARDWARE NODES HERE
     gyro = Node(
         package="rocko_env",
         executable="ICM20948.py",
+    )
+    
+    leftAbsEncoder = Node(
+        package="rocko_env",
+        executable="AS5600.py",
+        arguments=["left_as5600_data"]
+    )
+    
+    rightAbsEncoder = Node(
+        package="rocko_env",
+        executable="AS5600.py",
+        arguments=["right_as5600_data"]
     )
 
     nodes = [
@@ -134,7 +147,9 @@ def generate_launch_description():
         robot_controller_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
-        gyro
+        gyro,
+        leftAbsEncoder,
+        rightAbsEncoder
     ]
 
     return LaunchDescription(declared_arguments + nodes)

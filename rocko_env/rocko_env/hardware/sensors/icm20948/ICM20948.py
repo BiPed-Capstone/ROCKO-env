@@ -40,10 +40,10 @@ class ICM20948(Node):
 
         # Create a new service called /icm20948_data for posting IMU positional data
         super().__init__('icm20948_node')
-        self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
+        self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.service_callback)
 
 
-    def imu_callback(self, request, response):
+    def service_callback(self, request, response):
         g = np.array([self.icm.gyro])
         a = np.array([self.icm.acceleration])
         m = np.array([self.icm.magnetic])
