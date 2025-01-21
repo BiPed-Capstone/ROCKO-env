@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import os
+
 import rclpy
 from rclpy.node import Node
 import board
@@ -6,7 +8,7 @@ import adafruit_icm20x
 
 import numpy as np
 from time import sleep
-from ahrs.filters import Complementary
+from ahrs.filters import Madgwick
 from ahrs.common.orientation import acc2q
 from ahrs import Quaternion
 
@@ -26,17 +28,30 @@ class ICM20948(Node):
         num_calib_samples = 100
         gyr_arr = np.zeros((num_calib_samples, 3))
         acc_arr = np.zeros((num_calib_samples, 3))
-        mag_arr = np.zeros((num_calib_samples, 3))
         for i in range(0, num_calib_samples):
             # Add data to sample arrays
             gyr_arr[i] = self.icm.gyro
             acc_arr[i] = self.icm.acceleration
-            mag_arr[i] = self.icm.magnetic
             # Wait for 10ms for new data to be gathered
             sleep(0.01)
 
         # Calculate median
-        self.initial_q = np.median(Complementary(gyr_arr, acc_arr, mag_arr).Q, axis=0)
+        self.madgwick = Madgwick(gyr_arr, acc_arr)
+        self.prev_q = np.median(self.madgwick.Q, axis=0)
+
+        # Check filesystem for magnetometer calibration data
+        path = os.path.join('calibration', 'hard_offset')
+        self.calibration_results = []
+        try:
+            # If cal data is there, we will interpolate it for offset
+            # Extract calibration values from cal file (newline deliniated)
+            with open(path) as file:
+                for i in file:
+                    self.calibration_results.append(i)
+        except:
+            # self.get_logger().warn('No magnetometer calibration data found, proceeding anyway.')
+            for i in range(3):
+                self.calibration_results.append(0)
 
         # Create a new service called /icm20948_data for posting IMU positional data
         super().__init__('icm20948_node')
@@ -44,12 +59,12 @@ class ICM20948(Node):
 
 
     def imu_callback(self, request, response):
-        g = np.array([self.icm.gyro])
-        a = np.array([self.icm.acceleration])
-        m = np.array([self.icm.magnetic])
-        current_q = Complementary(g, a, m).Q[0]
-        diff = np.subtract(current_q, self.initial_q)
-        angles = Quaternion(diff).to_angles()
+        g = np.array(self.icm.gyro)
+        a = np.array(self.icm.acceleration)
+
+        current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
+        self.prev_q = current_q
+        angles = np.degrees(Quaternion(current_q).to_angles())
 
         # Prepare data for sending
         response.yaw = angles[0]
