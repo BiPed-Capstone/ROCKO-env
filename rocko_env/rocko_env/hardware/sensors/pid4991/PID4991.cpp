@@ -26,10 +26,10 @@ hardware_interface::CallbackReturn PID4991::on_init(
 
     while (!_client->wait_for_service(std::chrono::seconds(1))) {
       if (!rclcpp::ok()) {
-        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the %s service. Exiting.", s);
+        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the %s service. Exiting.", s.c_str());
         return hardware_interface::CallbackReturn::ERROR;
       }
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "%s service not available, waiting again...", s);
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "%s service not available, waiting again...", s.c_str());
     }
 
     return hardware_interface::CallbackReturn::SUCCESS;
