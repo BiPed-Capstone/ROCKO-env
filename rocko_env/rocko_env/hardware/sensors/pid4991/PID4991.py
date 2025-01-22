@@ -25,7 +25,7 @@ class PID4991(Node):
 
         self.encoder = rotaryio.IncrementalEncoder(seesaw)
         self.last_position = 0
-        self.meters_conversion = 2048 / (0.1524 * np.PI)
+        self.meters_conversion = 2048 / (0.144 * np.PI)
 
         # Create a new service to send data to ros2_control
         super().__init__('node')
