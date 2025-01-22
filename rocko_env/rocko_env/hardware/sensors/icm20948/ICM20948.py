@@ -67,9 +67,9 @@ class ICM20948(Node):
         angles = np.degrees(Quaternion(current_q).to_angles())
 
         # Prepare data for sending
-        response.yaw = angles[0]
-        response.roll = angles[1]
-        response.pitch = angles[2]
+        response.yaw = angles[2]
+        response.roll = angles[0]
+        response.pitch = angles[1]
 
         return response
 
