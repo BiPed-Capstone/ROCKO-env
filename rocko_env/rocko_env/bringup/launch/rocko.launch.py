@@ -136,7 +136,7 @@ def generate_launch_description():
 
     right_relative_encoder = Node(
         package="rocko_env",
-        executable="PID4991.py"
+        executable="PID4991.py",
         arguments=["right_pid4991_data", 0x37]
     )
 
