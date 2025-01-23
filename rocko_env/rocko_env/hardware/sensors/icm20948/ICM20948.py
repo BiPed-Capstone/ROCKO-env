@@ -38,6 +38,7 @@ class ICM20948(Node):
         # Calculate median
         self.madgwick = Madgwick(gyr_arr, acc_arr)
         self.prev_q = np.median(self.madgwick.Q, axis=0)
+        self.zero_q = self.prev_q
 
         # Check filesystem for magnetometer calibration data
         path = os.path.join('calibration', 'hard_offset')
@@ -63,7 +64,7 @@ class ICM20948(Node):
         a = np.array(self.icm.acceleration)
 
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
-        self.prev_q = current_q
+        self.prev_q = current_q - self.zero_q
         angles = np.degrees(Quaternion(current_q).to_angles())
 
         # Prepare data for sending
