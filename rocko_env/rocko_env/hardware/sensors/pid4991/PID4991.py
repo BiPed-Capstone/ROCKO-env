@@ -16,9 +16,9 @@ class PID4991(Node):
     def __init__(self, service_name, addr):
         # Handle any hardware initialization here
         i2c = board.I2C()  # uses board.SCL and board.SDA
-        seesaw = seesaw.Seesaw(i2c, addr)
+        s = seesaw.Seesaw(i2c, int(addr))
 
-        seesaw_product = (seesaw.get_version() >> 16) & 0xFFFF
+        seesaw_product = (s.get_version() >> 16) & 0xFFFF
         print("Found product {}".format(seesaw_product))
         if seesaw_product != 4991:
             print("Wrong firmware loaded?  Expected 4991")
@@ -53,7 +53,7 @@ def main(args=None):
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    imu.destroy_node()
+    node.destroy_node()
 
     rclpy.shutdown()
 
