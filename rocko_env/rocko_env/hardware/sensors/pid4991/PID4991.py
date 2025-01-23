@@ -46,7 +46,7 @@ class PID4991(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = PID4991(service_name=args[0], addr=args[1])
+    node = PID4991(service_name='left_pid4991_data', addr='0x36')
 
     rclpy.spin(node)
 
