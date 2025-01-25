@@ -15,7 +15,7 @@ class PID4991(Node):
         i2c = board.I2C()  # uses board.SCL and board.SDA
         self.s = seesaw.Seesaw(i2c, addr)
 
-        seesaw_product = (s.get_version() >> 16) & 0xFFFF
+        seesaw_product = (self.s.get_version() >> 16) & 0xFFFF
         print("Found product {}".format(seesaw_product))
         if seesaw_product != 4991:
             print("Wrong firmware loaded?  Expected 4991")
@@ -41,7 +41,7 @@ class PID4991(Node):
         # response.velocity = (position - self.last_position) / 0.01
         # self.last_position = position
 
-        self.get_logger().info("raw pos: " + str(self.encoder.position))
+        self.get_logger().info("raw pos: " + str(self.s.encoder_position()))
 
         return response
 
