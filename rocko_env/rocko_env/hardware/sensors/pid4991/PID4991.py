@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 import board
-from adafruit_seesaw import seesaw, rotaryio, digitalio
+from adafruit_seesaw import seesaw, rotaryio
 
 import numpy as np
 
@@ -10,17 +10,17 @@ from rocko_interfaces.srv import Pid4991Data
 
 class PID4991(Node):
 
-    def __init__(self, service_name, addr:str):
+    def __init__(self, service_name, addr:int):
         # Handle any hardware initialization here
         i2c = board.I2C()  # uses board.SCL and board.SDA
-        s = seesaw.Seesaw(i2c, int(addr, 16))
+        s = seesaw.Seesaw(i2c, addr)
 
         seesaw_product = (s.get_version() >> 16) & 0xFFFF
         print("Found product {}".format(seesaw_product))
         if seesaw_product != 4991:
             print("Wrong firmware loaded?  Expected 4991")
 
-        self.encoder = rotaryio.IncrementalEncoder(seesaw)
+        self.encoder = rotaryio.IncrementalEncoder(s)
         self.last_position = 0
         self.meters_conversion = 145.1 / (0.144 * np.pi) # 144 mm wheel diameter, 145.1 PPR encoder resolution at gearbox output shaft
 
@@ -43,7 +43,7 @@ class PID4991(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = PID4991(service_name="left_pid4991_data", addr="36")
+    node = PID4991(service_name="left_pid4991_data", addr=0x36)
 
     rclpy.spin(node)
 
