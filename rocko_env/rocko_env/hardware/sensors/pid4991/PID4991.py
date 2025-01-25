@@ -4,16 +4,13 @@ from rclpy.node import Node
 import board
 from adafruit_seesaw import seesaw, rotaryio, digitalio
 
-
 import numpy as np
-
-
 
 from rocko_interfaces.srv import Pid4991Data
 
 class PID4991(Node):
 
-    def __init__(self, service_name, addr):
+    def __init__(self, service_name, addr:str):
         # Handle any hardware initialization here
         i2c = board.I2C()  # uses board.SCL and board.SDA
         s = seesaw.Seesaw(i2c, int(addr))
@@ -46,7 +43,7 @@ class PID4991(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = PID4991(service_name='left_pid4991_data', addr='0x36')
+    node = PID4991(service_name="left_pid4991_data", addr="0x36")
 
     rclpy.spin(node)
 
