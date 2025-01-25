@@ -36,7 +36,7 @@ class PID4991(Node):
         response.velocity = (position - self.last_position) / 0.01
         self.last_position = position
 
-        # self.get_logger().info("raw pos: " + str(self.encoder.position))
+        self.get_logger().info("raw pos: " + str(self.encoder.position))
 
         return response
 
