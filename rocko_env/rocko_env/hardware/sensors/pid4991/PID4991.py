@@ -19,6 +19,8 @@ class PID4991(Node):
         print("Found product {}".format(seesaw_product))
         if seesaw_product != 4991:
             print("Wrong firmware loaded?  Expected 4991")
+            
+        self.s.enable_encoder_interrupt()
 
         # self.encoder = rotaryio.IncrementalEncoder(s)
         # self.last_position = 0
