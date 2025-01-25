@@ -13,7 +13,7 @@ class PID4991(Node):
     def __init__(self, service_name, addr:str):
         # Handle any hardware initialization here
         i2c = board.I2C()  # uses board.SCL and board.SDA
-        s = seesaw.Seesaw(i2c, int(addr))
+        s = seesaw.Seesaw(i2c, int(addr, 16))
 
         seesaw_product = (s.get_version() >> 16) & 0xFFFF
         print("Found product {}".format(seesaw_product))
@@ -43,7 +43,7 @@ class PID4991(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = PID4991(service_name="left_pid4991_data", addr="0x36")
+    node = PID4991(service_name="left_pid4991_data", addr="36")
 
     rclpy.spin(node)
 
