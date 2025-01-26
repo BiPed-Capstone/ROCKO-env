@@ -123,10 +123,24 @@ def generate_launch_description():
         )
     )
 
-    gyro = Node(
+    # gyro = Node(
+    #     package="rocko_env",
+    #     executable="ICM20948.py",
+    # )
+
+    left_relative_encoder = Node(
         package="rocko_env",
-        executable="ICM20948.py",
+        executable="QuadEncoder.py",
+        parameters=[{
+            "service_name": "left_quad_encoder_data"
+        }]
     )
+
+    # right_relative_encoder = Node(
+    #     package="rocko_env",
+    #     executable="PID4991.py",
+    #     # arguments=["right_pid4991_data", 0x37]
+    # )
 
     nodes = [
         control_node,
@@ -134,7 +148,9 @@ def generate_launch_description():
         robot_controller_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
-        gyro
+        # gyro,
+        left_relative_encoder,
+        # right_relative_encoder
     ]
 
     return LaunchDescription(declared_arguments + nodes)

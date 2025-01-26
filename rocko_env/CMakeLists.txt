@@ -41,11 +41,13 @@ add_library(
   rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp
   rocko_env/hardware/sensors/icm20948/ICM20948.cpp
   rocko_env/hardware/WiringPi/wiringPi.h
+  rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp
 )
 target_compile_features(rocko_env PUBLIC cxx_std_17)
 target_include_directories(rocko_env PUBLIC
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 ament_target_dependencies(
@@ -60,7 +62,7 @@ pluginlib_export_plugin_description_file(hardware_interface rocko_env.xml)
 
 # INSTALL
 install(
-  DIRECTORY rocko_env/hardware/motors/include/ rocko_env/hardware/sensors/icm20948/include/
+  DIRECTORY rocko_env/hardware/motors/include/ rocko_env/hardware/sensors/icm20948/include/ rocko_env/hardware/sensors/quadEncoder/include/ 
   DESTINATION include
 )
 install(
@@ -83,6 +85,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
   rocko_env/hardware/sensors/icm20948/ICM20948.py
+  rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
