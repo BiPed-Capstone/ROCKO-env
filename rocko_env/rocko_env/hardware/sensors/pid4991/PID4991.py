@@ -15,7 +15,7 @@ class PID4991(Node):
         # Handle any hardware initialization here
         # i2c = board.I2C()  # uses board.SCL and board.SDA
         # self.s = seesaw.Seesaw(i2c, addr)
-        self.enc = Encoder.Encoder(24, 10)
+        self.enc = Encoder.Encoder(17, 27)
 
         # seesaw_product = (self.s.get_version() >> 16) & 0xFFFF
         # print("Found product {}".format(seesaw_product))
