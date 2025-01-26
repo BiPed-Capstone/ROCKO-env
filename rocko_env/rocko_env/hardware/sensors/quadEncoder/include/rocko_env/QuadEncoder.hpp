@@ -1,5 +1,5 @@
-#ifndef ROCKO_ENV_PID4991
-#define ROCKO_ENV_PID4991
+#ifndef ROCKO_ENV_QuadEncoder
+#define ROCKO_ENV_QuadEncoder
 
 #include <memory>
 #include <string>
@@ -12,14 +12,14 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/macros.hpp"
 
-#include "rocko_interfaces/srv/pid4991_data.hpp"
+#include "rocko_interfaces/srv/quad_encoder_data.hpp"
 
 namespace rocko_env
 {
-class PID4991 : public hardware_interface::SensorInterface
+class QuadEncoder : public hardware_interface::SensorInterface
 {
 public:
-  RCLCPP_SHARED_PTR_DEFINITIONS(PID4991);
+  RCLCPP_SHARED_PTR_DEFINITIONS(QuadEncoder);
 
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareInfo & info) override;
@@ -33,7 +33,7 @@ public:
 private:
   std::string _prefix = "";
 
-  rclcpp::Client<rocko_interfaces::srv::Pid4991Data>::SharedPtr _client;
+  rclcpp::Client<rocko_interfaces::srv::QuadEncoderData>::SharedPtr _client;
   std::shared_ptr<rclcpp::Node> _node;
 
   std::string POSITION_KEY = "position";
@@ -44,4 +44,4 @@ private:
 
 }  // namespace rocko_env
 
-#endif  // ROCKO_ENV_PID4991
+#endif  // ROCKO_ENV_QuadEncoder

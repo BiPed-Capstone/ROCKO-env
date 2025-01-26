@@ -130,8 +130,10 @@ def generate_launch_description():
 
     left_relative_encoder = Node(
         package="rocko_env",
-        executable="PID4991.py",
-        arguments=['left_pid4991_data', '0x36']
+        executable="QuadEncoder.py",
+        parameters=[{
+            "service_name": "left_quad_encoder_data"
+        }]
     )
 
     # right_relative_encoder = Node(

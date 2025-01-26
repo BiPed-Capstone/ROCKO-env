@@ -10,19 +10,19 @@
 #include "hardware_interface/lexical_casts.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "rocko_env/PID4991.hpp"
+#include "rocko_env/QuadEncoder.hpp"
 
 namespace rocko_env
 {
-hardware_interface::CallbackReturn PID4991::on_init(
+hardware_interface::CallbackReturn QuadEncoder::on_init(
     const hardware_interface::HardwareInfo & info)
 {
     _prefix = info.sensors[0].name;
 
     // Set up connection to client
-    _node = rclcpp::Node::make_shared("pid4991_client");
+    _node = rclcpp::Node::make_shared(_prefix + "_client");
     std::string s = _prefix + "_data";
-    _client = _node->create_client<rocko_interfaces::srv::Pid4991Data>(s);
+    _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
 
     while (!_client->wait_for_service(std::chrono::seconds(1))) {
       if (!rclcpp::ok()) {
@@ -35,10 +35,10 @@ hardware_interface::CallbackReturn PID4991::on_init(
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::return_type PID4991::read(
+hardware_interface::return_type QuadEncoder::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-    auto request = std::make_shared<rocko_interfaces::srv::Pid4991Data::Request>();
+    auto request = std::make_shared<rocko_interfaces::srv::QuadEncoderData::Request>();
 
     auto result = _client->async_send_request(request);
     // Wait for the result.
@@ -52,13 +52,13 @@ hardware_interface::return_type PID4991::read(
       RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Pos: %6.2f Vel: %5.2f", _position, _velocity);
       
     } else {
-      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service PID4991");
+      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service QuadEncoder");
     }
 
     return hardware_interface::return_type::OK;
 }
 
-std::vector<hardware_interface::StateInterface> PID4991::export_state_interfaces()
+std::vector<hardware_interface::StateInterface> QuadEncoder::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
 
@@ -77,4 +77,4 @@ std::vector<hardware_interface::StateInterface> PID4991::export_state_interfaces
 #include "pluginlib/class_list_macros.hpp"
 
 PLUGINLIB_EXPORT_CLASS(
-  rocko_env::PID4991, hardware_interface::SensorInterface)
+  rocko_env::QuadEncoder, hardware_interface::SensorInterface)
