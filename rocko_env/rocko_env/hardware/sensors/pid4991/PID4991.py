@@ -26,7 +26,7 @@ class PID4991(Node):
 
         # self.encoder = rotaryio.IncrementalEncoder(s)
         self.last_position = 0
-        self.meters_conversion = 53 / (0.144 * np.pi) # 144 mm wheel diameter, 145.1 PPR encoder resolution at gearbox output shaft
+        self.meters_conversion = 145 / (0.144 * np.pi) # 144 mm wheel diameter, 145.1 PPR encoder resolution at gearbox output shaft
 
         # Create a new service to send data to ros2_control
         super().__init__('node')
