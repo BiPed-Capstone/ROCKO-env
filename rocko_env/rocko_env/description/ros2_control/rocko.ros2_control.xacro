@@ -8,10 +8,8 @@
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
         <param name="pinNumberSpeed">1</param>
         <param name="pinNumberDirection">2</param>
-        <param name="pinNumberAChannel">5</param>
-        <param name="pinNumberBChannel">6</param>
       </hardware>
-      <joint name="left_wheel_joint">
+      <joint name="left_wheel">
         <command_interface name="velocity"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
@@ -22,10 +20,8 @@
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
         <param name="pinNumberSpeed">3</param>
         <param name="pinNumberDirection">4</param>
-        <param name="pinNumberAChannel">7</param>
-        <param name="pinNumberBChannel">8</param>
       </hardware>
-      <joint name="right_wheel_joint">
+      <joint name="right_wheel">
         <command_interface name="velocity"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
@@ -41,7 +37,7 @@
         <state_interface name="roll"/>
       </sensor>
     </ros2_control>
-    <ros2_control name="LeftRelativeEncoder" type="sensor">
+    <!-- <ros2_control name="LeftRelativeEncoder" type="sensor">
       <hardware>
         <plugin>rocko_env/QuadEncoder</plugin>
       </hardware>
@@ -58,7 +54,7 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </sensor>
-    </ros2_control>
+    </ros2_control> -->
   </xacro:macro>
 
 </robot>

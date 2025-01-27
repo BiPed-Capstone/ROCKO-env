@@ -123,24 +123,30 @@ def generate_launch_description():
         )
     )
 
-    # gyro = Node(
-    #     package="rocko_env",
-    #     executable="ICM20948.py",
-    # )
+    gyro = Node(
+        package="rocko_env",
+        executable="ICM20948.py",
+    )
 
     left_relative_encoder = Node(
         package="rocko_env",
         executable="QuadEncoder.py",
         parameters=[{
-            "service_name": "left_quad_encoder_data"
+            "service_name": "left_wheel_encoder_data",
+            "a_pin": "0",
+            "b_pin": "0"
         }]
     )
 
-    # right_relative_encoder = Node(
-    #     package="rocko_env",
-    #     executable="PID4991.py",
-    #     # arguments=["right_pid4991_data", 0x37]
-    # )
+    left_relative_encoder = Node(
+        package="rocko_env",
+        executable="QuadEncoder.py",
+        parameters=[{
+            "service_name": "right_wheel_encoder_data",
+            "a_pin": "0",
+            "b_pin": "0"
+        }]
+    )
 
     nodes = [
         control_node,

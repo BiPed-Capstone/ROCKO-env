@@ -43,7 +43,6 @@ add_library(
   rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp
   rocko_env/hardware/sensors/icm20948/ICM20948.cpp
   # Controller .cpp files
-  rocko_env/controllers/balancing/BalancingController.cpp
   rocko_env/hardware/WiringPi/wiringPi.h
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp
 )
