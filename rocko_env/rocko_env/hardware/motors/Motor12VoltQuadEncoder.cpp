@@ -152,7 +152,7 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Set up PWM
-    softPwmCreate(_speedPin, 0, SPEED_TO_PWM_COEFF);
+    softPwmCreate(_speedPin, 0, MAX_VELOCITY);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -193,8 +193,8 @@ namespace rocko_env
   hardware_interface::return_type Motor12VoltQuadEncoder::write(
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
-    // handle any conversions here (assuming we have percent speed right now)
-    int pwmVal = std::abs(_wheel.cmd * SPEED_TO_PWM_COEFF); // _wheel.cmd holds the speed we want to go
+    // Convert from velocity in m/s to percent of full speed
+    int pwmVal = std::abs(_wheel.cmd / MAX_VELOCITY); // _wheel.cmd holds the speed we want to go
 
     // Set direction
     if (_wheel.cmd >= 0)

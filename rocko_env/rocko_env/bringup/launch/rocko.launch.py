@@ -138,7 +138,7 @@ def generate_launch_description():
         }]
     )
 
-    left_relative_encoder = Node(
+    right_relative_encoder = Node(
         package="rocko_env",
         executable="QuadEncoder.py",
         parameters=[{
@@ -147,6 +147,11 @@ def generate_launch_description():
             "b_pin": "0"
         }]
     )
+    
+    balancing_controller = Node(
+        package="rocko_env",
+        executable="BalancingController.py",
+    )
 
     nodes = [
         control_node,
@@ -154,9 +159,10 @@ def generate_launch_description():
         robot_controller_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
-        # gyro,
+        gyro,
         left_relative_encoder,
-        # right_relative_encoder
+        right_relative_encoder,
+        balancing_controller
     ]
 
     return LaunchDescription(declared_arguments + nodes)

@@ -50,7 +50,7 @@ private:
   std::string PIN_NUMBER_SPEED_KEY = "pinNumberSpeed";
   std::string PIN_NUMBER_DIRECTION_KEY = "pinNumberDirection";
 
-  double SPEED_TO_PWM_COEFF = 100;
+  double MAX_VELOCITY = 0.144 * (2 * M_PI) / 60 * 1150; // 0.144 is radius in meters of wheel, 1150 is max rpm for motor
 
   Wheel _wheel;
   int _speedPin;
