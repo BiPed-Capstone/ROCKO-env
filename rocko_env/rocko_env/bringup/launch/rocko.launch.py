@@ -133,8 +133,8 @@ def generate_launch_description():
         executable="QuadEncoder.py",
         parameters=[{
             "service_name": "left_wheel_joint_encoder_data",
-            "a_pin": "0",
-            "b_pin": "0"
+            "a_pin": "26",
+            "b_pin": "20"
         }]
     )
 
@@ -143,8 +143,8 @@ def generate_launch_description():
         executable="QuadEncoder.py",
         parameters=[{
             "service_name": "right_wheel_joint_encoder_data",
-            "a_pin": "0",
-            "b_pin": "0"
+            "a_pin": "19",
+            "b_pin": "16"
         }]
     )
     
