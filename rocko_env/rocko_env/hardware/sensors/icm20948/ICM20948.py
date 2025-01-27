@@ -23,7 +23,9 @@ class ICM20948(Node):
         i2c = board.I2C()   # uses board.SCL and board.SDA
         self.icm = adafruit_icm20x.ICM20948(i2c)
 
-        # Calibrate gyro before opening service
+        # Calibrate sens before opening service
+        self.use_hard_offsets = False # set to True if you want to loop in external calibrations
+
         # Take 100 samples and feed them to ekf algorithm to give us the initial position
         num_calib_samples = 100
         gyr_arr = np.zeros((num_calib_samples, 3))
@@ -38,8 +40,9 @@ class ICM20948(Node):
         # Calculate median
         self.madgwick = Madgwick(gyr_arr, acc_arr)
         self.prev_q = np.median(self.madgwick.Q, axis=0)
+        self.zero_q = self.prev_q
 
-        # Check filesystem for magnetometer calibration data
+        # Check filesystem for accelerometer calibration data
         path = os.path.join('calibration', 'hard_offset')
         self.calibration_results = []
         try:
@@ -49,7 +52,7 @@ class ICM20948(Node):
                 for i in file:
                     self.calibration_results.append(i)
         except:
-            # self.get_logger().warn('No magnetometer calibration data found, proceeding anyway.')
+            # self.get_logger().warn('No accelerometer calibration data found, proceeding anyway.')
             for i in range(3):
                 self.calibration_results.append(0)
 
@@ -62,8 +65,12 @@ class ICM20948(Node):
         g = np.array(self.icm.gyro)
         a = np.array(self.icm.acceleration)
 
+        if self.use_hard_offsets:
+            for i in range(3):
+                a[i] = a[i] + self.calibration_results[i]
+
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
-        self.prev_q = current_q
+        self.prev_q = current_q - self.zero_q
         angles = np.degrees(Quaternion(current_q).to_angles())
 
         # Prepare data for sending
