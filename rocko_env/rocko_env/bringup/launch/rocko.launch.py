@@ -132,7 +132,7 @@ def generate_launch_description():
         package="rocko_env",
         executable="QuadEncoder.py",
         parameters=[{
-            "service_name": "left_wheel_encoder_data",
+            "service_name": "left_wheel_joint_encoder_data",
             "a_pin": "0",
             "b_pin": "0"
         }]
@@ -142,7 +142,7 @@ def generate_launch_description():
         package="rocko_env",
         executable="QuadEncoder.py",
         parameters=[{
-            "service_name": "right_wheel_encoder_data",
+            "service_name": "right_wheel_joint_encoder_data",
             "a_pin": "0",
             "b_pin": "0"
         }]

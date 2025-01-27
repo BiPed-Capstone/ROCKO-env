@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
 
@@ -27,9 +29,17 @@ class BalancingController(Node):
             self.imu_updated,
             10)
         
+        # Set up subscriber to get robot body vector
+        self.robot_body_vector_updated_topic = self.create_subscription(
+            TwistStamped,
+            'robot_body_vector',
+            self.robot_body_vector_updated,
+            10)
+        
         # Set up variables to hold data
         self.current_vel = Twist()
         self.current_angles = Icm20948Data()
+        self.desired_robot_body_vector = Twist()
 
     def command_controller(self):
         msg = TwistStamped()
@@ -37,14 +47,14 @@ class BalancingController(Node):
         
         # Set values of vectors based on equations of motion results
         linearVector = Vector3()
-        linearVector.x = 0
-        linearVector.y = 0
-        linearVector.z = 0
+        linearVector.x = self.desired_robot_body_vector.linear.x
+        linearVector.y = self.desired_robot_body_vector.linear.y
+        linearVector.z = self.desired_robot_body_vector.linear.z
         
         angularVector = Vector3()
-        angularVector.x = 0
-        angularVector.y = 0
-        angularVector.z = 0
+        angularVector.x = self.desired_robot_body_vector.angular.x
+        angularVector.y = self.desired_robot_body_vector.angular.y
+        angularVector.z = self.desired_robot_body_vector.angular.z
 
         twist = Twist()
         twist.linear = linearVector
@@ -62,6 +72,10 @@ class BalancingController(Node):
         self.current_angles.yaw = msg.yaw
         self.current_angles.roll = msg.roll
         self.current_angles.pitch = msg.pitch
+        
+    def robot_body_vector_updated(self, msg):
+        # Store desired robot body vector
+        self.desired_robot_body_vector = msg.twist
 
 
 def main(args=None):
