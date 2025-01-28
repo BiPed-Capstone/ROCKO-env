@@ -194,7 +194,7 @@ namespace rocko_env
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
     // Convert from velocity in m/s to percent of full speed
-    double vel = _wheel.cmd * 0.072; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
+    // double vel = _wheel.cmd * 0.072; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
     // int pwmVal = std::abs((vel / MAX_VELOCITY) * 100); // _wheel.cmd holds the speed we want to go
 
     // Set direction
