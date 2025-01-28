@@ -63,6 +63,7 @@ class BalancingController(Node):
         twist.angular = angularVector
         # publish the desired valocity for the robot
         msg.twist = twist
+        msg.header.stamp = self.get_clock().now().to_msg()
         self.command_controller_topic.publish(msg)
         
     def vel_updated(self, msg: JointState):
