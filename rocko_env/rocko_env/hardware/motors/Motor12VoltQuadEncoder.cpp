@@ -207,7 +207,9 @@ namespace rocko_env
     }
 
     // Set speed
-    softPwmWrite(_speedPin, pwmVal);
+    // softPwmWrite(_speedPin, pwmVal);
+
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "PWM: %d",pwmVal);
 
     return hardware_interface::return_type::OK;
   }
