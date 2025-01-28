@@ -195,7 +195,7 @@ namespace rocko_env
   {
     // Convert from velocity in m/s to percent of full speed
     double vel = _wheel.cmd * 0.072; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
-    int pwmVal = std::abs((vel / MAX_VELOCITY) * 100); // _wheel.cmd holds the speed we want to go
+    // int pwmVal = std::abs((vel / MAX_VELOCITY) * 100); // _wheel.cmd holds the speed we want to go
 
     // Set direction
     if (_wheel.cmd >= 0)
@@ -210,7 +210,7 @@ namespace rocko_env
     // Set speed
     // softPwmWrite(_speedPin, pwmVal);
 
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Vel: %5.2f PWM: %d", vel, pwmVal);
+    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Vel: %5.2f PWM: %d", vel, pwmVal);
 
     return hardware_interface::return_type::OK;
   }
