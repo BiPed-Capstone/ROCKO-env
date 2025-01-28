@@ -62,6 +62,7 @@ class BalancingController(Node):
         # publish the desired valocity for the robot
         msg.twist = twist
         self.command_controller_topic.publish(msg)
+        self.get_logger().info(str(twist))
         
     def vel_updated(self, msg):
         # Store current velocity
