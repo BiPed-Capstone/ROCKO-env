@@ -1,0 +1,13 @@
+adafruit-circuitpython-icm20x
+pyyaml
+RPi.GPIO
+numpy
+catkin_pkg
+empy
+lark
+setuptools
+jinja2
+typeguard
+ahrs
+Encoder
+rpi-lgpio
