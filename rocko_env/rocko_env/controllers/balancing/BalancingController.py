@@ -3,6 +3,7 @@
 import rclpy
 from rclpy.node import Node
 
+from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TwistStamped, Twist, Vector3
 from rocko_interfaces.msg import Icm20948Data
 
@@ -17,8 +18,8 @@ class BalancingController(Node):
         
         # Set up subscriber to get velocity data
         self.vel_updated_topic = self.create_subscription(
-            TwistStamped,
-            'cmd_vel_out',
+            JointState,
+            'joint_states',
             self.vel_updated,
             10)
         
@@ -37,7 +38,8 @@ class BalancingController(Node):
             10)
         
         # Set up variables to hold data
-        self.current_vel = Twist()
+        self.left_vel = 0
+        self.right_vel = 0
         self.current_angles = Icm20948Data()
         self.desired_robot_body_vector = Twist()
 
@@ -63,9 +65,10 @@ class BalancingController(Node):
         msg.twist = twist
         self.command_controller_topic.publish(msg)
         
-    def vel_updated(self, msg):
+    def vel_updated(self, msg: JointState):
         # Store current velocity
-        self.current_vel = msg.twist
+        self.left_vel = msg.velocity[msg.name.index('left_wheel_joint')]
+        self.right_vel = msg.velocity[msg.name.index('right_wheel_joint')]
         
     def imu_updated(self, msg):
         # Store current imu data

@@ -13,7 +13,7 @@ diffbot_base_controller:
     right_wheel_names: ["right_wheel_joint"]
 
     wheel_separation: 0.10
-    wheel_radius: 0.144
+    wheel_radius: 0.072 
 
     publish_rate: 50.0
     odom_frame_id: odom
