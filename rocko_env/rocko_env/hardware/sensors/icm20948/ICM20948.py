@@ -42,6 +42,7 @@ class ICM20948(Node):
         self.madgwick = Madgwick(gyr_arr, acc_arr)
         self.prev_q = np.median(self.madgwick.Q, axis=0)
         self.zero_q = self.prev_q
+        self.madgwick = Madgwick()
 
         # Check filesystem for accelerometer calibration data
         path = os.path.join('calibration', 'hard_offset')
