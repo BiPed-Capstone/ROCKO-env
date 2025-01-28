@@ -77,6 +77,8 @@ class ICM20948(Node):
         response.yaw = angles[2]
         response.roll = angles[0]
         response.pitch = angles[1]
+        
+        self.get_logger().info("Y: %5.2f R: %5.2f P: %5.2f" % (angles[2], angles[0], angles(1)))
 
         return response
 
