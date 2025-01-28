@@ -72,14 +72,14 @@ class ICM20948(Node):
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
         self.prev_q = current_q - self.zero_q
         angles = np.degrees(Quaternion(current_q).to_angles())
+        
+        self.get_logger().info("cur_q: " + current_q + " zero_q: " + self.zero_q)
 
         # Prepare data for sending
         response.yaw = angles[2]
         response.roll = angles[0]
         response.pitch = angles[1]
         
-        self.get_logger().info("Y: %5.2f R: %5.2f P: %5.2f" % (angles[2], angles[0], angles[1]))
-
         return response
 
 def main(args=None):
