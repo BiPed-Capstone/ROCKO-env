@@ -19,6 +19,7 @@ from rocko_interfaces.srv import Icm20948Data
 class ICM20948(Node):
 
     def __init__(self):
+        super().__init__('icm20948_node')
         # Initialize the gyro board
         i2c = board.I2C()   # uses board.SCL and board.SDA
         self.icm = adafruit_icm20x.ICM20948(i2c)
@@ -57,7 +58,6 @@ class ICM20948(Node):
                 self.calibration_results.append(0)
 
         # Create a new service called /icm20948_data for posting IMU positional data
-        super().__init__('icm20948_node')
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
 
 
@@ -65,9 +65,9 @@ class ICM20948(Node):
         g = np.array(self.icm.gyro)
         a = np.array(self.icm.acceleration)
 
-        if self.use_hard_offsets:
-            for i in range(3):
-                a[i] = a[i] + self.calibration_results[i]
+        # if self.use_hard_offsets:
+        #     for i in range(3):
+        #         a[i] = a[i] + self.calibration_results[i]
 
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
         self.prev_q = current_q - self.zero_q
