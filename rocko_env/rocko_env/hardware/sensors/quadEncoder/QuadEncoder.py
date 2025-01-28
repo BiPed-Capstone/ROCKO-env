@@ -18,9 +18,7 @@ class QuadEncoder(Node):
         a_pin: int = int(self.get_parameter('a_pin').get_parameter_value().string_value)
         self.declare_parameter('b_pin', '0')
         b_pin: int = int(self.get_parameter('b_pin').get_parameter_value().string_value)
-        
-        self.get_logger().info("A: %d B: %d" % (a_pin, b_pin))
-        
+                
         self.enc = Encoder.Encoder(a_pin, b_pin)
         
         self.last_position = 0

@@ -181,7 +181,7 @@ namespace rocko_env
       // TODO: Grab the response data and put into variables for you to use
       _wheel.pos = res->position;
       _wheel.vel = res->velocity;
-      // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Pos: %6.2f Vel: %5.2f", _wheel.pos, _wheel.vel);
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Pos: %6.2f Vel: %5.2f", _wheel.pos, _wheel.vel);
       
     } else {
       RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service QuadEncoder");
