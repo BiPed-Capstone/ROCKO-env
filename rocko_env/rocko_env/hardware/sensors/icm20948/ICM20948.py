@@ -42,7 +42,6 @@ class ICM20948(Node):
         self.madgwick = Madgwick(gyr_arr, acc_arr)
         self.prev_q = np.median(self.madgwick.Q, axis=0)
         self.zero_q = self.prev_q
-        self.madgwick = Madgwick()
 
         # Check filesystem for accelerometer calibration data
         path = os.path.join('calibration', 'hard_offset')
@@ -66,13 +65,14 @@ class ICM20948(Node):
         g = np.array(self.icm.gyro)
         a = np.array(self.icm.acceleration)
 
-        # if self.use_hard_offsets:
-        #     for i in range(3):
-        #         a[i] = a[i] + self.calibration_results[i]
+        if self.use_hard_offsets:
+            for i in range(3):
+                a[i] = a[i] + self.calibration_results[i]
 
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
         self.get_logger().info("cur_q: " + str(current_q) + " g: " + str(g) + " a: " + str(a))
-        self.prev_q = current_q - self.zero_q
+        # current_q -= self.zero_q
+        self.prev_q = current_q
         angles = np.degrees(Quaternion(current_q).to_angles())
         
 
