@@ -73,7 +73,7 @@ class ICM20948(Node):
         self.prev_q = current_q - self.zero_q
         angles = np.degrees(Quaternion(current_q).to_angles())
         
-        self.get_logger().info("cur_q: " + current_q + " zero_q: " + self.zero_q)
+        self.get_logger().info("cur_q: " + str(current_q) + " zero_q: " + str(self.zero_q))
 
         # Prepare data for sending
         response.yaw = angles[2]
