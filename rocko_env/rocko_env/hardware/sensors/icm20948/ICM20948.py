@@ -70,7 +70,7 @@ class ICM20948(Node):
         #         a[i] = a[i] + self.calibration_results[i]
 
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
-        self.get_logger().info("cur_q: " + str(current_q) + " zero_q: " + str(self.zero_q))
+        self.get_logger().info("cur_q: " + str(current_q) + " g: " + str(g) + " a: " + a)
         self.prev_q = current_q - self.zero_q
         angles = np.degrees(Quaternion(current_q).to_angles())
         
