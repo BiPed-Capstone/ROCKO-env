@@ -162,7 +162,7 @@ def generate_launch_description():
         gyro,
         left_relative_encoder,
         right_relative_encoder,
-        # balancing_controller
+        balancing_controller
     ]
 
     return LaunchDescription(declared_arguments + nodes)
