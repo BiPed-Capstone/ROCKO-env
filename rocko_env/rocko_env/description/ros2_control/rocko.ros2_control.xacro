@@ -27,7 +27,7 @@
         <state_interface name="velocity"/>
       </joint>
     </ros2_control>
-    <ros2_control name="Gyro" type="sensor">
+    <!-- <ros2_control name="Gyro" type="sensor">
       <hardware>
         <plugin>rocko_env/ICM20948</plugin>
       </hardware>
@@ -36,7 +36,7 @@
         <state_interface name="pitch"/>
         <state_interface name="roll"/>
       </sensor>
-    </ros2_control>
+    </ros2_control> -->
 
   </xacro:macro>
 

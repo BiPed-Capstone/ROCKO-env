@@ -92,13 +92,13 @@ namespace rocko_env
     _wheel.setup(info.joints[0].name, 0);
 
     // Set up pins to have WiringPi numberings
-    wiringPiSetup();
+    // wiringPiSetup();
 
     // Set up client to get encoder data
     _prefix = info.joints[0].name;
 
     // Set up connection to client
-    _node = rclcpp::Node::make_shared(_prefix + "_client");
+    _node = rclcpp::Node::make_shared(_prefix + "_encoder_client");
     std::string s = _prefix + "_encoder_data";
     _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
 
@@ -119,8 +119,8 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /* previous_state */)
   {
     // Set up the speed pin to be PWM and the dir pin to be output
-    pinMode(_speedPin, SOFT_PWM_OUTPUT);
-    pinMode(_dirPin, OUTPUT);
+    // pinMode(_speedPin, SOFT_PWM_OUTPUT);
+    // pinMode(_dirPin, OUTPUT);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -152,7 +152,7 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Set up PWM
-    softPwmCreate(_speedPin, 0, 100);
+    // softPwmCreate(_speedPin, 0, 100);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -161,7 +161,7 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Stop PWM here
-    softPwmStop(_speedPin);
+    // softPwmStop(_speedPin);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -194,23 +194,23 @@ namespace rocko_env
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
     // Convert from velocity in m/s to percent of full speed
-    // double vel = _wheel.cmd * 0.072; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
-    // int pwmVal = std::abs((vel / MAX_VELOCITY) * 100); // _wheel.cmd holds the speed we want to go
+    double vel = _wheel.cmd * 0.072; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
+    int pwmVal = std::abs((vel / MAX_VELOCITY) * 100); // _wheel.cmd holds the speed we want to go
 
     // Set direction
     if (_wheel.cmd >= 0)
     {
-      digitalWrite(_dirPin, HIGH);
+      // digitalWrite(_dirPin, HIGH);
     }
     else
     {
-      digitalWrite(_dirPin, LOW);
+      // digitalWrite(_dirPin, LOW);
     }
 
     // Set speed
     // softPwmWrite(_speedPin, pwmVal);
 
-    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Vel: %5.2f PWM: %d", vel, pwmVal);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Vel: %5.2f PWM: %d", vel, pwmVal);
 
     return hardware_interface::return_type::OK;
   }

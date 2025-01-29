@@ -123,14 +123,15 @@ def generate_launch_description():
         )
     )
 
-    gyro = Node(
-        package="rocko_env",
-        executable="ICM20948.py",
-    )
+    # gyro = Node(
+    #     package="rocko_env",
+    #     executable="ICM20948.py",
+    # )
 
     left_relative_encoder = Node(
         package="rocko_env",
         executable="QuadEncoder.py",
+        name="left_wheel_joint_encoder",
         parameters=[{
             "service_name": "left_wheel_joint_encoder_data",
             "a_pin": "26",
@@ -141,6 +142,7 @@ def generate_launch_description():
     right_relative_encoder = Node(
         package="rocko_env",
         executable="QuadEncoder.py",
+        name="right_wheel_joint_encoder",
         parameters=[{
             "service_name": "right_wheel_joint_encoder_data",
             "a_pin": "19",
@@ -159,7 +161,7 @@ def generate_launch_description():
         robot_controller_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
-        gyro,
+        # gyro,
         left_relative_encoder,
         right_relative_encoder,
         balancing_controller
