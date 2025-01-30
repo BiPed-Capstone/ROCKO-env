@@ -123,10 +123,10 @@ def generate_launch_description():
         )
     )
 
-    # gyro = Node(
-    #     package="rocko_env",
-    #     executable="ICM20948.py",
-    # )
+    gyro = Node(
+        package="rocko_env",
+        executable="ICM20948.py",
+    )
 
     left_relative_encoder = Node(
         package="rocko_env",
@@ -161,7 +161,7 @@ def generate_launch_description():
         robot_controller_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
-        # gyro,
+        gyro,
         left_relative_encoder,
         right_relative_encoder,
         balancing_controller
