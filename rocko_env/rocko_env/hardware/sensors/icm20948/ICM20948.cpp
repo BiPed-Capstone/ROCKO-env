@@ -17,14 +17,14 @@ namespace rocko_env
 {
 
 hardware_interface::CallbackReturn ICM20948::on_init(
-    const hardware_interface::HardwareInfo & info)
+    const hardware_interface::HardwareInfo & )
 {
-    _prefix = info.sensors[0].name;
+    // _prefix = info.sensors[0].name;
 
     // Set up connection to client
     _node = rclcpp::Node::make_shared("icm20948_client");
     _client = _node->create_client<rocko_interfaces::srv::Icm20948Data>("icm20948_data");
-    
+
     while (!_client->wait_for_service(std::chrono::seconds(1))) {
       if (!rclcpp::ok()) {
         RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
@@ -42,13 +42,22 @@ std::vector<hardware_interface::StateInterface> ICM20948::export_state_interface
   std::vector<hardware_interface::StateInterface> state_interfaces;
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    _prefix, YAW_KEY, &_yaw));
+    "left_wheel_joint", YAW_KEY, &_yaw));
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    _prefix, PITCH_KEY, &_pitch));
+    "left_wheel_joint", PITCH_KEY, &_pitch));
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    _prefix, ROLL_KEY, &_roll));
+    "left_wheel_joint", ROLL_KEY, &_roll));
+
+  state_interfaces.emplace_back(hardware_interface::StateInterface(
+    "right_wheel_joint", YAW_KEY, &_yaw));
+
+  state_interfaces.emplace_back(hardware_interface::StateInterface(
+    "right_wheel_joint", PITCH_KEY, &_pitch));
+
+  state_interfaces.emplace_back(hardware_interface::StateInterface(
+    "right_wheel_joint", ROLL_KEY, &_roll));
 
   return state_interfaces;
 }

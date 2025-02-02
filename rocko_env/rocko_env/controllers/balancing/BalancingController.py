@@ -5,6 +5,7 @@ from rclpy.node import Node
 
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TwistStamped, Twist, Vector3
+from control_msgs.msg import MultiDOFCommand
 from rocko_interfaces.msg import Icm20948Data
 
 class BalancingController(Node):
@@ -12,7 +13,7 @@ class BalancingController(Node):
     def __init__(self):
         super().__init__('balancing_controller')
         # Set up publisher to command controller
-        self.command_controller_topic = self.create_publisher(TwistStamped, 'cmd_vel', 10)
+        self.command_controller_topic = self.create_publisher(MultiDOFCommand, 'balancing_pid_controller/reference', 10)
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.command_controller)
         
@@ -32,7 +33,7 @@ class BalancingController(Node):
         
         # Set up subscriber to get robot body vector
         self.robot_body_vector_updated_topic = self.create_subscription(
-            TwistStamped,
+            MultiDOFCommand,
             'robot_body_vector',
             self.robot_body_vector_updated,
             10)
@@ -44,26 +45,28 @@ class BalancingController(Node):
         self.desired_robot_body_vector = Twist()
 
     def command_controller(self):
-        msg = TwistStamped()
+        # msg = TwistStamped()
         # Do calcs here for equations of motion
         
         # Set values of vectors based on equations of motion results
-        linearVector = Vector3()
-        linearVector.x = self.desired_robot_body_vector.linear.x
-        linearVector.y = self.desired_robot_body_vector.linear.y
-        linearVector.z = self.desired_robot_body_vector.linear.z
+        # linearVector = Vector3()
+        # linearVector.x = self.desired_robot_body_vector.linear.x
+        # linearVector.y = self.desired_robot_body_vector.linear.y
+        # linearVector.z = self.desired_robot_body_vector.linear.z
         
-        angularVector = Vector3()
-        angularVector.x = self.desired_robot_body_vector.angular.x
-        angularVector.y = self.desired_robot_body_vector.angular.y
-        angularVector.z = self.desired_robot_body_vector.angular.z
+        # angularVector = Vector3()
+        # angularVector.x = self.desired_robot_body_vector.angular.x
+        # angularVector.y = self.desired_robot_body_vector.angular.y
+        # angularVector.z = self.desired_robot_body_vector.angular.z
 
-        twist = Twist()
-        twist.linear = linearVector
-        twist.angular = angularVector
-        # publish the desired valocity for the robot
-        msg.twist = twist
-        msg.header.stamp = self.get_clock().now().to_msg()
+        # twist = Twist()
+        # twist.linear = linearVector
+        # twist.angular = angularVector
+        # # publish the desired valocity for the robot
+        # msg.twist = twist
+        msg = MultiDOFCommand()
+        msg.dof_names = ["left_wheel_joint", "right_wheel_joint"]
+        msg.values = [0, 0]
         self.command_controller_topic.publish(msg)
         
     def vel_updated(self, msg: JointState):

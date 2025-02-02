@@ -70,14 +70,20 @@ def generate_launch_description():
         [FindPackageShare("rocko_env"), "rviz", "rocko.rviz"]
     )
 
+    # control_node = Node(
+    #     package="controller_manager",
+    #     executable="ros2_control_node",
+    #     parameters=[robot_controllers],
+    #     output="both",
+    #     remappings=[
+    #         ("/diffbot_base_controller/cmd_vel", "/cmd_vel"),
+    #     ],
+    # )
     control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[robot_controllers],
-        output="both",
-        remappings=[
-            ("/diffbot_base_controller/cmd_vel", "/cmd_vel"),
-        ],
+        output="both"
     )
     robot_state_pub_node = Node(
         package="robot_state_publisher",
@@ -94,34 +100,40 @@ def generate_launch_description():
         condition=IfCondition(gui),
     )
 
-    joint_state_broadcaster_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["joint_state_broadcaster"],
-    )
+    # joint_state_broadcaster_spawner = Node(
+    #     package="controller_manager",
+    #     executable="spawner",
+    #     arguments=["joint_state_broadcaster"],
+    # )
 
+    # robot_controller_spawner = Node(
+    #     package="controller_manager",
+    #     executable="spawner",
+    #     arguments=["diffbot_base_controller", "--param-file", robot_controllers],
+    # )
+    
     robot_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["diffbot_base_controller", "--param-file", robot_controllers],
+        arguments=["balancing_pid_controller", "--param-file", robot_controllers],
     )
 
     # Delay rviz start after `joint_state_broadcaster`
-    delay_rviz_after_joint_state_broadcaster_spawner = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[rviz_node],
-        )
-    )
+    # delay_rviz_after_joint_state_broadcaster_spawner = RegisterEventHandler(
+    #     event_handler=OnProcessExit(
+    #         target_action=joint_state_broadcaster_spawner,
+    #         on_exit=[rviz_node],
+    #     )
+    # )
 
     # Delay start of joint_state_broadcaster after `robot_controller`
     # TODO(anyone): This is a workaround for flaky tests. Remove when fixed.
-    delay_joint_state_broadcaster_after_robot_controller_spawner = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=robot_controller_spawner,
-            on_exit=[joint_state_broadcaster_spawner],
-        )
-    )
+    # delay_joint_state_broadcaster_after_robot_controller_spawner = RegisterEventHandler(
+    #     event_handler=OnProcessExit(
+    #         target_action=robot_controller_spawner,
+    #         on_exit=[joint_state_broadcaster_spawner],
+    #     )
+    # )
 
     gyro = Node(
         package="rocko_env",
@@ -134,8 +146,8 @@ def generate_launch_description():
         name="left_wheel_joint_encoder",
         parameters=[{
             "service_name": "left_wheel_joint_encoder_data",
-            "a_pin": "26",
-            "b_pin": "20"
+            "a_pin": 26,
+            "b_pin": 20
         }]
     )
 
@@ -145,8 +157,8 @@ def generate_launch_description():
         name="right_wheel_joint_encoder",
         parameters=[{
             "service_name": "right_wheel_joint_encoder_data",
-            "a_pin": "19",
-            "b_pin": "16"
+            "a_pin": 19,
+            "b_pin": 16
         }]
     )
     
@@ -159,8 +171,8 @@ def generate_launch_description():
         control_node,
         robot_state_pub_node,
         robot_controller_spawner,
-        delay_rviz_after_joint_state_broadcaster_spawner,
-        delay_joint_state_broadcaster_after_robot_controller_spawner,
+        # delay_rviz_after_joint_state_broadcaster_spawner,
+        # delay_joint_state_broadcaster_after_robot_controller_spawner,
         gyro,
         left_relative_encoder,
         right_relative_encoder,
