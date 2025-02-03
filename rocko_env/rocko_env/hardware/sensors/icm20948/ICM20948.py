@@ -3,8 +3,8 @@ import os
 
 import rclpy
 from rclpy.node import Node
-# import board
-# import adafruit_icm20x
+import board
+import adafruit_icm20x
 
 import numpy as np
 from time import sleep
@@ -71,16 +71,19 @@ class ICM20948(Node):
 
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
         # current_q = np.subtract(current_q, self.zero_q)
-        if (current_q > 0): current_q -= 180
-        if (current_q < 0): current_q += 180
+        # self.get_logger().info("cur: " + str(current_q) + " zero: " + str(self.zero_q))
         self.prev_q = current_q
         angles = np.degrees(Quaternion(current_q).to_angles())
         
+        if (angles[0] > 0): 
+            angles[0] -= 180
+        else: 
+            angles[0] += 180
 
         # Prepare data for sending
         response.yaw = angles[2]
-        response.roll = angles[0]
-        response.pitch = angles[1]
+        response.roll = angles[1]
+        response.pitch = angles[0]
         
         return response
 
