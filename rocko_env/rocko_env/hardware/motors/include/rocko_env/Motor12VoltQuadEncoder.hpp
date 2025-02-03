@@ -49,12 +49,14 @@ private:
 
   std::string PIN_NUMBER_SPEED_KEY = "pinNumberSpeed";
   std::string PIN_NUMBER_DIRECTION_KEY = "pinNumberDirection";
+  std::string INVERT_KEY = "invert";
 
   double MAX_RAD_PER_SEC = 1150 / 60 * M_PI * 2; // Max RPM / 60 sec * 2pi
 
   Wheel _wheel;
   int _speedPin;
   int _dirPin;
+  bool _invert;
 
   std::string _prefix = "";
 

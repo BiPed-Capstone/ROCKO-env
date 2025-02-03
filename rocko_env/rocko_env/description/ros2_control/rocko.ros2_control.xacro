@@ -8,6 +8,7 @@
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
         <param name="pinNumberSpeed">14</param>
         <param name="pinNumberDirection">10</param>
+        <param name="invert">false</param>
       </hardware> 
       <joint name="left_wheel_joint">
         <command_interface name="velocity"/>
@@ -20,6 +21,7 @@
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
         <param name="pinNumberSpeed">13</param>
         <param name="pinNumberDirection">6</param>
+        <param name="invert">true</param>
       </hardware>
       <joint name="right_wheel_joint">
         <command_interface name="velocity"/>
