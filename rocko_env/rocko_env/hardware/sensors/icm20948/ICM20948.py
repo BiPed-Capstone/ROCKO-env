@@ -71,6 +71,8 @@ class ICM20948(Node):
 
         current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
         # current_q = np.subtract(current_q, self.zero_q)
+        if (current_q > 0): current_q -= 180
+        if (current_q < 0): current_q += 180
         self.prev_q = current_q
         angles = np.degrees(Quaternion(current_q).to_angles())
         
