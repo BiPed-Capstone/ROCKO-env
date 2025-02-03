@@ -1,6 +1,6 @@
-from calibrate_magnetometer import MagCalibrator
+from calibrate_accelerometer import AccCalibrator
 
 input('Press any key to begin calibration.')
-
-MagCalibrator().capture_dataset()
-MagCalibrator().calibrate_dataset()
+calibrator = AccCalibrator
+calibrator.capture_dataset()
+calibrator.calibrate_dataset()

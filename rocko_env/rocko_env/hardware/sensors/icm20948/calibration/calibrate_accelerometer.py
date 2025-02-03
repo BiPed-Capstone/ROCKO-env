@@ -1,5 +1,5 @@
 '''
-Custom script meant to be run once to generate accnetometer hard offset data.
+Custom script meant to be run once to generate accelerometer hard offset data.
 Should be carried out with all hardware installed on the robot sans the legs
 for convenience. 
 
@@ -10,7 +10,7 @@ import numpy as np
 import adafruit_icm20x
 from time import sleep
 
-class accCalibrator:
+class AccCalibrator:
     def __init__(self, memory=None):
             i2c = board.I2C()   # uses board.SCL and board.SDA
             self.icm = adafruit_icm20x.ICM20948(i2c)
