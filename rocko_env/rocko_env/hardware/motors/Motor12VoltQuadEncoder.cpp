@@ -196,7 +196,7 @@ namespace rocko_env
   {
     // Convert from velocity in m/s to percent of full speed
     double radPerSec = _wheel.cmd; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
-    int pwmVal = std::abs((radPerSec / MAX_RAD_PER_SEC) * 100); // _wheel.cmd holds the speed we want to go
+    int pwmVal = (std::sqrt(std::abs((radPerSec / MAX_RAD_PER_SEC))) + 0.15) * 100; // _wheel.cmd holds the speed we want to go
 
     // Set direction
     if (_wheel.cmd >= 0)

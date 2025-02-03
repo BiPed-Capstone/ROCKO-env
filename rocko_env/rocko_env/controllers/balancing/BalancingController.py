@@ -66,7 +66,7 @@ class BalancingController(Node):
         # msg.twist = twist
         msg = MultiDOFCommand()
         msg.dof_names = ["left_wheel_joint", "right_wheel_joint"]
-        msg.values = [0, 0]
+        msg.values = [3, 3]
         self.command_controller_topic.publish(msg)
         
     def vel_updated(self, msg: JointState):

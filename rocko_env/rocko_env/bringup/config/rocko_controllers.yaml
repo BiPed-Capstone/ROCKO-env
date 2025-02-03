@@ -17,7 +17,7 @@ balancing_pid_controller:
 
     gains:
       left_wheel_joint:   {p: 5.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
-      right_wheel_joint:  {p: 5.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
+      right_wheel_joint:  {p: 6.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
 # diffbot_base_controller:
 #   ros__parameters:
