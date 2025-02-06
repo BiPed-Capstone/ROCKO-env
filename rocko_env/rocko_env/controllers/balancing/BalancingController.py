@@ -13,7 +13,7 @@ class BalancingController(Node):
     def __init__(self):
         super().__init__('balancing_controller')
         # Set up publisher to command controller
-        self.command_controller_topic = self.create_publisher(MultiDOFCommand, 'balancing_pid_controller/reference', 10)
+        self.command_controller_topic = self.create_publisher(MultiDOFCommand, 'left_velocity_pid_controller/reference', 10)
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.command_controller)
         
@@ -65,8 +65,8 @@ class BalancingController(Node):
         # # publish the desired valocity for the robot
         # msg.twist = twist
         msg = MultiDOFCommand()
-        msg.dof_names = ["left_wheel_joint", "right_wheel_joint"]
-        msg.values = [3, 3]
+        msg.dof_names = ["left_wheel_joint"]
+        msg.values = [3]
         self.command_controller_topic.publish(msg)
         
     def vel_updated(self, msg: JointState):
