@@ -95,6 +95,8 @@ right_balancing_pid_controller:
     command_interface: velocity
 
     reference_and_state_interfaces: ["pitch"]
+    reference_and_state_dof_names:
+      - right_wheel_joint
 
     gains:
       right_wheel_joint:  {p: 1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
@@ -108,8 +110,8 @@ right_velocity_pid_controller:
     command_interface: pitch
 
     reference_and_state_interfaces: ["velocity"]
-    # reference_and_state_dof_names:
-    #   - right_wheel_joint
+    reference_and_state_dof_names:
+      - right_wheel_joint
 
     gains:
       right_wheel_joint:  {p: 1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
