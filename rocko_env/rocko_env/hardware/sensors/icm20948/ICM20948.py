@@ -85,6 +85,8 @@ class ICM20948(Node):
         # response.roll = angles[1]
         # response.pitch = angles[0]
         
+        response.pitch = 2.0
+        
         return response
 
 def main(args=None):
