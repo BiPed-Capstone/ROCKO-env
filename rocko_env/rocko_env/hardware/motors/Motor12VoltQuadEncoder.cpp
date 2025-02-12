@@ -208,8 +208,10 @@ namespace rocko_env
       digitalWrite(_dirPin, _invert);
     }
 
-    // Set speed
-    softPwmWrite(_speedPin, pwmVal);
+    // Set speed if above threshold
+    if (pwmVal > 2) {
+      softPwmWrite(_speedPin, pwmVal);
+    }
 
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
 
