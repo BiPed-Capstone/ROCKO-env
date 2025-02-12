@@ -84,7 +84,7 @@ left_velocity_pid_controller:
       - left_wheel_joint
 
     gains:
-      left_wheel_joint:   {p: 1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
+      left_balancing_pid_controller/left_wheel_joint:   {p: 1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
 right_balancing_pid_controller:
   ros__parameters:
@@ -114,4 +114,4 @@ right_velocity_pid_controller:
       - right_wheel_joint
 
     gains:
-      right_wheel_joint:  {p: 1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
+      right_balancing_pid_controller/right_wheel_joint:  {p: 1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
