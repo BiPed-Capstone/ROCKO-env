@@ -162,7 +162,8 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Stop PWM here
-    // softPwmStop(_speedPin);
+    softPwmWrite(_speedPin, 0);
+    softPwmStop(_speedPin);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -195,8 +196,8 @@ namespace rocko_env
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
     // Convert from velocity in m/s to percent of full speed
-    // double radPerSec = _wheel.cmd; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
-    // int pwmVal = (std::sqrt(std::abs((radPerSec / MAX_RAD_PER_SEC))) + 0.15) * 100; // _wheel.cmd holds the speed we want to go
+    double radPerSec = _wheel.cmd; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
+    int pwmVal = (std::sqrt(std::abs((radPerSec / MAX_RAD_PER_SEC))) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
 
     // // Set direction
     // if (_wheel.cmd >= 0)

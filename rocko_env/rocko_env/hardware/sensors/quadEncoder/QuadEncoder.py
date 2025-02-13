@@ -35,7 +35,8 @@ class QuadEncoder(Node):
     #     response.position = position
     #     response.velocity = velocity
 
-    #     self.last_position = position
+        self.last_position = position
+        response.velocity = 2.0
 
     #     return response
 

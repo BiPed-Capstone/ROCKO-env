@@ -80,10 +80,10 @@ class ICM20948(Node):
     #     else: 
     #         angles[0] += 180
 
-    #     # Prepare data for sending
-    #     response.yaw = angles[2]
-    #     response.roll = angles[1]
-    #     response.pitch = angles[0]
+        # Prepare data for sending
+        response.yaw = angles[2]
+        response.roll = angles[1]
+        response.pitch = angles[0] - 1.0
                 
     #     return response
 
