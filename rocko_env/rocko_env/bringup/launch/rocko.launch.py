@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, ExecuteProcess
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
@@ -99,6 +99,7 @@ def generate_launch_description():
         arguments=["-d", rviz_config_file],
         condition=IfCondition(gui),
     )
+    foxglove_bridge = ExecuteProcess(cmd=["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"])
 
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
@@ -229,11 +230,12 @@ def generate_launch_description():
     nodes = [
         control_node,
         robot_state_pub_node,
+        foxglove_bridge,
         left_balancing_pid_controller_spawner,
         delay_left_velocity_controller_spawner_after_balancing_controller_spawner,
-        # delay_right_after_left_spawner,
         right_balancing_pid_controller_spawner,
         delay_right_velocity_controller_spawner_after_balancing_controller_spawner,
+        # delay_diffdrive_after_pid_controller_spawner,
         balancing_controller,
         gyro,
         left_relative_encoder,
