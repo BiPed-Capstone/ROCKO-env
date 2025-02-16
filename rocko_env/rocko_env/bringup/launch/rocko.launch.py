@@ -221,6 +221,11 @@ def generate_launch_description():
         executable="BalancingController.py",
     )
 
+    joystick = Node(
+        package="rocko_env",
+        executable="Joystick.py",
+    )
+
     nodes = [
         control_node,
         robot_state_pub_node,
@@ -233,6 +238,7 @@ def generate_launch_description():
         gyro,
         left_relative_encoder,
         right_relative_encoder,
+        joystick,
     ]
 
     return LaunchDescription(declared_arguments + nodes)

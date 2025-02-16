@@ -94,6 +94,7 @@ install(PROGRAMS
   rocko_env/hardware/sensors/icm20948/ICM20948.py
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
   rocko_env/controllers/balancing/BalancingController.py
+  rocko_env/controllers/joystick/Joystick.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
