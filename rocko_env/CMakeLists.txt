@@ -54,6 +54,7 @@ $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/incl
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
 # Paths to controller include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/balancing/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/joystick/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 ament_target_dependencies(
