@@ -69,6 +69,7 @@ $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/i
 # Paths to controller include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/joystick/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/joystick/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 
