@@ -146,7 +146,8 @@ def generate_launch_description():
         right_relative_encoder,
         joystick,
         controller_spawner,
-        diffdrive_controller
+        diffdrive_controller,
+        joystick
     ]
 
     return LaunchDescription(declared_arguments + nodes)

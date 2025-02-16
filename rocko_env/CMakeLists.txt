@@ -118,6 +118,7 @@ install(PROGRAMS
   rocko_env/controllers/joystick/Joystick.py
   rocko_env/controllers/diffdrive/DiffDriveController.py
   rocko_env/controllers/utils/RateLimiter.py
+  rocko_env/controllers/joystick/Joystick.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
