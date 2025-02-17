@@ -35,7 +35,7 @@ class Joystick(Node):
 
     def receive_joystick_data(self):
         num_axes = 6
-        num_buttons = 12
+        num_buttons = 16
         buffer_size = struct.calcsize(f"{num_axes}f {num_buttons}B")
 
         data = self.client_sock.recv(buffer_size)
@@ -47,7 +47,10 @@ class Joystick(Node):
         msg1 = Joy()
         msg1.axes = list(unpack[:num_axes])
         msg1.buttons = list(unpack[num_axes:])
+        self.get_logger().info(msg1.axes)
+        self.get_logger().info(msg1.buttons)
         self.joystick_topic.publish(msg1)
+
 
     def robot_body_vector_updated(self, msg):
         # Store desired robot body vector
