@@ -14,6 +14,9 @@ class Joystick(Node):
         super().__init__('joystick')
 
         self.server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
         self.server_sock.bind(("0.0.0.0", 1234))
         self.server_sock.listen(1)
         self.get_logger().info("Waiting for joystick connection...")
@@ -21,6 +24,8 @@ class Joystick(Node):
         self.client_sock, _ = self.server_sock.accept()  # Accept connection
         self.get_logger().info("Joystick connected!")
 
+        self.client_sock.setblocking(False)
+        
         # Set up publisher to command controller
         self.joystick_topic = self.create_publisher(Joy, 'joystick', 10)
         timer_period = 0.01  # seconds
@@ -37,19 +42,22 @@ class Joystick(Node):
         num_axes = 6
         num_buttons = 16
         buffer_size = struct.calcsize(f"{num_axes}f {num_buttons}B")
+        try:
 
-        data = self.client_sock.recv(buffer_size)
+            data = self.client_sock.recv(buffer_size)
 
-        # all_data = struct.unpack(f"{num_axes}f {num_buttons}B", data)
-        # button_data = struct.unpack_from(f"{num_axes}f {num_buttons}B", data, num_axes)
+            # all_data = struct.unpack(f"{num_axes}f {num_buttons}B", data)
+            # button_data = struct.unpack_from(f"{num_axes}f {num_buttons}B", data, num_axes)
 
-        unpack = struct.unpack(f"{num_axes}f {num_buttons}B", data)
-        msg1 = Joy()
-        msg1.axes = list(unpack[:num_axes])
-        msg1.buttons = list(unpack[num_axes:])
-        self.get_logger().info(msg1.axes)
-        self.get_logger().info(msg1.buttons)
-        self.joystick_topic.publish(msg1)
+            unpack = struct.unpack(f"{num_axes}f {num_buttons}B", data)
+            msg1 = Joy()
+            msg1.axes = list(unpack[:num_axes])
+            msg1.buttons = list(unpack[num_axes:])
+            # self.get_logger().info(msg1.axes)
+            # self.get_logger().info(msg1.buttons)
+            self.joystick_topic.publish(msg1)
+        except BlockingIOError:
+            return
 
 
     def robot_body_vector_updated(self, msg):
