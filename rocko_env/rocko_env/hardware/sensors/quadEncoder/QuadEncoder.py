@@ -14,11 +14,11 @@ class QuadEncoder(Node):
         # Handle any hardware initialization here
         self.declare_parameter('service_name', 'quad_encoder')
         service_name: str = self.get_parameter('service_name').get_parameter_value().string_value
-        self.declare_parameter('a_pin', '0')
+        self.declare_parameter('a_pin', 0)
         a_pin: int = self.get_parameter('a_pin').get_parameter_value().integer_value
-        self.declare_parameter('b_pin', '0')
+        self.declare_parameter('b_pin', 0)
         b_pin: int = self.get_parameter('b_pin').get_parameter_value().integer_value
-        
+                
         self.enc = Encoder.Encoder(a_pin, b_pin)
         
         self.last_position = 0
@@ -36,6 +36,7 @@ class QuadEncoder(Node):
         response.velocity = velocity
 
         self.last_position = position
+        response.velocity = 2.0
 
         return response
 

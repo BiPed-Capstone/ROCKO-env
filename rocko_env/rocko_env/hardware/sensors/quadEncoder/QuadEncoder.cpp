@@ -46,10 +46,9 @@ hardware_interface::return_type QuadEncoder::read(
       rclcpp::FutureReturnCode::SUCCESS) && result.valid())
     {
       auto res = result.get();
-      // TODO: Grab the response data and put into variables for you to use
       _position = res->position;
       _velocity = res->velocity;
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Pos: %6.2f Vel: %5.2f", _position, _velocity);
+      // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Pos: %6.2f Vel: %5.2f", _position, _velocity);
       
     } else {
       RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service QuadEncoder");

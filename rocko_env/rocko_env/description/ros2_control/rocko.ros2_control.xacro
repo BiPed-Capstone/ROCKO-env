@@ -6,11 +6,10 @@
     <ros2_control name="LeftDriveMotor" type="actuator">
       <hardware>
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
-        <param name="pinNumberSpeed">1</param>
-        <param name="pinNumberDirection">2</param>
-        <param name="pinNumberAChannel">5</param>
-        <param name="pinNumberBChannel">6</param>
-      </hardware>
+        <param name="pinNumberSpeed">14</param>
+        <param name="pinNumberDirection">10</param>
+        <param name="invert">true</param>
+      </hardware> 
       <joint name="left_wheel_joint">
         <command_interface name="velocity"/>
         <state_interface name="position"/>
@@ -20,10 +19,9 @@
     <ros2_control name="RightDriveMotor" type="actuator">
       <hardware>
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
-        <param name="pinNumberSpeed">3</param>
-        <param name="pinNumberDirection">4</param>
-        <param name="pinNumberAChannel">7</param>
-        <param name="pinNumberBChannel">8</param>
+        <param name="pinNumberSpeed">13</param>
+        <param name="pinNumberDirection">6</param>
+        <param name="invert">false</param>
       </hardware>
       <joint name="right_wheel_joint">
         <command_interface name="velocity"/>
@@ -35,30 +33,23 @@
       <hardware>
         <plugin>rocko_env/ICM20948</plugin>
       </hardware>
-      <sensor name="icm20948">
+      <!-- <sensor name="icm20948">
         <state_interface name="yaw"/>
         <state_interface name="pitch"/>
         <state_interface name="roll"/>
-      </sensor>
+      </sensor> -->
+      <joint name="left_wheel_joint">
+        <state_interface name="yaw"/>
+        <state_interface name="pitch"/>
+        <state_interface name="roll"/>
+      </joint>
+      <joint name="right_wheel_joint">
+        <state_interface name="yaw"/>
+        <state_interface name="pitch"/>
+        <state_interface name="roll"/>
+      </joint>
     </ros2_control>
-    <ros2_control name="LeftRelativeEncoder" type="sensor">
-      <hardware>
-        <plugin>rocko_env/QuadEncoder</plugin>
-      </hardware>
-      <sensor name="left_quad_encoder">
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-      </sensor>
-    </ros2_control>
-    <ros2_control name="RightRelativeEncoder" type="sensor">
-      <hardware>
-        <plugin>rocko_env/QuadEncoder</plugin>
-      </hardware>
-      <sensor name="right_quad_encoder">
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-      </sensor>
-    </ros2_control>
+
   </xacro:macro>
 
 </robot>

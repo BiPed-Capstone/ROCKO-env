@@ -11,6 +11,7 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 # find dependencies
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   hardware_interface
+  controller_interface
   pluginlib
   rclcpp
   rclcpp_lifecycle
@@ -38,16 +39,21 @@ endforeach()
 add_library(
   rocko_env
   SHARED
+  # Hardware .cpp files
   rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp
   rocko_env/hardware/sensors/icm20948/ICM20948.cpp
+  # Controller .cpp files
   rocko_env/hardware/WiringPi/wiringPi.h
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp
 )
 target_compile_features(rocko_env PUBLIC cxx_std_17)
 target_include_directories(rocko_env PUBLIC
+# paths to hardware include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
+# Paths to controller include folders
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/balancing/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 ament_target_dependencies(
@@ -57,8 +63,9 @@ ament_target_dependencies(
 find_library(WIRINGPI_LIBRARIES NAMES wiringPi)
 target_link_libraries(rocko_env PRIVATE Python::Python ${WIRINGPI_LIBRARIES})
 
-# Export hardware plugins
-pluginlib_export_plugin_description_file(hardware_interface rocko_env.xml)
+# Export plugins
+pluginlib_export_plugin_description_file(hardware_interface rocko_env_hardware.xml)
+pluginlib_export_plugin_description_file(controller_interface rocko_env_controllers.xml)
 
 # INSTALL
 install(
@@ -86,6 +93,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   rocko_env/hardware/sensors/icm20948/ICM20948.py
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
+  rocko_env/controllers/balancing/BalancingController.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

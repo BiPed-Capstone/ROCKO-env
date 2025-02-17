@@ -13,6 +13,8 @@
 #include "rclcpp/macros.hpp"
 #include "wheel.hpp"
 
+#include "rocko_interfaces/srv/quad_encoder_data.hpp"
+
 namespace rocko_env
 {
 class Motor12VoltQuadEncoder : public hardware_interface::ActuatorInterface
@@ -47,18 +49,19 @@ private:
 
   std::string PIN_NUMBER_SPEED_KEY = "pinNumberSpeed";
   std::string PIN_NUMBER_DIRECTION_KEY = "pinNumberDirection";
-  std::string PIN_NUMBER_A_KEY = "pinNumberAChannel";
-  std::string PIN_NUMBER_B_KEY = "pinNumberBChannel";
+  std::string INVERT_KEY = "invert";
 
-  int SPEED_TO_PWM_COEFF = 100;
+  double MAX_RAD_PER_SEC = 1150 / 60 * M_PI * 2; // Max RPM / 60 sec * 2pi
 
   Wheel _wheel;
   int _speedPin;
   int _dirPin;
-  int _aPin;
-  int _bPin;
+  bool _invert;
 
-  uint8_t _encState;
+  std::string _prefix = "";
+
+  rclcpp::Client<rocko_interfaces::srv::QuadEncoderData>::SharedPtr _client;
+  std::shared_ptr<rclcpp::Node> _node;
 };
 
 }  // namespace rocko_env

@@ -27,6 +27,7 @@ endif()
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Icm20948Data.msg"
   "srv/Icm20948Data.srv"
   "srv/QuadEncoderData.srv"
 )
