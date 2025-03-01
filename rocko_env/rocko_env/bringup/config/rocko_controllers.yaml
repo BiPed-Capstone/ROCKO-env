@@ -9,8 +9,8 @@ diffbot_base_controller:
   ros__parameters:
     type: diff_drive_controller/DiffDriveController
 
-    left_wheel_names: ["left_velocity_pid_controller/left_balancing_pid_controller/left_wheel_joint"]
-    right_wheel_names: ["right_velocity_pid_controller/right_balancing_pid_controller/right_wheel_joint"]
+    left_wheel_names: ["left_velocity_pid_controller/left_pitch_pid_controller/left_wheel_joint"]
+    right_wheel_names: ["right_velocity_pid_controller/right_pitch_pid_controller/right_wheel_joint"]
 
     wheel_separation: 0.4368
     #wheels_per_side: 1  # actually 2, but both are controlled by 1 signal
@@ -56,7 +56,7 @@ diffbot_base_controller:
     angular.z.max_jerk: 0.0
     angular.z.min_jerk: 0.0
 
-left_balancing_pid_controller:
+left_pitch_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
@@ -75,7 +75,7 @@ left_velocity_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
-      - left_balancing_pid_controller/left_wheel_joint
+      - left_pitch_pid_controller/left_wheel_joint
     
     command_interface: pitch
 
@@ -84,9 +84,9 @@ left_velocity_pid_controller:
       - left_wheel_joint
 
     gains:
-      left_balancing_pid_controller/left_wheel_joint:   {p: -1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
+      left_pitch_pid_controller/left_wheel_joint:   {p: -1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
-right_balancing_pid_controller:
+right_pitch_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
@@ -105,7 +105,7 @@ right_velocity_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
-      - right_balancing_pid_controller/right_wheel_joint
+      - right_pitch_pid_controller/right_wheel_joint
     
     command_interface: pitch
 
@@ -114,4 +114,4 @@ right_velocity_pid_controller:
       - right_wheel_joint
 
     gains:
-      right_balancing_pid_controller/right_wheel_joint:  {p: -1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
+      right_pitch_pid_controller/right_wheel_joint:  {p: -1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
