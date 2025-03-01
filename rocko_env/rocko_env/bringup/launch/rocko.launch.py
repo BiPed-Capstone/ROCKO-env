@@ -113,10 +113,10 @@ def generate_launch_description():
         arguments=["diffbot_base_controller", "--param-file", robot_controllers],
     )
     
-    left_balancing_pid_controller_spawner = Node(
+    left_pitch_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["left_balancing_pid_controller", "--param-file", robot_controllers],
+        arguments=["left_pitch_pid_controller", "--param-file", robot_controllers],
     )
     
     left_velocity_pid_controller_spawner = Node(
@@ -128,16 +128,16 @@ def generate_launch_description():
     delay_left_velocity_controller_spawner_after_balancing_controller_spawner = (
         RegisterEventHandler(
             event_handler=OnProcessExit(
-                target_action=left_balancing_pid_controller_spawner,
+                target_action=left_pitch_pid_controller_spawner,
                 on_exit=[left_velocity_pid_controller_spawner],
             )
         )
     )
     
-    right_balancing_pid_controller_spawner = Node(
+    right_pitch_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["right_balancing_pid_controller", "--param-file", robot_controllers],
+        arguments=["right_pitch_pid_controller", "--param-file", robot_controllers],
     )
     
     right_velocity_pid_controller_spawner = Node(
@@ -150,7 +150,7 @@ def generate_launch_description():
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=left_velocity_pid_controller_spawner,
-                on_exit=[right_balancing_pid_controller_spawner],
+                on_exit=[right_pitch_pid_controller_spawner],
             )
         )
     )
@@ -158,7 +158,7 @@ def generate_launch_description():
     delay_right_velocity_controller_spawner_after_balancing_controller_spawner = (
         RegisterEventHandler(
             event_handler=OnProcessExit(
-                target_action=right_balancing_pid_controller_spawner,
+                target_action=right_pitch_pid_controller_spawner,
                 on_exit=[right_velocity_pid_controller_spawner],
             )
         )
@@ -185,7 +185,7 @@ def generate_launch_description():
     # TODO(anyone): This is a workaround for flaky tests. Remove when fixed.
     delay_joint_state_broadcaster_after_robot_controller_spawner = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=left_balancing_pid_controller_spawner,
+            target_action=left_pitch_pid_controller_spawner,
             on_exit=[joint_state_broadcaster_spawner],
         )
     )
@@ -226,9 +226,9 @@ def generate_launch_description():
         control_node,
         robot_state_pub_node,
         foxglove_bridge,
-        left_balancing_pid_controller_spawner,
+        left_pitch_pid_controller_spawner,
         delay_left_velocity_controller_spawner_after_balancing_controller_spawner,
-        right_balancing_pid_controller_spawner,
+        right_pitch_pid_controller_spawner,
         delay_right_velocity_controller_spawner_after_balancing_controller_spawner,
         # delay_diffdrive_after_pid_controller_spawner,
         balancing_controller,
