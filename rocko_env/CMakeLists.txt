@@ -96,6 +96,7 @@ install(PROGRAMS
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
   rocko_env/controllers/balancing/BalancingController.py
   rocko_env/controllers/joystick/Joystick.py
+  rocko_env/controllers/diffdrive/DiffDriveController.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

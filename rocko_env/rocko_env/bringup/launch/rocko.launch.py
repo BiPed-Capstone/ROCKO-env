@@ -217,9 +217,9 @@ def generate_launch_description():
         }]
     )
     
-    balancing_controller = Node(
+    diffdrive_controller = Node(
         package="rocko_env",
-        executable="BalancingController.py",
+        executable="DiffDriveController.py",
     )
 
     joystick = Node(
@@ -235,8 +235,7 @@ def generate_launch_description():
         delay_left_velocity_controller_spawner_after_balancing_controller_spawner,
         right_pitch_pid_controller_spawner,
         delay_right_velocity_controller_spawner_after_balancing_controller_spawner,
-        # delay_diffdrive_after_pid_controller_spawner,
-        balancing_controller,
+        diffdrive_controller,
         gyro,
         left_relative_encoder,
         right_relative_encoder,

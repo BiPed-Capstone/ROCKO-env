@@ -3,10 +3,8 @@
 import rclpy
 from rclpy.node import Node
 
-from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TwistStamped, Twist, Vector3
 from control_msgs.msg import MultiDOFCommand
-from rocko_interfaces.msg import Icm20948Data
 
 class DiffDriveController(Node):
 
@@ -33,11 +31,15 @@ class DiffDriveController(Node):
         self.wheel_radius = 0.072
 
     def command_controller(self):
+        twist = Twist()
+        twist.linear.x = 0
+        self.desired_robot_body_vector = twist
+        
         # Calculate velocities from body vector
         linear_vel = self.desired_robot_body_vector.linear.x
         angular_vel = self.desired_robot_body_vector.angular.z
-        left_vel = (linear_vel - angular_vel * self.wheel_separation / 2.0) / self.wheel_radius
-        right_vel = (linear_vel + angular_vel * self.wheel_separation / 2.0) / self.wheel_radius
+        left_vel = linear_vel - angular_vel
+        right_vel = linear_vel + angular_vel
         
         # Send setpoints to velocity PIDS
         left_velocity_msg = MultiDOFCommand()
@@ -55,7 +57,6 @@ class DiffDriveController(Node):
     def robot_body_vector_updated(self, msg):
         # Store desired robot body vector
         self.desired_robot_body_vector = msg.twist
-
 
 def main(args=None):
     rclpy.init(args=args)
