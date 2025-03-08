@@ -29,11 +29,9 @@ class DiffDriveController(Node):
         # Set up variables to hold robot parameters
         self.wheel_separation = 0.4368
         self.wheel_radius = 0.072
-
+        
     def command_controller(self):
-        twist = Twist()
-        twist.linear.x = 0
-        self.desired_robot_body_vector = twist
+        # self.desired_robot_body_vector.angular.z += 0.001
         
         # Calculate velocities from body vector
         linear_vel = self.desired_robot_body_vector.linear.x
