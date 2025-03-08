@@ -2,17 +2,22 @@
 
 import rclpy
 from rclpy.node import Node
+import numpy as np
 
 from geometry_msgs.msg import TwistStamped, Twist, Vector3
 from control_msgs.msg import MultiDOFCommand
+from std_msgs.msg import Float64
 
 class DiffDriveController(Node):
 
     def __init__(self):
         super().__init__('diff_drive_controller')
-        # Set up publishers to command controller
+        # Set up publishers to command pid controllers
         self.left_controller_topic = self.create_publisher(MultiDOFCommand, 'left_velocity_pid_controller/reference', 10)
         self.right_controller_topic = self.create_publisher(MultiDOFCommand, 'right_velocity_pid_controller/reference', 10)
+        # Publishers for feedforward
+        self.left_feedforward_topic = self.create_publisher(MultiDOFCommand, 'left_feedforward', 10)
+        self.right_feedforward_topic = self.create_publisher(MultiDOFCommand, 'right_feedforward', 10)
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.command_controller)
         
@@ -26,12 +31,12 @@ class DiffDriveController(Node):
         # Set up variables to hold data
         self.desired_robot_body_vector = Twist()
         
-        # Set up variables to hold robot parameters
-        self.wheel_separation = 0.4368
-        self.wheel_radius = 0.072
+        # Robot character numbers
+        self.wheel_radius_meters = 0.072
+        
         
     def command_controller(self):
-        # self.desired_robot_body_vector.angular.z += 0.001
+        # self.desired_robot_body_vector.angular.x = 1
         
         # Calculate velocities from body vector
         linear_vel = self.desired_robot_body_vector.linear.x
@@ -51,6 +56,16 @@ class DiffDriveController(Node):
         self.right_controller_topic.publish(right_velocity_msg)
         
         # Send velocities to pitch PID feedforwards
+        left_rad_sec = left_vel / self.wheel_radius_meters
+        right_rad_sec = right_vel / self.wheel_radius_meters
+        
+        left_feedforward_msg = Float64()
+        left_feedforward_msg.data = left_rad_sec
+        self.left_feedforward_topic.publish(left_feedforward_msg)
+        
+        right_feedforward_msg = Float64()
+        right_feedforward_msg.data = right_rad_sec
+        self.right_feedforward_topic.publish(right_feedforward_msg)
         
     def robot_body_vector_updated(self, msg):
         # Store desired robot body vector

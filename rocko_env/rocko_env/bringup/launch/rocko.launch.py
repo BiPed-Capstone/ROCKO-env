@@ -106,12 +106,6 @@ def generate_launch_description():
         executable="spawner",
         arguments=["joint_state_broadcaster"],
     )
-
-    diffdrive_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["diffbot_base_controller", "--param-file", robot_controllers],
-    )
     
     left_add_feedforward_controller_spawner = Node(
         package="controller_manager",
@@ -149,6 +143,12 @@ def generate_launch_description():
         )
     )
     
+    right_add_feedforward_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["right_add_feedforward_controller", "--param-file", robot_controllers],
+    )
+    
     right_pitch_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -161,10 +161,10 @@ def generate_launch_description():
         arguments=["right_velocity_pid_controller", "--param-file", robot_controllers],
     )
     
-    delay_right_after_left_spawner = (
+    delay_right_pitch_controller_spawner_after_add_feedforward_controller_spawner = (
         RegisterEventHandler(
             event_handler=OnProcessExit(
-                target_action=left_velocity_pid_controller_spawner,
+                target_action=right_add_feedforward_controller_spawner,
                 on_exit=[right_pitch_pid_controller_spawner],
             )
         )
@@ -175,15 +175,6 @@ def generate_launch_description():
             event_handler=OnProcessExit(
                 target_action=right_pitch_pid_controller_spawner,
                 on_exit=[right_velocity_pid_controller_spawner],
-            )
-        )
-    )
-    
-    delay_diffdrive_after_pid_controller_spawner = (
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=right_velocity_pid_controller_spawner,
-                on_exit=[diffdrive_spawner],
             )
         )
     )
@@ -244,7 +235,8 @@ def generate_launch_description():
         left_add_feedforward_controller_spawner,
         delay_left_pitch_controller_spawner_after_add_feedforward_controller_spawner,
         delay_left_velocity_controller_spawner_after_balancing_controller_spawner,
-        right_pitch_pid_controller_spawner,
+        delay_right_pitch_controller_spawner_after_add_feedforward_controller_spawner,
+        right_add_feedforward_controller_spawner,
         delay_right_velocity_controller_spawner_after_balancing_controller_spawner,
         diffdrive_controller,
         gyro,

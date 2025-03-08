@@ -1,5 +1,5 @@
 <library path="rocko_env">
-  <class name="rocko_env/AddFeedforwardController" type="rocko_env::AddFeedforwardController" base_class_type="controller_interface::ControllerInterface">
+  <class name="rocko_env/AddFeedforwardController" type="rocko_env::AddFeedforwardController" base_class_type="controller_interface::ChainableControllerInterface">
   <description>
     The BalancingController takes in a robot body vector and moves according to that vector while maintaining balance.
   </description>
