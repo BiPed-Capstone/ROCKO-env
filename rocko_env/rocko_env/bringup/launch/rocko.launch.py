@@ -113,6 +113,12 @@ def generate_launch_description():
         arguments=["diffbot_base_controller", "--param-file", robot_controllers],
     )
     
+    left_add_feedforward_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["left_add_feedforward_controller", "--param-file", robot_controllers],
+    )
+    
     left_pitch_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -123,6 +129,15 @@ def generate_launch_description():
         package="controller_manager",
         executable="spawner",
         arguments=["left_velocity_pid_controller", "--param-file", robot_controllers],
+    )
+    
+    delay_left_pitch_controller_spawner_after_add_feedforward_controller_spawner = (
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=left_add_feedforward_controller_spawner,
+                on_exit=[left_pitch_pid_controller_spawner],
+            )
+        )
     )
     
     delay_left_velocity_controller_spawner_after_balancing_controller_spawner = (
@@ -231,7 +246,8 @@ def generate_launch_description():
         control_node,
         robot_state_pub_node,
         foxglove_bridge,
-        left_pitch_pid_controller_spawner,
+        left_add_feedforward_controller_spawner,
+        delay_left_pitch_controller_spawner_after_add_feedforward_controller_spawner,
         delay_left_velocity_controller_spawner_after_balancing_controller_spawner,
         right_pitch_pid_controller_spawner,
         delay_right_velocity_controller_spawner_after_balancing_controller_spawner,

@@ -17,6 +17,8 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp_lifecycle
   rclpy
   rocko_interfaces
+  generate_parameter_library
+  parameter_traits
 )
 
 # Specify the required version of ros2_control
@@ -35,6 +37,10 @@ foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
 
+generate_parameter_library(add_feedforward_controller_parameters
+  rocko_env/controllers/add_feedforward/add_feedforward_controller_parameters.yaml
+)
+
 ## COMPILE
 add_library(
   rocko_env
@@ -42,27 +48,35 @@ add_library(
   # Hardware .cpp files
   rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp
   rocko_env/hardware/sensors/icm20948/ICM20948.cpp
-  # Controller .cpp files
   rocko_env/hardware/WiringPi/wiringPi.h
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp
+  # Controller .cpp files
+  rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp
 )
+
 target_compile_features(rocko_env PUBLIC cxx_std_17)
+
+ament_target_dependencies(
+  rocko_env PUBLIC
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
+)
+
 target_include_directories(rocko_env PUBLIC
 # paths to hardware include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
 # Paths to controller include folders
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/balancing/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/joystick/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
-ament_target_dependencies(
-  rocko_env PUBLIC
-  ${THIS_PACKAGE_INCLUDE_DEPENDS}
-)
+
 find_library(WIRINGPI_LIBRARIES NAMES wiringPi)
-target_link_libraries(rocko_env PRIVATE Python::Python ${WIRINGPI_LIBRARIES})
+target_link_libraries(rocko_env PUBLIC 
+                        Python::Python 
+                        ${WIRINGPI_LIBRARIES} 
+                        add_feedforward_controller_parameters)
 
 # Export plugins
 pluginlib_export_plugin_description_file(hardware_interface rocko_env_hardware.xml)
@@ -70,18 +84,24 @@ pluginlib_export_plugin_description_file(controller_interface rocko_env_controll
 
 # INSTALL
 install(
-  DIRECTORY rocko_env/hardware/motors/include/ rocko_env/hardware/sensors/icm20948/include/ rocko_env/hardware/sensors/quadEncoder/include/ 
+  DIRECTORY rocko_env/hardware/motors/include/ 
+            rocko_env/hardware/sensors/icm20948/include/ 
+            rocko_env/hardware/sensors/quadEncoder/include/ 
+            rocko_env/controllers/add_feedforward/include/
   DESTINATION include
 )
 install(
-  DIRECTORY rocko_env/description/launch rocko_env/description/ros2_control rocko_env/description/urdf
+  DIRECTORY rocko_env/description/launch 
+            rocko_env/description/ros2_control 
+            rocko_env/description/urdf
   DESTINATION share/rocko_env
 )
 install(
-  DIRECTORY rocko_env/bringup/launch rocko_env/bringup/config
+  DIRECTORY rocko_env/bringup/launch 
+            rocko_env/bringup/config
   DESTINATION share/rocko_env
 )
-install(TARGETS rocko_env
+install(TARGETS rocko_env add_feedforward_controller_parameters
   EXPORT export_rocko_env
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
