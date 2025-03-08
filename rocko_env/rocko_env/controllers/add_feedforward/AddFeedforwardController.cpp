@@ -16,11 +16,18 @@
 #include "controller_interface/helpers.hpp"
 #include "pluginlib/class_list_macros.hpp"
 
+#include <memory>
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+using std::placeholders::_1;
+
 namespace rocko_env
 {
 
 controller_interface::CallbackReturn AddFeedforwardController::on_init()
 {
+  RCLCPP_INFO(this->get_node()->get_logger(), "load successful");
   try
   {
     param_listener_ = std::make_shared<add_feedforward_controller::ParamListener>(get_node());
@@ -31,6 +38,11 @@ controller_interface::CallbackReturn AddFeedforwardController::on_init()
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
     return controller_interface::CallbackReturn::ERROR;
   }
+
+  // set up subscriber for feedforward data
+  subscription_ = get_node()->create_subscription<std_msgs::msg::Float64>(
+    params_.feedforward_topic_name, 10, std::bind(&AddFeedforwardController::topic_callback, this, _1));
+
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
@@ -54,7 +66,6 @@ controller_interface::InterfaceConfiguration AddFeedforwardController::state_int
 controller_interface::CallbackReturn AddFeedforwardController::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  params_ = param_listener_->get_params();
   command_interface_names_ = params_.interfaces;
 
   joints_cmd_sub_ = this->get_node()->create_subscription<DataType>(
@@ -136,7 +147,7 @@ controller_interface::return_type AddFeedforwardController::update_and_write_com
   {
     if (!std::isnan(reference_interfaces_[i]))
     {
-      command_interfaces_[i].set_value(reference_interfaces_[i]);
+      command_interfaces_[i].set_value(reference_interfaces_[i] + _feedforward);
     }
   }
 

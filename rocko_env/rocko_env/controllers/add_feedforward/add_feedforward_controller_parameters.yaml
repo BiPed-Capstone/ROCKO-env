@@ -8,3 +8,9 @@ add_feedforward_controller:
           unique<>: null,
         }
   }
+
+  feedforward_topic_name: {
+    type: string,
+    default_value: "feedforward",
+    description: "Topic name that the user uses to give the feedforward value to be added to the output of the controller",
+  }

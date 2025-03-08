@@ -59,8 +59,8 @@ controller_manager:
 left_add_feedforward_controller:
   ros__parameters:
     type: rocko_env/AddFeedforwardController
-    joints:
-      - left_wheel_joint
+    interfaces: [left_wheel_joint/velocity]
+    feedforward_topic_name: "left_feedforward"
 
 left_pitch_pid_controller:
   ros__parameters:
@@ -75,13 +75,13 @@ left_pitch_pid_controller:
       - left_wheel_joint
 
     gains:
-      left_wheel_joint:   {p: 20.0, i: 0.0, d: 0.5, i_clamp_max: 5.0, i_clamp_min: -5.0}
+      left_add_feedforward_controller/left_wheel_joint:   {p: 20.0, i: 0.0, d: 0.5, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
 left_velocity_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
-      - left_pitch_pid_controller/left_add_feedforward_controllerleft_wheel_joint
+      - left_pitch_pid_controller/left_wheel_joint
     
     command_interface: pitch
 
@@ -92,11 +92,17 @@ left_velocity_pid_controller:
     gains:
       left_pitch_pid_controller/left_wheel_joint:   {p: -1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
+right_add_feedforward_controller:
+  ros__parameters:
+    type: rocko_env/AddFeedforwardController
+    interfaces: [right_wheel_joint/velocity]
+    feedforward_topic_name: "right_feedforward"
+
 right_pitch_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
-      - right_wheel_joint
+      - right_add_feedforward_controller/right_wheel_joint
 
     command_interface: velocity
 
@@ -105,7 +111,7 @@ right_pitch_pid_controller:
       - right_wheel_joint
 
     gains:
-      right_wheel_joint:  {p: 23.0, i: 0.0, d: 0.5, i_clamp_max: 5.0, i_clamp_min: -5.0}
+      right_add_feedforward_controller/right_wheel_joint:  {p: 23.0, i: 0.0, d: 0.5, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
 right_velocity_pid_controller:
   ros__parameters:
