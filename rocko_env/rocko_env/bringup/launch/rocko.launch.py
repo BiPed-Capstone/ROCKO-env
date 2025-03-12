@@ -222,6 +222,11 @@ def generate_launch_description():
         executable="BalancingController.py",
     )
 
+    ratelimiting_controller = Node(
+        package="rocko_env",
+        executable="RateLimitingController.py",
+    )
+
     nodes = [
         control_node,
         robot_state_pub_node,
@@ -232,6 +237,7 @@ def generate_launch_description():
         delay_right_velocity_controller_spawner_after_balancing_controller_spawner,
         # delay_diffdrive_after_pid_controller_spawner,
         balancing_controller,
+        ratelimiting_controller,
         gyro,
         left_relative_encoder,
         right_relative_encoder,
