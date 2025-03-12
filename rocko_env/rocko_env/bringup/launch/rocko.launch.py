@@ -228,6 +228,11 @@ def generate_launch_description():
         executable="DiffDriveController.py",
     )
 
+    ratelimiting_controller = Node(
+        package="rocko_env",
+        executable="RateLimitingController.py",
+    )
+
     nodes = [
         control_node,
         robot_state_pub_node,
