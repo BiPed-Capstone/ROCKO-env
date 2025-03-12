@@ -232,6 +232,11 @@ def generate_launch_description():
         package="rocko_env",
         executable="Joystick.py",
     )
+    
+    ratelimiting_controller = Node(
+        package="rocko_env",
+        executable="RateLimitingController.py",
+    )
 
     nodes = [
         control_node,

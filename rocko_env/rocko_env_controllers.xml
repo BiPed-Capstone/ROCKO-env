@@ -7,6 +7,9 @@
     <class name="rocko_env/Joystick" type="rocko_env::Joystick" base_class_type="controller_interface::ControllerInterface">
   <description>
     The Joystick accepts joystick input via socket and converts it to a velocity vector.
+  <class name="rocko_env/RateLimitingController" type="rocko_env::RateLimitingController" base_class_type="controller_interface::ControllerInterface">
+  <description>
+    The RateLimitingController takes in a linear velocity and limits its output such that motors using the output will not unnecessariy "jump" or vibrate.
   </description>
   </class>
 </library>
