@@ -69,6 +69,7 @@ pluginlib_export_plugin_description_file(hardware_interface rocko_env_hardware.x
 pluginlib_export_plugin_description_file(controller_interface rocko_env_controllers.xml)
 
 # INSTALL
+# HARDWARE INSTALL BLOCK BELOW
 install(
   DIRECTORY rocko_env/hardware/motors/include/ rocko_env/hardware/sensors/icm20948/include/ rocko_env/hardware/sensors/quadEncoder/include/ 
   DESTINATION include
