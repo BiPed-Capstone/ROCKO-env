@@ -122,6 +122,7 @@ class RateLimiter:
             dv_clamped = max(dv_min, min(dv, dv_max))
             v = v0 + dv_clamped
         return v
+    
     """ Only limit jerk when accelerating or reverse_accelerating
     // Note: this prevents oscillating closed-loop behavior, see discussion
     // details in https://github.com/ros-controls/control_toolbox/issues/240."""
