@@ -27,8 +27,10 @@ class Joystick(Node):
         self.get_logger().info("Joystick connected!")
         self.client_sock.setblocking(False)
 
-        # Set up publisher to command controller
+        # Set up publisher 
         self.joystick_topic = self.create_publisher(Joy, 'joystick', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.receive_joystick_data)
                 
@@ -36,6 +38,10 @@ class Joystick(Node):
         # self.left_vel = 0
         # self.right_vel = 0
         # self.desired_robot_body_vector = Twist()
+
+        self.linear_scale = 1.0  
+        self.angular_scale = 1.0  
+        self.deadband = 0.05  
 
 
 
@@ -60,13 +66,32 @@ class Joystick(Node):
             # self.get_logger().info(f"\nJoystick Buttons: {list(msg1.buttons)}")
 
             self.joystick_topic.publish(msg1)
+
+            self.convert_to_twist(msg1)
+
         except BlockingIOError:
             return
 
 
-    def robot_body_vector_updated(self, msg):
-        # Store desired robot body vector
-        self.desired_robot_body_vector = msg.twist
+    def convert_to_twist(self, msg):
+
+        twist = Twist()
+
+        linear_axis = 1
+        angular_axis = 0
+        linear_value = joy_msg.axes[linear_axis]
+        angular_value = joy_msg.axes[angular_axis]
+        if abs(linear_value) < self.deadband:
+            linear_value = 0.0
+        if abs(angular_value) < self.deadband:
+            angular_value = 0.0
+
+        twist.linear.x = linear_value * self.linear_scale
+        twist.angular.z = angular_value * self.angular_scale
+
+        self.cmd_vel_pub.publish(twist)
+
+        self.get_logger().info(f"Twist: Linear- {twist.linear.x:.2f}, Angular- {twist.angular.z:.2f}")
 
 
 def main(args=None):
