@@ -16,8 +16,8 @@ class DiffDriveController(Node):
         self.left_controller_topic = self.create_publisher(MultiDOFCommand, 'left_velocity_pid_controller/reference', 10)
         self.right_controller_topic = self.create_publisher(MultiDOFCommand, 'right_velocity_pid_controller/reference', 10)
         # Publishers for feedforward
-        self.left_feedforward_topic = self.create_publisher(MultiDOFCommand, 'left_feedforward', 10)
-        self.right_feedforward_topic = self.create_publisher(MultiDOFCommand, 'right_feedforward', 10)
+        self.left_feedforward_topic = self.create_publisher(Float64, 'left_feedforward', 10)
+        self.right_feedforward_topic = self.create_publisher(Float64, 'right_feedforward', 10)
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.command_controller)
         
@@ -36,7 +36,7 @@ class DiffDriveController(Node):
         
         
     def command_controller(self):
-        # self.desired_robot_body_vector.angular.x = 1
+        self.desired_robot_body_vector.linear.x = 1
         
         # Calculate velocities from body vector
         linear_vel = self.desired_robot_body_vector.linear.x

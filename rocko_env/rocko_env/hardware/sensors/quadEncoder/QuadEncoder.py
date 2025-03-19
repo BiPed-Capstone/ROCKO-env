@@ -28,15 +28,15 @@ class QuadEncoder(Node):
         # self.srv = self.create_service(QuadEncoderData, service_name, self.callback)
 
 
-    # def callback(self, request, response):
-    #     # Interact with hardware here based on info in request (if there is any)
-    #     position = self.enc.read() / self.meters_conversion
-    #     velocity = (position - self.last_position) / 0.01
-    #     response.position = position
-    #     response.velocity = velocity
+    def callback(self, request, response):
+        # Interact with hardware here based on info in request (if there is any)
+        # position = self.enc.read() / self.meters_conversion
+        # velocity = (position - self.last_position) / 0.01
+        # response.position = position
+        # response.velocity = velocity
 
-        self.last_position = position
-        response.velocity = 2.0
+        # self.last_position = position
+        response.velocity = -1.0
 
     #     return response
 

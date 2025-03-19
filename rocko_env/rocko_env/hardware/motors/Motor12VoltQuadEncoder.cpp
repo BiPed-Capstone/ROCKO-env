@@ -92,7 +92,7 @@ namespace rocko_env
 
     // _wheel.setup(info.joints[0].name, 0);
 
-    // // Set up pins to have WiringPi numberings
+    // Set up pins to have WiringPi numberings
     // wiringPiSetup();
 
     // // Set up client to get encoder data
@@ -162,8 +162,8 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Stop PWM here
-    softPwmWrite(_speedPin, 0);
-    softPwmStop(_speedPin);
+    // softPwmWrite(_speedPin, 0);
+    // softPwmStop(_speedPin);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -199,20 +199,22 @@ namespace rocko_env
     double radPerSec = _wheel.cmd; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
     int pwmVal = (std::sqrt(std::abs((radPerSec / MAX_RAD_PER_SEC))) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
 
-    // // Set direction
-    // if (_wheel.cmd >= 0)
-    // {
-    //   digitalWrite(_dirPin, !_invert);
-    // }
-    // else
-    // {
-    //   digitalWrite(_dirPin, _invert);
-    // }
+    // Set direction
+    if (_wheel.cmd >= 0)
+    {
+      // digitalWrite(_dirPin, !_invert);
+    }
+    else
+    {
+      // digitalWrite(_dirPin, _invert);
+    }
 
-    // // Set speed
-    // softPwmWrite(_speedPin, pwmVal);
+    // Set speed if above threshold
+    if (pwmVal > 2) {
+      // softPwmWrite(_speedPin, pwmVal);
+    }
 
-    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
 
     return hardware_interface::return_type::OK;
   }
