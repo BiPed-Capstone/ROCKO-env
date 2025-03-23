@@ -214,7 +214,7 @@ namespace rocko_env
       // softPwmWrite(_speedPin, pwmVal);
     }
 
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
+    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
 
     return hardware_interface::return_type::OK;
   }
