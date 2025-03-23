@@ -68,7 +68,6 @@ $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/incl
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
 # Paths to controller include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/include>
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/ratelimiting>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 
@@ -115,9 +114,8 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   rocko_env/hardware/sensors/icm20948/ICM20948.py
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
-  rocko_env/controllers/balancing/BalancingController.py
   rocko_env/controllers/diffdrive/DiffDriveController.py
-  rocko_env/controllers/ratelimiting/RateLimitingController.py
+  rocko_env/controllers/utils/RateLimiter.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
