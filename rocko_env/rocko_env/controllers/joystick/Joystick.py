@@ -79,8 +79,8 @@ class Joystick(Node):
 
         linear_axis = 1
         angular_axis = 0
-        linear_value = joy_msg.axes[linear_axis]
-        angular_value = joy_msg.axes[angular_axis]
+        linear_value = msg.axes[linear_axis]
+        angular_value = msg.axes[angular_axis]
         if abs(linear_value) < self.deadband:
             linear_value = 0.0
         if abs(angular_value) < self.deadband:
