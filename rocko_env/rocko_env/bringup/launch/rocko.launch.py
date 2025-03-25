@@ -147,7 +147,6 @@ def generate_launch_description():
         joystick,
         controller_spawner,
         diffdrive_controller,
-        joystick
     ]
 
     return LaunchDescription(declared_arguments + nodes)
