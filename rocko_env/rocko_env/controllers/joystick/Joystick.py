@@ -29,7 +29,7 @@ class Joystick(Node):
 
         # Set up publisher 
         self.joystick_topic = self.create_publisher(Joy, 'joystick', 10)
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.robot_body_vector_updated_topic = self.create_publisher(Twist, 'robot_body_vector', 10)
 
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.receive_joystick_data)
@@ -89,7 +89,7 @@ class Joystick(Node):
         twist.linear.x = linear_value * self.linear_scale
         twist.angular.z = angular_value * self.angular_scale
 
-        self.cmd_vel_pub.publish(twist)
+        self.robot_body_vector_updated_topic.publish(twist)
 
         self.get_logger().info(f"Twist: Linear- {twist.linear.x:.2f}, Angular- {twist.angular.z:.2f}")
 
