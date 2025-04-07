@@ -93,7 +93,7 @@ namespace rocko_env
     _wheel.setup(info.joints[0].name, 0);
 
     // Set up pins to have WiringPi numberings
-    // wiringPiSetup();
+    wiringPiSetup();
 
     // Set up client to get encoder data
     _prefix = info.joints[0].name;
@@ -120,8 +120,8 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /* previous_state */)
   {
     // Set up the speed pin to be PWM and the dir pin to be output
-    // pinMode(_speedPin, SOFT_PWM_OUTPUT);
-    // pinMode(_dirPin, OUTPUT);
+    pinMode(_speedPin, SOFT_PWM_OUTPUT);
+    pinMode(_dirPin, OUTPUT);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -153,7 +153,7 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Set up PWM
-    // softPwmCreate(_speedPin, 0, 100);
+    softPwmCreate(_speedPin, 0, 100);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -162,8 +162,8 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Stop PWM here
-    // softPwmWrite(_speedPin, 0);
-    // softPwmStop(_speedPin);
+    softPwmWrite(_speedPin, 0);
+    softPwmStop(_speedPin);
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -202,16 +202,16 @@ namespace rocko_env
     // Set direction
     if (_wheel.cmd >= 0)
     {
-      // digitalWrite(_dirPin, !_invert);
+      digitalWrite(_dirPin, !_invert);
     }
     else
     {
-      // digitalWrite(_dirPin, _invert);
+      digitalWrite(_dirPin, _invert);
     }
 
     // Set speed if above threshold
     if (pwmVal > 2) {
-      // softPwmWrite(_speedPin, pwmVal);
+      softPwmWrite(_speedPin, pwmVal);
     }
 
     // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
