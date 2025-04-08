@@ -77,14 +77,16 @@ class ICM20948(Node):
             angles = np.degrees(Quaternion(current_q).to_angles())
             
             if (angles[0] > 0): 
-                angles[0] += 180
-            else: 
                 angles[0] -= 180
+            else: 
+                angles[0] += 180
 
+            # Invert angle
+            angles[0] *= -1
             # Prepare data for sending
             response.yaw = angles[2]
             response.roll = angles[1]
-            response.pitch = angles[0] - 1.0
+            response.pitch = angles[0] + 3.5
         except:
             self.get_logger().warn("Unable to read gyro data this cycle")
                 

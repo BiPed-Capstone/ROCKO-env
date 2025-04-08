@@ -32,7 +32,7 @@ class DiffDriveController(Node):
         self.desired_robot_body_vector = Twist()
         
         # Robot character numbers
-        self.wheel_radius_meters = 0.072
+        self.wheel_radius_meters = 0.06
         
         # Configure RateLimiter
         # TODO: all of these are completely arbitrary rn. use foxglove to moderate
@@ -60,7 +60,6 @@ class DiffDriveController(Node):
         self.init = False # error-proofing for not importing an automatic 0
         
     def command_controller(self):
-        self.desired_robot_body_vector.linear.x = 1
         # if not self.init:
         #     return
         
