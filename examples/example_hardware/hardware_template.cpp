@@ -17,6 +17,9 @@
 
 namespace rocko_env
 {
+
+// This file does not contain all the methods described in https://control.ros.org/rolling/doc/ros2_control/hardware_interface/doc/writing_new_hardware_component.html
+// because some of the methods are not needed in the current implementation
 hardware_interface::CallbackReturn <CLASS_NAME>::on_init(
   const hardware_interface::HardwareInfo & info)
 {

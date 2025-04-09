@@ -1,4 +1,3 @@
-
 # TODO: Replace all uses of <ClassName> with the name of your class
 class <ClassName>(Node):
 
