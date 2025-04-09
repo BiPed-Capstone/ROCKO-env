@@ -1,11 +1,12 @@
-controller_manager:
+# This file contains parameters for the controllers
+controller_manager: # ros2_control Controller Manager (https://control.ros.org/rolling/doc/ros2_control/controller_manager/doc/userdoc.html)
   ros__parameters:
     update_rate: 50  # Hz
   
-    joint_state_broadcaster:
+    joint_state_broadcaster: # Set up joint_state_broadcaster to read and report all state interfaces
       type: joint_state_broadcaster/JointStateBroadcaster
 
-diffbot_base_controller:
+diffbot_base_controller: # ros2_control Diff Drive Controller (https://control.ros.org/rolling/doc/ros2_controllers/diff_drive_controller/doc/userdoc.html)
   ros__parameters:
     type: diff_drive_controller/DiffDriveController
 
@@ -20,7 +21,7 @@ diffbot_base_controller:
     left_wheel_radius_multiplier: 1.0
     right_wheel_radius_multiplier: 1.0
 
-    publish_rate: 50.0
+    publish_rate: 50.0 # Hz
     odom_frame_id: odom
     base_frame_id: base_link
     pose_covariance_diagonal : [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
@@ -56,7 +57,7 @@ diffbot_base_controller:
     angular.z.max_jerk: 0.0
     angular.z.min_jerk: 0.0
 
-left_balancing_pid_controller:
+left_balancing_pid_controller: # ros2_control PID Controller
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
@@ -68,14 +69,14 @@ left_balancing_pid_controller:
     reference_and_state_dof_names:
       - left_wheel_joint
 
-    gains:
+    gains: # tune PID here
       left_wheel_joint:   {p: 20.0, i: 0.0, d: 0.5, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
 left_velocity_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
-      - left_balancing_pid_controller/left_wheel_joint
+      - left_balancing_pid_controller/left_wheel_joint # uses result of balancing pid controller
     
     command_interface: pitch
 
@@ -83,10 +84,10 @@ left_velocity_pid_controller:
     reference_and_state_dof_names:
       - left_wheel_joint
 
-    gains:
+    gains: # tune PID here
       left_balancing_pid_controller/left_wheel_joint:   {p: -1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
-right_balancing_pid_controller:
+right_balancing_pid_controller: # ros2_control PID Controller
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
@@ -98,14 +99,14 @@ right_balancing_pid_controller:
     reference_and_state_dof_names:
       - right_wheel_joint
 
-    gains:
+    gains: # tune PID here
       right_wheel_joint:  {p: 23.0, i: 0.0, d: 0.5, i_clamp_max: 5.0, i_clamp_min: -5.0}
 
 right_velocity_pid_controller:
   ros__parameters:
     type: pid_controller/PidController
     dof_names:
-      - right_balancing_pid_controller/right_wheel_joint
+      - right_balancing_pid_controller/right_wheel_joint # uses result of balancing pid controller
     
     command_interface: pitch
 
@@ -113,5 +114,5 @@ right_velocity_pid_controller:
     reference_and_state_dof_names:
       - right_wheel_joint
 
-    gains:
+    gains: # tune PID here
       right_balancing_pid_controller/right_wheel_joint:  {p: -1.0, i: 0.0, d: 0.0, i_clamp_max: 5.0, i_clamp_min: -5.0}
