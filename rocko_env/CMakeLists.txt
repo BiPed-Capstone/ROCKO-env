@@ -5,10 +5,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang)")
   add_compile_options(-Wall -Wextra)
 endif()
 
-# set the same behavior for windows as it is on linux
+# Set the same behavior for Windows as it is on Linux
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-# find dependencies
+# Set list of dependencies specific to rocko_env
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   hardware_interface
   controller_interface
@@ -26,7 +26,7 @@ if(NOT controller_manager_FOUND)
   message(FATAL_ERROR "ros2_control version 4.0.0 or higher is required. ")
 endif()
 
-# find dependencies
+# Find other package dependencies
 find_package(backward_ros REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
@@ -48,7 +48,7 @@ add_library(
 )
 target_compile_features(rocko_env PUBLIC cxx_std_17)
 target_include_directories(rocko_env PUBLIC
-# paths to hardware include folders
+# Paths to hardware include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
@@ -60,26 +60,32 @@ ament_target_dependencies(
   rocko_env PUBLIC
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
+
+# WiringPi library (for GPIO and Raspberry Pi)
 find_library(WIRINGPI_LIBRARIES NAMES wiringPi)
 target_link_libraries(rocko_env PRIVATE Python::Python ${WIRINGPI_LIBRARIES})
 
-# Export plugins
+# Export hardware and controller plugins
 pluginlib_export_plugin_description_file(hardware_interface rocko_env_hardware.xml)
 pluginlib_export_plugin_description_file(controller_interface rocko_env_controllers.xml)
 
 # INSTALL
+# Hardware
 install(
   DIRECTORY rocko_env/hardware/motors/include/ rocko_env/hardware/sensors/icm20948/include/ rocko_env/hardware/sensors/quadEncoder/include/ 
   DESTINATION include
 )
+# Robot description
 install(
   DIRECTORY rocko_env/description/launch rocko_env/description/ros2_control rocko_env/description/urdf
   DESTINATION share/rocko_env
 )
+# Bringup files
 install(
   DIRECTORY rocko_env/bringup/launch rocko_env/bringup/config
   DESTINATION share/rocko_env
 )
+# Targets
 install(TARGETS rocko_env
   EXPORT export_rocko_env
   ARCHIVE DESTINATION lib
@@ -90,6 +96,7 @@ install(TARGETS rocko_env
 # Python stuff
 ament_python_install_package(${PROJECT_NAME})
 
+# Sensor and controller files
 install(PROGRAMS
   rocko_env/hardware/sensors/icm20948/ICM20948.py
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
