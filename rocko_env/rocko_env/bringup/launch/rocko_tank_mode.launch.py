@@ -49,7 +49,7 @@ def generate_launch_description():
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution(
-                [FindPackageShare("rocko_env"), "urdf", "rocko.urdf.xacro"]
+                [FindPackageShare("rocko_env"), "urdf", "rocko_tank_mode.urdf.xacro"]
             ),
             " ",
             "use_mock_hardware:=",
@@ -77,7 +77,7 @@ def generate_launch_description():
     )
 
     robot_state_pub_node = Node(
-        pacakge="robot_state_publisher",
+        package="robot_state_publisher",
         executable="robot_state_publisher",
         output="both",
         parameters=[robot_description],
@@ -100,7 +100,7 @@ def generate_launch_description():
     )
 
     diffdrive_spawner = Node(
-        pacakge="controller_manager",
+        package="controller_manager",
         executable="spawner",
         arguments=["diffbot_base_controller", "--param-file", robot_controllers],
     )
