@@ -133,6 +133,11 @@ def generate_launch_description():
             "b_pin": 16
         }]
     )
+    
+    joystick = Node(
+        package="rocko_env",
+        executable="Joystick.py",
+    )
 
     nodes = [
         control_node,
@@ -142,6 +147,7 @@ def generate_launch_description():
         delay_joint_state_broadcaster_after_robot_controller_spawner,
         left_relative_encoder,
         right_relative_encoder,
+        joystick,
     ]
 
     return LaunchDescription(declared_arguments + nodes)

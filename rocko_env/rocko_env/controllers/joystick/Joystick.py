@@ -29,7 +29,7 @@ class Joystick(Node):
 
         # Set up publisher 
         self.joystick_topic = self.create_publisher(Joy, 'joystick', 10)
-        self.robot_body_vector_updated_topic = self.create_publisher(Twist, 'robot_body_vector', 10)
+        self.robot_body_vector_updated_topic = self.create_publisher(TwistStamped, 'diffbot_base_controller/cmd_vel', 10)
 
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.receive_joystick_data)
@@ -65,9 +65,9 @@ class Joystick(Node):
             # self.get_logger().info(f"\nJoystick Axes: {list(msg1.axes)}")
             # self.get_logger().info(f"\nJoystick Buttons: {list(msg1.buttons)}")
 
+            self.convert_to_twist(msg1)
             self.joystick_topic.publish(msg1)
 
-            self.convert_to_twist(msg1)
 
         except BlockingIOError:
             return
@@ -75,7 +75,7 @@ class Joystick(Node):
 
     def convert_to_twist(self, msg):
 
-        twist = Twist()
+        twist = TwistStamped()
 
         linear_axis = 1
         angular_axis = 0
@@ -86,12 +86,12 @@ class Joystick(Node):
         if abs(angular_value) < self.deadband:
             angular_value = 0.0
 
-        twist.linear.x = linear_value * self.linear_scale
-        twist.angular.z = angular_value * self.angular_scale
+        twist.twist.linear.x = linear_value * self.linear_scale
+        twist.twist.angular.z = angular_value * self.angular_scale
 
         self.robot_body_vector_updated_topic.publish(twist)
 
-        self.get_logger().info(f"Twist: Linear- {twist.linear.x:.2f}, Angular- {twist.angular.z:.2f}")
+        self.get_logger().info(f"Twist: Linear- {twist.twist.linear.x:.2f}, Angular- {twist.twist.angular.z:.2f}")
 
 
 def main(args=None):
