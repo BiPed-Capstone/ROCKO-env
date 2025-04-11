@@ -57,8 +57,8 @@ class ICM20948(Node):
         #     for i in range(3):
         #         self.calibration_results.append(0)
 
-        # Create a new service called /icm20948_data for posting IMU positional data
-        self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
+    #     # Create a new service called /icm20948_data for posting IMU positional data
+    #     self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
 
 
     def imu_callback(self, request, response):
@@ -86,7 +86,7 @@ class ICM20948(Node):
         # response.pitch = angles[0] - 1.0
         response.pitch = 2.0
                 
-        return response
+    #     return response
 
 def main(args=None):
     rclpy.init(args=args)

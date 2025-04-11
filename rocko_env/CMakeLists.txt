@@ -67,6 +67,7 @@ $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
 # Paths to controller include folders
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/joystick/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
@@ -116,6 +117,7 @@ install(PROGRAMS
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
   rocko_env/controllers/diffdrive/DiffDriveController.py
   rocko_env/controllers/utils/RateLimiter.py
+  rocko_env/controllers/joystick/Joystick.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

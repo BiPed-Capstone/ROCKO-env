@@ -23,7 +23,7 @@ class DiffDriveController(Node):
         
         # Set up subscriber to get robot body vector
         self.robot_body_vector_updated_topic = self.create_subscription(
-            MultiDOFCommand,
+            Twist,
             'robot_body_vector',
             self.robot_body_vector_updated,
             10)
