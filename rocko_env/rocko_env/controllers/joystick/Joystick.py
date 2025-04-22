@@ -34,6 +34,8 @@ class Joystick(Node):
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.receive_joystick_data)
                 
+        self.prev_joystick = Joy()
+        
         # # Set up variables to hold data
         # self.left_vel = 0
         # self.right_vel = 0
@@ -49,6 +51,7 @@ class Joystick(Node):
         num_axes = 6
         num_buttons = 16
         buffer_size = struct.calcsize(f"{num_axes}f {num_buttons}B")
+        self.convert_to_twist(self.prev_joystick)
 
         try:
             data = self.client_sock.recv(buffer_size)
@@ -65,8 +68,10 @@ class Joystick(Node):
             # self.get_logger().info(f"\nJoystick Axes: {list(msg1.axes)}")
             # self.get_logger().info(f"\nJoystick Buttons: {list(msg1.buttons)}")
 
+            self.prev_joystick = msg1
             self.convert_to_twist(msg1)
             self.joystick_topic.publish(msg1)
+            
 
 
         except BlockingIOError:
