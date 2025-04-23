@@ -86,7 +86,7 @@ class ICM20948(Node):
             # Prepare data for sending
             response.yaw = angles[2]
             response.roll = angles[1]
-            response.pitch = angles[0] + 3.5
+            response.pitch = angles[0] + 11
         except:
             self.get_logger().warn("Unable to read gyro data this cycle")
                 
