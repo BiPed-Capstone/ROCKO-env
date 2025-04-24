@@ -28,7 +28,7 @@ class ICM20948(Node):
         self.use_hard_offsets = False # set to True if you want to loop in external calibrations
 
         # Take 100 samples and feed them to ekf algorithm to give us the initial position
-        num_calib_samples = 100
+        num_calib_samples = 1000
         gyr_arr = np.zeros((num_calib_samples, 3))
         acc_arr = np.zeros((num_calib_samples, 3))
         for i in range(0, num_calib_samples):
@@ -38,10 +38,14 @@ class ICM20948(Node):
             # Wait for 10ms for new data to be gathered
             sleep(0.01)
 
-        # Calculate median
-        self.madgwick = Madgwick(gyr_arr, acc_arr)
-        self.prev_q = np.median(self.madgwick.Q, axis=0)
-        self.zero_q = self.prev_q
+        self.madgwick = Madgwick(gyr_arr, acc_arr, gain=0.085)
+        self.prev_q = self.madgwick.Q[len(self.madgwick.Q) - 1]
+        self.zero_q = np.degrees(Quaternion([0.00787431, -0.99917258, -0.03971284, 0.00387713]).to_angles())
+        
+        if (self.zero_q[0] > 0): 
+            self.zero_q[0] -= 180
+        else: 
+            self.zero_q[0] += 180
 
         # Check filesystem for accelerometer calibration data
         path = os.path.join('calibration', 'hard_offset')
@@ -70,9 +74,9 @@ class ICM20948(Node):
                 for i in range(3):
                     a[i] = a[i] + self.calibration_results[i]
 
-            current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)
-            # current_q = np.subtract(current_q, self.zero_q)
-            # self.get_logger().info("cur: " + str(current_q) + " zero: " + str(self.zero_q))
+            current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)        
+                
+            self.get_logger().info("cur: " + str(current_q) + " zero: " + str(self.zero_q))
             self.prev_q = current_q
             angles = np.degrees(Quaternion(current_q).to_angles())
             
@@ -84,11 +88,11 @@ class ICM20948(Node):
             # Invert angle
             angles[0] *= -1
             # Prepare data for sending
-            response.yaw = angles[2]
-            response.roll = angles[1]
-            response.pitch = angles[0] + 11
-        except:
-            self.get_logger().warn("Unable to read gyro data this cycle")
+            response.yaw = angles[2] - self.zero_q[2]
+            response.roll = angles[1] - self.zero_q[1]
+            response.pitch = angles[0] - self.zero_q[0] + 7
+        except Exception as e:
+            self.get_logger().warn("Unable to read gyro data this cycle: " + str(e))
                 
         return response
 

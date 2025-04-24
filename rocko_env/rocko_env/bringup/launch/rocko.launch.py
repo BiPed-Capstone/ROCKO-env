@@ -130,7 +130,7 @@ def generate_launch_description():
     nodes = [
         control_node,
         robot_state_pub_node,
-        foxglove_bridge,
+        # foxglove_bridge,
         gyro,
         left_relative_encoder,
         right_relative_encoder,
