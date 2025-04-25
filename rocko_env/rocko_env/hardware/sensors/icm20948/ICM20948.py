@@ -50,16 +50,16 @@ class ICM20948(Node):
         # Check filesystem for accelerometer calibration data
         path = os.path.join('calibration', 'hard_offset')
         self.calibration_results = []
-        try:
-            # If cal data is there, we will interpolate it for offset
-            # Extract calibration values from cal file (newline deliniated)
-            with open(path) as file:
-                for i in file:
-                    self.calibration_results.append(i)
-        except:
-            # self.get_logger().warn('No accelerometer calibration data found, proceeding anyway.')
-            for i in range(3):
-                self.calibration_results.append(0)
+        #try:
+        #    # If cal data is there, we will interpolate it for offset
+        #    # Extract calibration values from cal file (newline deliniated)
+        #    with open(path) as file:
+        #        for i in file:
+        #            self.calibration_results.append(i)
+        #except:
+        #    # self.get_logger().warn('No accelerometer calibration data found, proceeding anyway.')
+        #    for i in range(3):
+        #        self.calibration_results.append(0)
 
         # Create a new service called /icm20948_data for posting IMU positional data
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
