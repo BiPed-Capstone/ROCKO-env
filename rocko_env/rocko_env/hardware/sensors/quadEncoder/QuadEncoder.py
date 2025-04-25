@@ -22,7 +22,10 @@ class QuadEncoder(Node):
         self.enc = Encoder.Encoder(a_pin, b_pin)
         
         self.last_position = 0
-        self.meters_conversion = 145 / (0.144 * np.pi) # 144 mm wheel diameter, 145 PPR encoder resolution at gearbox output shaft
+        self.prev_vels = [0, 0, 0]
+        self.new_vel_idx = 0
+        self.num_prev_vels = 3
+        self.meters_conversion = 145 / (0.12 * np.pi) # 120 mm wheel diameter, 145 PPR encoder resolution at gearbox output shaft
 
         # Create a new service to send data to ros2_control
         self.srv = self.create_service(QuadEncoderData, service_name, self.callback)
@@ -32,11 +35,13 @@ class QuadEncoder(Node):
         # Interact with hardware here based on info in request (if there is any)
         position = self.enc.read() / self.meters_conversion
         velocity = (position - self.last_position) / 0.01
-        response.position = position
-        response.velocity = velocity
-
+        
+        self.prev_vels[self.new_vel_idx] = velocity
+        self.new_vel_idx = (self.new_vel_idx + 1) % self.num_prev_vels
         self.last_position = position
-        response.velocity = 2.0
+        
+        response.position = position
+        response.velocity = np.average(self.prev_vels)
 
         return response
 

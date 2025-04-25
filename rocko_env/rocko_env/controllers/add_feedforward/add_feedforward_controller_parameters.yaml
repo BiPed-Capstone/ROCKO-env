@@ -1,0 +1,16 @@
+add_feedforward_controller:
+  interfaces: {
+    type: string_array,
+    default_value: [],
+    description: "Names of the interfaces to be forwarded",
+    validation: {
+          not_empty<>: null,
+          unique<>: null,
+        }
+  }
+
+  feedforward_topic_name: {
+    type: string,
+    default_value: "feedforward",
+    description: "Topic name that the user uses to give the feedforward value to be added to the output of the controller",
+  }

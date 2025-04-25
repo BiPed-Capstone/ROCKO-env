@@ -66,19 +66,7 @@ def generate_launch_description():
             "rocko_controllers.yaml",
         ]
     )
-    rviz_config_file = PathJoinSubstitution(
-        [FindPackageShare("rocko_env"), "rviz", "rocko.rviz"]
-    )
-
-    # control_node = Node(
-    #     package="controller_manager",
-    #     executable="ros2_control_node",
-    #     parameters=[robot_controllers],
-    #     output="both",
-    #     remappings=[
-    #         ("/diffbot_base_controller/cmd_vel", "/cmd_vel"),
-    #     ],
-    # )
+    
     control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
@@ -91,103 +79,20 @@ def generate_launch_description():
         output="both",
         parameters=[robot_description],
     )
-    rviz_node = Node(
-        package="rviz2",
-        executable="rviz2",
-        name="rviz2",
-        output="log",
-        arguments=["-d", rviz_config_file],
-        condition=IfCondition(gui),
-    )
     foxglove_bridge = ExecuteProcess(cmd=["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"])
-
-    joint_state_broadcaster_spawner = Node(
+    
+    controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["joint_state_broadcaster"],
-    )
-
-    diffdrive_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["diffbot_base_controller", "--param-file", robot_controllers],
-    )
-    
-    left_balancing_pid_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["left_balancing_pid_controller", "--param-file", robot_controllers],
-    )
-    
-    left_velocity_pid_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["left_velocity_pid_controller", "--param-file", robot_controllers],
-    )
-    
-    delay_left_velocity_controller_spawner_after_balancing_controller_spawner = (
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=left_balancing_pid_controller_spawner,
-                on_exit=[left_velocity_pid_controller_spawner],
-            )
-        )
-    )
-    
-    right_balancing_pid_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["right_balancing_pid_controller", "--param-file", robot_controllers],
-    )
-    
-    right_velocity_pid_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["right_velocity_pid_controller", "--param-file", robot_controllers],
-    )
-    
-    delay_right_after_left_spawner = (
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=left_velocity_pid_controller_spawner,
-                on_exit=[right_balancing_pid_controller_spawner],
-            )
-        )
-    )
-    
-    delay_right_velocity_controller_spawner_after_balancing_controller_spawner = (
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=right_balancing_pid_controller_spawner,
-                on_exit=[right_velocity_pid_controller_spawner],
-            )
-        )
-    )
-    
-    delay_diffdrive_after_pid_controller_spawner = (
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=right_velocity_pid_controller_spawner,
-                on_exit=[diffdrive_spawner],
-            )
-        )
-    )
-
-    # Delay rviz start after `joint_state_broadcaster`
-    # delay_rviz_after_joint_state_broadcaster_spawner = RegisterEventHandler(
-    #     event_handler=OnProcessExit(
-    #         target_action=joint_state_broadcaster_spawner,
-    #         on_exit=[rviz_node],
-    #     )
-    # )
-
-    # Delay start of joint_state_broadcaster after `robot_controller`
-    # TODO(anyone): This is a workaround for flaky tests. Remove when fixed.
-    delay_joint_state_broadcaster_after_robot_controller_spawner = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=left_balancing_pid_controller_spawner,
-            on_exit=[joint_state_broadcaster_spawner],
-        )
+        arguments=["--param-file", robot_controllers,
+                   "--activate-as-group",
+                    "left_add_feedforward_controller", 
+                    "right_add_feedforward_controller",
+                    "left_pitch_pid_controller",
+                    "right_pitch_pid_controller",
+                    "left_velocity_pid_controller",
+                    "right_velocity_pid_controller",
+                   ],
     )
 
     gyro = Node(
@@ -217,24 +122,20 @@ def generate_launch_description():
         }]
     )
     
-    balancing_controller = Node(
+    diffdrive_controller = Node(
         package="rocko_env",
-        executable="BalancingController.py",
+        executable="DiffDriveController.py",
     )
 
     nodes = [
         control_node,
         robot_state_pub_node,
-        foxglove_bridge,
-        left_balancing_pid_controller_spawner,
-        delay_left_velocity_controller_spawner_after_balancing_controller_spawner,
-        right_balancing_pid_controller_spawner,
-        delay_right_velocity_controller_spawner_after_balancing_controller_spawner,
-        # delay_diffdrive_after_pid_controller_spawner,
-        balancing_controller,
+        # foxglove_bridge,
         gyro,
         left_relative_encoder,
         right_relative_encoder,
+        controller_spawner,
+        diffdrive_controller
     ]
 
     return LaunchDescription(declared_arguments + nodes)

@@ -79,7 +79,7 @@ hardware_interface::return_type ICM20948::read(
       _pitch = res->pitch;
       _roll = res->roll;
 
-      // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "yaw: %3.2f pitch: %3.2f roll: %3.2f\n", _yaw, _pitch, _roll);
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "yaw: %3.2f pitch: %3.2f roll: %3.2f\n", _yaw, _pitch, _roll);
     } else {
       RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service icm20948_data");
     }

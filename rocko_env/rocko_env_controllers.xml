@@ -1,7 +1,12 @@
 <library path="rocko_env">
-  <class name="rocko_env/BalancingController" type="rocko_env::BalancingController" base_class_type="controller_interface::ControllerInterface">
+  <class name="rocko_env/AddFeedforwardController" type="rocko_env::AddFeedforwardController" base_class_type="controller_interface::ChainableControllerInterface">
   <description>
     The BalancingController takes in a robot body vector and moves according to that vector while maintaining balance.
+  </description>
+  </class>
+  <class name="rocko_env/RateLimitingController" type="rocko_env::RateLimitingController" base_class_type="controller_interface::ControllerInterface">
+  <description>
+    The RateLimitingController takes in a linear velocity and limits its output such that motors using the output will not unnecessariy "jump" or vibrate.
   </description>
   </class>
 </library>
