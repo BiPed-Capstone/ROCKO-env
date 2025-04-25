@@ -99,28 +99,39 @@ def generate_launch_description():
         package="rocko_env",
         executable="ICM20948.py",
     )
-
-    left_relative_encoder = Node(
+    
+    encoders = Node(
         package="rocko_env",
-        executable="QuadEncoder.py",
-        name="left_wheel_joint_encoder",
+        executable="QuadEncoders.py",
         parameters=[{
-            "service_name": "left_wheel_joint_encoder_data",
-            "a_pin": 26,
-            "b_pin": 20
+            "left_a_pin": 26,
+            "left_b_pin": 20,
+            "right_a_pin": 19,
+            "right_b_pin": 16
         }]
     )
 
-    right_relative_encoder = Node(
-        package="rocko_env",
-        executable="QuadEncoder.py",
-        name="right_wheel_joint_encoder",
-        parameters=[{
-            "service_name": "right_wheel_joint_encoder_data",
-            "a_pin": 19,
-            "b_pin": 16
-        }]
-    )
+    # left_relative_encoder = Node(
+    #     package="rocko_env",
+    #     executable="QuadEncoder.py",
+    #     name="left_wheel_joint_encoder",
+    #     parameters=[{
+    #         "service_name": "left_wheel_joint_encoder_data",
+    #         "a_pin": 26,
+    #         "b_pin": 20
+    #     }]
+    # )
+
+    # right_relative_encoder = Node(
+    #     package="rocko_env",
+    #     executable="QuadEncoder.py",
+    #     name="right_wheel_joint_encoder",
+    #     parameters=[{
+    #         "service_name": "right_wheel_joint_encoder_data",
+    #         "a_pin": 19,
+    #         "b_pin": 16
+    #     }]
+    # )
     
     diffdrive_controller = Node(
         package="rocko_env",
@@ -132,8 +143,7 @@ def generate_launch_description():
         robot_state_pub_node,
         # foxglove_bridge,
         gyro,
-        left_relative_encoder,
-        right_relative_encoder,
+        encoders,
         controller_spawner,
         diffdrive_controller
     ]

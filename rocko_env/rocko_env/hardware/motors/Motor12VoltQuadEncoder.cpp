@@ -100,7 +100,7 @@ namespace rocko_env
 
     // Set up connection to client
     _node = rclcpp::Node::make_shared(_prefix + "_encoder_client");
-    std::string s = _prefix + "_encoder_data";
+    std::string s = "encoder_data";
     _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
 
     while (!_client->wait_for_service(std::chrono::seconds(1)))
