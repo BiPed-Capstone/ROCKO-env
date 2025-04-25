@@ -7,6 +7,7 @@ import numpy as np
 import math
 
 from rocko_interfaces.srv import QuadEncoderData
+from std_msgs.msg import Float64
 
 class QuadEncoder(Node):
 
@@ -30,11 +31,35 @@ class QuadEncoder(Node):
         self.prev_vels = [0, 0, 0]
         self.new_vel_idx = 0
         self.num_prev_vels = 3
-        self.meters_conversion = 145 / (0.12 * np.pi) # 120 mm wheel diameter, 145 PPR encoder resolution at gearbox output shaft
-
+        self.wheel_radius = 0.06 # 60 mm radius wheel
+        self.meters_conversion = 145 / (2 * self.wheel_radius * np.pi) # 120 mm wheel diameter, 145 PPR encoder resolution at gearbox output shaft
+        
+        # create topics to get feedforward info
+        self.left_feedforward_topic = self.create_subscription(
+            Float64,
+            'left_feedforward',
+            self.left_feedforward_callback,
+            10)
+        
+        self.right_feedforward_topic = self.create_subscription(
+            Float64,
+            'right_feedforward',
+            self.right_feedforward_callback,
+            10)
+        
+        self.left_feedforward = 0
+        self.right_feedforward = 0
+        
         # Create a new service to send data to ros2_control
         self.srv = self.create_service(QuadEncoderData, "encoder_data", self.callback)
 
+    def left_feedforward_callback(self, msg):
+        # Convert rad/sec into m/s
+        self.left_feedforward = msg.data / self.wheel_radius
+        
+    def right_feedforward_callback(self, msg):
+        # Convert rad/sec into m/s
+        self.right_feedforward = msg.data / self.wheel_radius
 
     def callback(self, request, response):
         # Interact with hardware here based on info in request (if there is any)
@@ -43,6 +68,11 @@ class QuadEncoder(Node):
         right_position = self.right_enc.read() / self.meters_conversion
         right_velocity = (right_position - self.right_last_position) / 0.01
         
+        # Account for different velocities from feedforwards
+        left_velocity -= self.left_feedforward
+        right_velocity -= self.right_feedforward
+        
+        # Find the average velocity of the robot
         velocity = np.average([left_velocity, right_velocity])
         
         self.prev_vels[self.new_vel_idx] = velocity

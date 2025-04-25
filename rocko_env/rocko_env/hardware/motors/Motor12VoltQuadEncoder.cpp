@@ -195,8 +195,8 @@ namespace rocko_env
   hardware_interface::return_type Motor12VoltQuadEncoder::write(
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
-    // Convert from velocity in m/s to percent of full speed
-    double radPerSec = _wheel.cmd; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
+    // Convert from rad/sec to percent of full speed
+    double radPerSec = _wheel.cmd; 
     int pwmVal = (std::sqrt(std::abs((radPerSec / MAX_RAD_PER_SEC))) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
 
     // Set direction
