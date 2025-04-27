@@ -30,7 +30,7 @@ class ICM20948(Node):
         # Load in calibration data
         gyr_arr = np.zeros((1000, 4))
         acc_arr = np.zeros((1000, 4))
-        path = os.path.join('calibration', 'gyro_acc_data.txt')
+        path = "rocko_env/rocko_env/hardware/sensors/icm20948/calibration/gyro_acc_data.txt"
         with open(path) as file:
             # Each line has one sample, gyro/accel data delineated by ,
             idx = 0
@@ -58,10 +58,6 @@ class ICM20948(Node):
             g = np.array(self.icm.gyro)
             a = np.array(self.icm.acceleration)
 
-            if self.use_hard_offsets:
-                for i in range(3):
-                    a[i] = a[i] + self.calibration_results[i]
-
             current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)        
                 
             self.prev_q = current_q
@@ -77,7 +73,7 @@ class ICM20948(Node):
             # Prepare data for sending
             response.yaw = angles[2] - self.zero_q[2]
             response.roll = angles[1] - self.zero_q[1]
-            response.pitch = angles[0] - self.zero_q[0] + 7
+            response.pitch = angles[0] - self.zero_q[0] + 8.5
         except Exception as e:
             self.get_logger().warn("Unable to read gyro data this cycle: " + str(e))
                 

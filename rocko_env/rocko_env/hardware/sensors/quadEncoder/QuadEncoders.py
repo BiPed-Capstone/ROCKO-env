@@ -75,7 +75,7 @@ class QuadEncoders(Node):
         # Find the average velocity of the robot
         velocity = np.average([left_velocity, right_velocity])
         
-        self.get_logger().info("left: {} right: {} avg: {}".format(left_velocity, right_velocity, velocity))
+        # self.get_logger().info("left: {} right: {} avg: {}".format(left_velocity, right_velocity, velocity))
         
         self.prev_vels[self.new_vel_idx] = velocity
         self.new_vel_idx = (self.new_vel_idx + 1) % self.num_prev_vels
