@@ -9,7 +9,7 @@ import math
 from rocko_interfaces.srv import QuadEncoderData
 from std_msgs.msg import Float64
 
-class QuadEncoder(Node):
+class QuadEncoders(Node):
 
     def __init__(self):
         super().__init__('node')
@@ -75,11 +75,13 @@ class QuadEncoder(Node):
         # Find the average velocity of the robot
         velocity = np.average([left_velocity, right_velocity])
         
+        self.get_logger().info("left: {} right: {} avg: {}".format(left_velocity, right_velocity, velocity))
+        
         self.prev_vels[self.new_vel_idx] = velocity
         self.new_vel_idx = (self.new_vel_idx + 1) % self.num_prev_vels
         
-        self.last_left_position = left_position
-        self.last_right_position = right_position
+        self.left_last_position = left_position
+        self.right_last_position = right_position
         
         response.position = left_position
         response.velocity = np.average(self.prev_vels)
@@ -89,7 +91,7 @@ class QuadEncoder(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = QuadEncoder()
+    node = QuadEncoders()
 
     rclpy.spin(node)
 

@@ -23,47 +23,35 @@ class ICM20948(Node):
         # Initialize the gyro board
         i2c = board.I2C()   # uses board.SCL and board.SDA
         self.icm = adafruit_icm20x.ICM20948(i2c)
-
-        # Calibrate sens before opening service
-        self.use_hard_offsets = False # set to True if you want to loop in external calibrations
-
-        # Take 100 samples and feed them to ekf algorithm to give us the initial position
-        num_calib_samples = 1000
-        gyr_arr = np.zeros((num_calib_samples, 3))
-        acc_arr = np.zeros((num_calib_samples, 3))
-        for i in range(0, num_calib_samples):
-            # Add data to sample arrays
-            gyr_arr[i] = self.icm.gyro
-            acc_arr[i] = self.icm.acceleration
-            # Wait for 10ms for new data to be gathered
-            sleep(0.01)
+        
+        # TODO: Replace this 0 with the one printed out by the calibration routine
+        self.zero_q = [-7.59995762e-04, 2.90257081e-04, 9.99942906e-01, -1.06547126e-02]
+        
+        # Load in calibration data
+        gyr_arr = np.zeros((1000, 4))
+        acc_arr = np.zeros((1000, 4))
+        path = os.path.join('calibration', 'gyro_acc_data.txt')
+        with open(path) as file:
+            # Each line has one sample, gyro/accel data delineated by ,
+            idx = 0
+            for line in file:
+                data = line.split(",")
+                gyro_data = data[0]
+                acc_data = data[1]
+                gyr_arr[idx] = np.fromstring(gyro_data[1:len(gyro_data) - 1], sep=",")
+                acc_arr[idx] = np.fromstring(acc_data[1:len(acc_data) - 1], sep=",")
+                idx += 1
 
         self.madgwick = Madgwick(gyr_arr, acc_arr, gain=0.085)
-        self.prev_q = self.madgwick.Q[len(self.madgwick.Q) - 1]
-        self.zero_q = np.degrees(Quaternion([0.00787431, -0.99917258, -0.03971284, 0.00387713]).to_angles())
+        self.prev_q = self.zero_q
+        self.zero_q = np.degrees(Quaternion(self.zero_q).to_angles())
         
         if (self.zero_q[0] > 0): 
             self.zero_q[0] -= 180
         else: 
             self.zero_q[0] += 180
 
-        # Check filesystem for accelerometer calibration data
-        path = os.path.join('calibration', 'hard_offset')
-        self.calibration_results = []
-        #try:
-        #    # If cal data is there, we will interpolate it for offset
-        #    # Extract calibration values from cal file (newline deliniated)
-        #    with open(path) as file:
-        #        for i in file:
-        #            self.calibration_results.append(i)
-        #except:
-        #    # self.get_logger().warn('No accelerometer calibration data found, proceeding anyway.')
-        #    for i in range(3):
-        #        self.calibration_results.append(0)
-
-        # Create a new service called /icm20948_data for posting IMU positional data
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
-
 
     def imu_callback(self, request, response):
         try:
@@ -76,7 +64,6 @@ class ICM20948(Node):
 
             current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)        
                 
-            self.get_logger().info("cur: " + str(current_q) + " zero: " + str(self.zero_q))
             self.prev_q = current_q
             angles = np.degrees(Quaternion(current_q).to_angles())
             
