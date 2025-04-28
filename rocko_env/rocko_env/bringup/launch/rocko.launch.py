@@ -88,10 +88,8 @@ def generate_launch_description():
                    "--activate-as-group",
                     "left_add_feedforward_controller", 
                     "right_add_feedforward_controller",
-                    "left_pitch_pid_controller",
-                    "right_pitch_pid_controller",
-                    "left_velocity_pid_controller",
-                    "right_velocity_pid_controller",
+                    "pitch_pid_controller",
+                    "velocity_pid_controller",
                    ],
     )
 
