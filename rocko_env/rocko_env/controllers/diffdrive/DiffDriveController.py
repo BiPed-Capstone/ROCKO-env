@@ -13,8 +13,7 @@ class DiffDriveController(Node):
     def __init__(self):
         super().__init__('diff_drive_controller')
         # Set up publishers to command pid controllers
-        self.left_controller_topic = self.create_publisher(MultiDOFCommand, 'left_velocity_pid_controller/reference', 10)
-        self.right_controller_topic = self.create_publisher(MultiDOFCommand, 'right_velocity_pid_controller/reference', 10)
+        self.velocity_controller_topic = self.create_publisher(MultiDOFCommand, 'velocity_pid_controller/reference', 10)
         # Publishers for feedforward
         self.left_feedforward_topic = self.create_publisher(Float64, 'left_feedforward', 10)
         self.right_feedforward_topic = self.create_publisher(Float64, 'right_feedforward', 10)
@@ -81,7 +80,7 @@ class DiffDriveController(Node):
         velocity_msg = MultiDOFCommand()
         velocity_msg.dof_names = ["left_wheel_joint", "right_wheel_joint"]
         velocity_msg.values = [left_vel, right_vel]
-        self.left_controller_topic.publish(velocity_msg)
+        self.velocity_controller_topic.publish(velocity_msg)
         
         # Send velocities to pitch PID feedforwards
         left_rad_sec = left_vel / self.wheel_radius_meters
