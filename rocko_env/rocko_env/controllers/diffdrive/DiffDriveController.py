@@ -79,7 +79,7 @@ class DiffDriveController(Node):
         # Send setpoints to velocity PIDS
         velocity_msg = MultiDOFCommand()
         velocity_msg.dof_names = ["left_wheel_joint", "right_wheel_joint"]
-        velocity_msg.values = [left_vel, right_vel]
+        velocity_msg.values = [linear_vel, linear_vel]
         self.velocity_controller_topic.publish(velocity_msg)
         
         # Send velocities to pitch PID feedforwards
