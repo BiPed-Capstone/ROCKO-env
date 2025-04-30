@@ -32,7 +32,7 @@ class QuadEncoders(Node):
         self.new_vel_idx = 0
         self.num_prev_vels = 3
         self.wheel_radius = 0.06 # 60 mm radius wheel
-        self.meters_conversion = 145 / (2 * self.wheel_radius * np.pi) # 120 mm wheel diameter, 145 PPR encoder resolution at gearbox output shaft
+        self.meters_conversion = 145 * 1.355 / (2 * self.wheel_radius * np.pi) # 120 mm wheel diameter, 145 PPR encoder resolution at gearbox output shaft, 1.355 reduction from belts
         
         # create topics to get feedforward info
         self.left_feedforward_topic = self.create_subscription(
