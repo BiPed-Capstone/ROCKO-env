@@ -59,8 +59,7 @@ class ICM20948(Node):
         #     self.zero_q[0] -= 180
         # else: 
         #     self.zero_q[0] += 180
-        while not self.icm.calibrated:
-            pass
+
 
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.imu_callback)
 
@@ -87,7 +86,7 @@ class ICM20948(Node):
             # response.yaw = angles[2] - self.zero_q[2]
             # response.roll = angles[1] - self.zero_q[1]
             # response.pitch = angles[0] - self.zero_q[0] + 10.0
-            response.pitch = self.icm.euler[2]
+            response.pitch = self.icm.euler[2] + 8
         except Exception as e:
             self.get_logger().warn("Unable to read gyro data this cycle: " + str(e))
                 
