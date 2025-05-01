@@ -5,6 +5,7 @@ import rclpy
 from rclpy.node import Node
 import board
 import adafruit_icm20x
+from adafruit_icm20x import AccelRange, GyroRange
 
 import numpy as np
 from time import sleep
@@ -23,9 +24,13 @@ class ICM20948(Node):
         # Initialize the gyro board
         i2c = board.I2C()   # uses board.SCL and board.SDA
         self.icm = adafruit_icm20x.ICM20948(i2c)
+        self.icm.gyro_data_rate_divisor = 0
+        self.icm.accelerometer_data_rate_divisor = 0
+        self.icm.accelerometer_range = AccelRange.RANGE_4G
+        self.icm.gyro_range = GyroRange.RANGE_500_DPS
         
         # TODO: Replace this 0 with the one printed out by the calibration routine
-        self.zero_q = [-7.59995762e-04, 2.90257081e-04, 9.99942906e-01, -1.06547126e-02]
+        self.zero_q = [ 0.40414261,  0.04064267,  0.91000932, -0.08306601]
         
         # Load in calibration data
         gyr_arr = np.zeros((1000, 4))
@@ -42,7 +47,7 @@ class ICM20948(Node):
                 acc_arr[idx] = np.fromstring(acc_data[1:len(acc_data) - 1], sep=",")
                 idx += 1
 
-        self.madgwick = Madgwick(gyr_arr, acc_arr, gain=0.085)
+        self.madgwick = Madgwick(gyr_arr, acc_arr)
         self.prev_q = self.zero_q
         self.zero_q = np.degrees(Quaternion(self.zero_q).to_angles())
         
@@ -57,6 +62,8 @@ class ICM20948(Node):
         try:
             g = np.array(self.icm.gyro)
             a = np.array(self.icm.acceleration)
+            
+            # convert gyro from degrees/sec to rad/sec
 
             current_q = self.madgwick.updateIMU(q=self.prev_q, gyr=g, acc=a)        
                 
@@ -73,7 +80,7 @@ class ICM20948(Node):
             # Prepare data for sending
             response.yaw = angles[2] - self.zero_q[2]
             response.roll = angles[1] - self.zero_q[1]
-            response.pitch = angles[0] - self.zero_q[0] + 8.5
+            response.pitch = angles[0] - self.zero_q[0] + 10.0
         except Exception as e:
             self.get_logger().warn("Unable to read gyro data this cycle: " + str(e))
                 

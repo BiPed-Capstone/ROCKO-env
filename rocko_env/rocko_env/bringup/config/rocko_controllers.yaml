@@ -32,8 +32,8 @@ pitch_pid_controller:
       - right_wheel_joint
 
     gains:
-      left_add_feedforward_controller/left_wheel_joint:   {p: 8.0, i: 0.3, d: 0.3, i_clamp_max: 10.0, i_clamp_min: -10.0}
-      right_add_feedforward_controller/right_wheel_joint:   {p: 8.0, i: 0.3, d: 0.3, i_clamp_max: 10.0, i_clamp_min: -10.0}
+      left_add_feedforward_controller/left_wheel_joint:   {p: 12.0, i: 0.0, d: 0.0, i_clamp_max: 10.0, i_clamp_min: -10.0}
+      right_add_feedforward_controller/right_wheel_joint:   {p: 12.0, i: 0.0, d: 0.0, i_clamp_max: 10.0, i_clamp_min: -10.0}
 
 velocity_pid_controller:
   ros__parameters:

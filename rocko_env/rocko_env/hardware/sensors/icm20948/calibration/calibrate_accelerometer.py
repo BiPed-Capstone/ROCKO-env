@@ -11,11 +11,17 @@ import adafruit_icm20x
 from time import sleep
 from tqdm import tqdm
 from ahrs.filters import Madgwick
+from adafruit_icm20x import AccelRange, GyroRange
 
 class AccCalibrator:
     def __init__(self, memory=1000):
             i2c = board.I2C()   # uses board.SCL and board.SDA
             self.icm = adafruit_icm20x.ICM20948(i2c)
+            self.icm.gyro_data_rate_divisor = 0
+            self.icm.accelerometer_data_rate_divisor = 0
+            self.icm.accelerometer_range = AccelRange.RANGE_4G
+            self.icm.gyro_range = GyroRange.RANGE_500_DPS
+            
             self.memory = memory
             self.gyro_arr = np.zeros((self.memory, 3))
             self.acc_arr = np.zeros((self.memory, 3))
@@ -47,7 +53,7 @@ class AccCalibrator:
                 
     def capture_gyro_accel_data(self):
         # measure 1000 samples of gyro and accelerometer
-        madgwick = Madgwick(gain=0.085)
+        madgwick = Madgwick()
         with open('gyro_acc_data.txt', 'w') as f:
             prev_q = [0.7071, 0.0, 0.7071, 0.0]
             current_q = []
