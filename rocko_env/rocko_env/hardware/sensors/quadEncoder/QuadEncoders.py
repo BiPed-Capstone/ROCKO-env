@@ -24,7 +24,7 @@ class QuadEncoders(Node):
         right_b_pin: int = self.get_parameter('right_b_pin').get_parameter_value().integer_value
                 
         self.left_enc = Encoder.Encoder(left_a_pin, left_b_pin)
-        self.right_enc = Encoder.Encoder(right_a_pin, right_b_pin)
+        self.right_enc = Encoder.Encoder(right_b_pin, right_a_pin) # Right encoder is backwards, so we swap pins in code
         
         self.left_last_position = 0
         self.right_last_position = 0
@@ -66,7 +66,7 @@ class QuadEncoders(Node):
         left_position = self.left_enc.read() / self.meters_conversion
         left_velocity = (left_position - self.left_last_position) / 0.01
         right_position = self.right_enc.read() / self.meters_conversion
-        right_velocity = (right_position - self.right_last_position) / 0.01
+        right_velocity = (right_position - self.right_last_position) / 0.01 
         
         # Account for different velocities from feedforwards
         left_velocity -= self.left_feedforward
@@ -74,17 +74,18 @@ class QuadEncoders(Node):
         
         # Find the average velocity of the robot
         velocity = np.average([left_velocity, right_velocity])
-        
-        # self.get_logger().info("left: {} right: {} avg: {}".format(left_velocity, right_velocity, velocity))
-        
+                
         self.prev_vels[self.new_vel_idx] = velocity
         self.new_vel_idx = (self.new_vel_idx + 1) % self.num_prev_vels
+        velocity = np.average(self.prev_vels)
+        
+        self.get_logger().info("left: %3.1f right: %3.1f avg: %3.1f" % (left_velocity, right_velocity, velocity))
         
         self.left_last_position = left_position
         self.right_last_position = right_position
         
         response.position = left_position
-        response.velocity = np.average(self.prev_vels)
+        response.velocity = velocity
 
         return response
 
