@@ -108,7 +108,7 @@ namespace rocko_env
 
     // Set up connection to client
     _node = rclcpp::Node::make_shared(_prefix + "_encoder_client");
-    std::string s = "encoder_data";
+    std::string s = _prefix + "_encoder_data";
     _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
 
     // Add publishers for PWM values
@@ -210,9 +210,9 @@ namespace rocko_env
   hardware_interface::return_type Motor12VoltQuadEncoder::write(
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
-    // Convert from rad/sec to percent of full speed
-    double radPerSec = _wheel.cmd; 
-    int pwmVal = (std::abs((radPerSec / MAX_RAD_PER_SEC)) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
+    // Convert from velocity in m/s to percent of full speed
+    double radPerSec = _wheel.cmd; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
+    int pwmVal = (std::sqrt(std::abs((radPerSec / MAX_RAD_PER_SEC))) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
 
     // Set direction
     if (_wheel.cmd >= 0)
@@ -229,8 +229,9 @@ namespace rocko_env
       softPwmWrite(_speedPin, pwmVal);
     }
 
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
-    // Publish PWM value to the appropriate topic
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PWM: %5.2f", radPerSec, pwmVal);
+
+    // Publish PWM value as float in [0, 1]
     std_msgs::msg::Float32 pwm_msg;
     pwm_msg.data = static_cast<float>(pwmVal);
     if (joint_name_ == "left_wheel_joint" && pwm_pub_left_) {
@@ -238,8 +239,6 @@ namespace rocko_env
     } else if (joint_name_ == "right_wheel_joint" && pwm_pub_right_) {
       pwm_pub_right_->publish(pwm_msg);
     }
-
-    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
 
     return hardware_interface::return_type::OK;
   }
