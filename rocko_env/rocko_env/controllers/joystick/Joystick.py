@@ -6,7 +6,10 @@ import socket
 import struct
 from sensor_msgs.msg import Joy
 from geometry_msgs.msg import TwistStamped, Twist, Vector3 # not sure if needed
+import math
 
+def expo_curve(value: float, expo: float = 0.45) -> float:
+    return (1 - expo) * value + expo * math.pow(value, 3)
 
 class Joystick(Node):
 
@@ -34,6 +37,8 @@ class Joystick(Node):
         timer_period = 0.01  # seconds
         self.timer = self.create_timer(timer_period, self.receive_joystick_data)
         self.prev_joystick = Joy()
+        self.prev_joystick.axes    = [0.0] * 6
+        self.prev_joystick.buttons = [0] * 16
         self.msg_received = 0
         # # Set up variables to hold data
         # self.left_vel = 0
@@ -41,9 +46,8 @@ class Joystick(Node):
         # self.desired_robot_body_vector = Twist()
 
         self.linear_scale = -1.0  
-        self.angular_scale = -100.0  
-        self.deadband = 0.05  
-
+        self.angular_scale = -4.0  
+        self.deadband = 0.05 
 
 
     def receive_joystick_data(self):
@@ -75,6 +79,7 @@ class Joystick(Node):
 
         except BlockingIOError:
             return
+        
 
 
     def convert_to_twist(self, msg):
@@ -83,19 +88,22 @@ class Joystick(Node):
 
         linear_axis = 1
         angular_axis = 0
-        linear_value = msg.axes[linear_axis]
-        angular_value = msg.axes[angular_axis]
+        # linear_value = msg.axes[linear_axis]
+        # angular_value = msg.axes[angular_axis]
+        linear_value  = expo_curve(msg.axes[linear_axis])
+        angular_value = expo_curve(msg.axes[angular_axis])
         if abs(linear_value) < self.deadband:
             linear_value = 0.0
         if abs(angular_value) < self.deadband:
             angular_value = 0.0
+
 
         twist.twist.linear.x = linear_value * self.linear_scale
         twist.twist.angular.z = angular_value * self.angular_scale
 
         self.robot_body_vector_updated_topic.publish(twist)
 
-        self.get_logger().info(f"Twist: Linear- {twist.twist.linear.x:.2f}, Angular- {twist.twist.angular.z:.2f}")
+        # self.get_logger().info(f"Twist: Linear- {twist.twist.linear.x:.2f}, Angular- {twist.twist.angular.z:.2f}")
 
 
 def main(args=None):
