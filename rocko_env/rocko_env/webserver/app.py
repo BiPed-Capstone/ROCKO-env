@@ -16,13 +16,13 @@ class WebserverROSNode(Node):
         super().__init__('webserver_listener')
         self.create_subscription(
             Float32,
-            '/leftmotorcontroller/pwm',
+            '/left_feedforward',
             self.left_motor_callback,
             10
         )
         self.create_subscription(
             Float32,
-            '/rightmotorcontroller/pwm',
+            '/right_feedforward',
             self.right_motor_callback,
             10
         )
