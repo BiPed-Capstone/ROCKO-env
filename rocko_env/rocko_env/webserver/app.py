@@ -1,13 +1,8 @@
 from flask import Flask, jsonify, render_template
 import threading
-import rospy
-from sensor_msgs.msg import Imu
+import rclpy
+from rclpy.node import Node
 from std_msgs.msg import Float32
-
-# Placeholder for ROS imports and setup
-# import rospy
-# from sensor_msgs.msg import Imu
-# from std_msgs.msg import Float32
 
 app = Flask(__name__)
 
@@ -16,22 +11,34 @@ latest_data = {
     "rightmotorpwm": 0,
 }
 
-def ros_listener():
-    """
-    Listen to ros topics. 
-    subscribe to the leftmotorcontroller/pwm and rightmotorcontroller/pwm topics.
-    add the lastest  data to the latest_data dictionary."""
-    def left_motor_callback(msg):
+class WebserverROSNode(Node):
+    def __init__(self):
+        super().__init__('webserver_listener')
+        self.create_subscription(
+            Float32,
+            '/leftmotorcontroller/pwm',
+            self.left_motor_callback,
+            10
+        )
+        self.create_subscription(
+            Float32,
+            '/rightmotorcontroller/pwm',
+            self.right_motor_callback,
+            10
+        )
+
+    def left_motor_callback(self, msg):
         latest_data["leftmotorpwm"] = msg.data
 
-    def right_motor_callback(msg):
+    def right_motor_callback(self, msg):
         latest_data["rightmotorpwm"] = msg.data
 
-    rospy.Subscriber('/leftmotorcontroller/pwm', Float32, left_motor_callback)
-    rospy.Subscriber('/rightmotorcontroller/pwm', Float32, right_motor_callback)
-    rospy.init_node('webserver_listener', anonymous=True)
-    rospy.spin()
-
+def ros_listener():
+    rclpy.init()
+    node = WebserverROSNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
 @app.route('/data')
 def data():
