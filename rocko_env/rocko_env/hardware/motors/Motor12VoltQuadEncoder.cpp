@@ -10,6 +10,7 @@
 #include "hardware_interface/lexical_casts.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/float32.hpp"
 
 #include "rocko_env/Motor12VoltQuadEncoder.hpp"
 #include <wiringPi.h>
@@ -17,6 +18,10 @@
 
 namespace rocko_env
 {
+  std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32>> pwm_pub_left_;
+  std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32>> pwm_pub_right_;
+  std::string joint_name_;
+
   hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_init(
       const hardware_interface::HardwareInfo &info)
   {
@@ -92,6 +97,9 @@ namespace rocko_env
 
     _wheel.setup(info.joints[0].name, 0);
 
+    // Save joint name for topic selection
+    joint_name_ = info.joints[0].name;
+
     // Set up pins to have WiringPi numberings
     wiringPiSetup();
 
@@ -102,6 +110,13 @@ namespace rocko_env
     _node = rclcpp::Node::make_shared(_prefix + "_encoder_client");
     std::string s = "encoder_data";
     _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
+
+    // Add publishers for PWM values
+    if (joint_name_ == "left_wheel_joint") {
+      pwm_pub_left_ = _node->create_publisher<std_msgs::msg::Float32>("leftmotorcontroller/pwm", 10);
+    } else if (joint_name_ == "right_wheel_joint") {
+      pwm_pub_right_ = _node->create_publisher<std_msgs::msg::Float32>("rightmotorcontrollerpwm", 10);
+    }
 
     while (!_client->wait_for_service(std::chrono::seconds(1)))
     {
@@ -215,6 +230,16 @@ namespace rocko_env
     }
 
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
+    // Publish PWM value to the appropriate topic
+    std_msgs::msg::Float32 pwm_msg;
+    pwm_msg.data = static_cast<float>(pwmVal);
+    if (joint_name_ == "left_wheel_joint" && pwm_pub_left_) {
+      pwm_pub_left_->publish(pwm_msg);
+    } else if (joint_name_ == "right_wheel_joint" && pwm_pub_right_) {
+      pwm_pub_right_->publish(pwm_msg);
+    }
+
+    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
 
     return hardware_interface::return_type::OK;
   }
