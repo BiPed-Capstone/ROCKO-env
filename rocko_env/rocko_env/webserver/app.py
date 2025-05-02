@@ -59,4 +59,4 @@ def start_ros_thread():
 
 if __name__ == '__main__':
     start_ros_thread()
-    app.run(debug=True)
+    app.run(host='0.0.0.0', debug=True)
