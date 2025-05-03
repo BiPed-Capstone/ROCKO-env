@@ -70,6 +70,7 @@ def generate_launch_description():
         [FindPackageShare("rocko_env"), "rviz", "rocko.rviz"]
     )
 
+    # Launch controller manager node
     # control_node = Node(
     #     package="controller_manager",
     #     executable="ros2_control_node",
@@ -85,12 +86,16 @@ def generate_launch_description():
         parameters=[robot_controllers],
         output="both"
     )
+
+    # Launch node to publish the robot's state based on the joint state broadcaster
     robot_state_pub_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
         output="both",
         parameters=[robot_description],
     )
+
+    # Launch RViz2 node
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
@@ -99,32 +104,39 @@ def generate_launch_description():
         arguments=["-d", rviz_config_file],
         condition=IfCondition(gui),
     )
+
+    # Execute Foxglove bridge process for data visualization
     foxglove_bridge = ExecuteProcess(cmd=["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"])
 
+    # Launch spawner to create joint_state_broadcaster node to publish joint data for controllers
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["joint_state_broadcaster"],
     )
 
+    # Launch spawner to create diffbot_base_controller
     diffdrive_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["diffbot_base_controller", "--param-file", robot_controllers],
     )
-    
+
+    # Launch spawner to create left_balancing_pid_controller
     left_balancing_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["left_balancing_pid_controller", "--param-file", robot_controllers],
     )
-    
+
+    # Launch spawner to create left_velocity_pid_controller
     left_velocity_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["left_velocity_pid_controller", "--param-file", robot_controllers],
     )
-    
+
+    # Launch event handler to spawn the velocity controller after the balancing controller because of controller chaining
     delay_left_velocity_controller_spawner_after_balancing_controller_spawner = (
         RegisterEventHandler(
             event_handler=OnProcessExit(
@@ -133,19 +145,23 @@ def generate_launch_description():
             )
         )
     )
-    
+
+    # Launch spawner to create right_balancing_pid_controller
     right_balancing_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["right_balancing_pid_controller", "--param-file", robot_controllers],
     )
-    
+
+    # Launch spawner to create right_velocity_pid_controller
     right_velocity_pid_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["right_velocity_pid_controller", "--param-file", robot_controllers],
     )
-    
+
+    # Launch event handler to spawn the right balancing pid controller after the left velocity pid controller
+    # TODO: this isn't used?
     delay_right_after_left_spawner = (
         RegisterEventHandler(
             event_handler=OnProcessExit(
@@ -154,7 +170,8 @@ def generate_launch_description():
             )
         )
     )
-    
+
+    # Launch event handler to spawn the velocity controller after the balancing controller because of controller chaining
     delay_right_velocity_controller_spawner_after_balancing_controller_spawner = (
         RegisterEventHandler(
             event_handler=OnProcessExit(
@@ -163,7 +180,8 @@ def generate_launch_description():
             )
         )
     )
-    
+
+    # Launch event handler to spawn the diff drive controller after the right velocity controller
     delay_diffdrive_after_pid_controller_spawner = (
         RegisterEventHandler(
             event_handler=OnProcessExit(
@@ -190,11 +208,13 @@ def generate_launch_description():
         )
     )
 
+    # Launch node to get gyro data
     gyro = Node(
         package="rocko_env",
         executable="ICM20948.py",
     )
 
+    # Launch node to get left encoder data
     left_relative_encoder = Node(
         package="rocko_env",
         executable="QuadEncoder.py",
@@ -206,6 +226,7 @@ def generate_launch_description():
         }]
     )
 
+    # Launch to node to get right encoder data
     right_relative_encoder = Node(
         package="rocko_env",
         executable="QuadEncoder.py",
@@ -216,12 +237,14 @@ def generate_launch_description():
             "b_pin": 16
         }]
     )
-    
+
+    # Launch balancing_controller node
     balancing_controller = Node(
         package="rocko_env",
         executable="BalancingController.py",
     )
 
+    # List of launch tasks that do not depend on other launch tasks
     nodes = [
         control_node,
         robot_state_pub_node,
