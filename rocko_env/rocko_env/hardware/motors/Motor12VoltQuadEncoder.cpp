@@ -86,6 +86,7 @@ namespace rocko_env
       }
     }
 
+    // Set fields based on parameters
     _speedPin = stoi(info.hardware_parameters.at(PIN_NUMBER_SPEED_KEY));
     _dirPin = stoi(info.hardware_parameters.at(PIN_NUMBER_DIRECTION_KEY));
     std::istringstream(info.hardware_parameters.at(INVERT_KEY)) >> std::boolalpha >> _invert;
@@ -103,6 +104,7 @@ namespace rocko_env
     std::string s = _prefix + "_encoder_data";
     _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
 
+    // Wait for the service that publishes encoder data
     while (!_client->wait_for_service(std::chrono::seconds(1)))
     {
       if (!rclcpp::ok())
