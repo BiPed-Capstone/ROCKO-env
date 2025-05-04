@@ -45,8 +45,8 @@ class Joystick(Node):
         # self.right_vel = 0
         # self.desired_robot_body_vector = Twist()
 
-        self.linear_scale = -1.0  
-        self.angular_scale = -4.0  
+        self.linear_scale = -10.0  
+        self.angular_scale = -35.0  
         self.deadband = 0.05 
 
 
@@ -122,12 +122,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-
 

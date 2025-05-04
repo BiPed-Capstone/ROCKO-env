@@ -24,13 +24,13 @@ class DiffDriveController(Node):
         
         # Set up subscriber to get robot body vector
         self.robot_body_vector_updated_topic = self.create_subscription(
-            Twist,
-            'robot_body_vector',
+            TwistStamped,
+            'diffbot_base_controller/cmd_vel',
             self.robot_body_vector_updated,
             10)
         
         # Set up variables to hold data
-        self.desired_robot_body_vector = Twist()
+        self.desired_robot_body_vector = TwistStamped()
         
         # Robot character numbers
         self.wheel_radius_meters = 0.072
@@ -41,14 +41,14 @@ class DiffDriveController(Node):
         # 2nd derivative limits should represent the limit for "jerk" (del a/ del t)
         # min/max values should be whatever our intended min and max values are
         self.left_limiter = RateLimiter(
-            min_value=-100, max_value=100,
-            min_first_derivative_neg=-5, max_first_derivative_pos=10,
-            min_second_derivative=-50, max_second_derivative=50            
+            min_value=-1000, max_value=1000,
+            min_first_derivative_neg=-150, max_first_derivative_pos=150,
+            min_second_derivative=-150, max_second_derivative=150            
         )
         self.right_limiter = RateLimiter(
-            min_value=-100, max_value=100,
-            min_first_derivative_neg=-3, max_first_derivative_pos=3,
-            min_second_derivative=-50, max_second_derivative=50
+            min_value=-1000, max_value=1000,
+            min_first_derivative_neg=-150, max_first_derivative_pos=150,
+            min_second_derivative=-150, max_second_derivative=150
         )
         
         # Set up variables for holding data
@@ -62,55 +62,61 @@ class DiffDriveController(Node):
         self.wheel_distance = 0.356 # meters
         
     def command_controller(self):
-        if not self.init:
-            return
+        
 
-        TURN_GAIN = 15.0
-        ANG_BOOST = 0.2
-        SPIN_ACCEL = 4.0
-        STRAIGHT_ACCEL = 2.0
-        MAX_WHEEL_VEL = 15.0
+        # self.desired_robot_body_vector.linear.x = 1
+         if not self.init:
+             return
+         
+         # apply ratelimit
+         smooth_left_vel = self.left_limiter.limit(self.left_vel, self.left_v0, self.left_v1, self.timer_period)
+         smooth_right_vel = self.right_limiter.limit(self.right_vel, self.right_v0, self.right_v1, self.timer_period)
 
-        linear_vel  = self.desired_robot_body_vector.linear.x
-        angular_vel = self.desired_robot_body_vector.angular.z * TURN_GAIN
+        #  smooth_left_vel = self.left_vel
+        #  smooth_right_vel = self.right_vel   
+ 
+         # back-propogate
+         self.left_v1, self.left_v0 = self.left_v0, smooth_left_vel
+         self.right_v1, self.right_v0 = self.right_v0, smooth_right_vel
+         
+         # Calculate velocities from body vector
+         linear_vel = self.desired_robot_body_vector.linear.x
+         angular_vel = self.desired_robot_body_vector.angular.z
+         linear_vel = self.desired_robot_body_vector.linear.x
 
-        left_cmd  = linear_vel - angular_vel * self.wheel_distance / 2.0
-        right_cmd = linear_vel + angular_vel * self.wheel_distance / 2.0
+         print(f"Linear Velocity: {linear_vel}, Angular Velocity: {angular_vel}")
 
-        if left_cmd * right_cmd < 0:
-            left_cmd  += ANG_BOOST * math.copysign(1, left_cmd)
-            right_cmd += ANG_BOOST * math.copysign(1, right_cmd)
-
-        accel = SPIN_ACCEL if abs(angular_vel) > 0.2 else STRAIGHT_ACCEL
-        self.left_limiter.first_deriv_pos  =  accel
-        self.left_limiter.first_deriv_neg  = -accel
-        self.right_limiter.first_deriv_pos =  accel
-        self.right_limiter.first_deriv_neg = -accel
-
-        left_cmd  = max(-MAX_WHEEL_VEL,  min(MAX_WHEEL_VEL,  left_cmd))
-        right_cmd = max(-MAX_WHEEL_VEL,  min(MAX_WHEEL_VEL, right_cmd))
-
-        smooth_left  = self.left_limiter.limit(left_cmd , self.left_v0 , self.left_v1 , self.timer_period)
-        smooth_right = self.right_limiter.limit(right_cmd, self.right_v0, self.right_v1, self.timer_period)
-
-        self.left_v1,  self.left_v0  = self.left_v0,  smooth_left
-        self.right_v1, self.right_v0 = self.right_v0, smooth_right
-
-        left_msg = MultiDOFCommand()
-        left_msg.dof_names  = ["left_wheel_joint"]
-        left_msg.values     = [smooth_left]
-        self.left_controller_topic.publish(left_msg)
-
-        right_msg = MultiDOFCommand()
-        right_msg.dof_names = ["right_wheel_joint"]
-        right_msg.values    = [smooth_right]
-        self.right_controller_topic.publish(right_msg)
-
-        self.left_feedforward_topic.publish(Float64(data=smooth_left  / self.wheel_radius_meters))
-        self.right_feedforward_topic.publish(Float64(data=smooth_right / self.wheel_radius_meters))
+         left_vel = (linear_vel - (angular_vel))
+         right_vel = (linear_vel + (angular_vel))
+         
+         # Send setpoints to velocity PIDS
+         left_velocity_msg = MultiDOFCommand()
+         left_velocity_msg.dof_names = ["left_wheel_joint"]
+         left_velocity_msg.values = [left_vel]
+         self.left_controller_topic.publish(left_velocity_msg)
+         
+         right_velocity_msg = MultiDOFCommand()
+         right_velocity_msg.dof_names = ["right_wheel_joint"]
+         right_velocity_msg.values = [right_vel]
+         self.right_controller_topic.publish(right_velocity_msg)
+         
+         # Send velocities to pitch PID feedforwards
+         left_rad_sec = left_vel / self.wheel_radius_meters
+         right_rad_sec = right_vel / self.wheel_radius_meters
+         
+         left_feedforward_msg = Float64()
+         left_feedforward_msg.data = left_rad_sec
+         self.left_feedforward_topic.publish(left_feedforward_msg)
+         
+         right_feedforward_msg = Float64()
+         right_feedforward_msg.data = right_rad_sec
+         self.right_feedforward_topic.publish(right_feedforward_msg)
+        
         
     def robot_body_vector_updated(self, msg):
         # Store desired robot body vector
+        self.get_logger().info("Callback triggered")
+        self.get_logger().info(f"Received Twist: {msg.twist}")
         self.desired_robot_body_vector = msg.twist
         self.init = True
 
