@@ -90,7 +90,7 @@ class ICM20948(Node):
         except Exception as e:
             self.get_logger().warn("Unable to read gyro data this cycle: " + str(e))
                 
-        return response
+    #     return response
 
 def main(args=None):
     rclpy.init(args=args)

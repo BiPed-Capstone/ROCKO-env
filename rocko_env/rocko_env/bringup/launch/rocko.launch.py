@@ -136,14 +136,20 @@ def generate_launch_description():
         executable="DiffDriveController.py",
     )
 
+    joystick = Node(
+        package="rocko_env",
+        executable="Joystick.py",
+    )
+
     nodes = [
         control_node,
         robot_state_pub_node,
         foxglove_bridge,
         gyro,
+        joystick,
         encoders,
         controller_spawner,
-        diffdrive_controller
+        diffdrive_controller,
     ]
 
     return LaunchDescription(declared_arguments + nodes)
