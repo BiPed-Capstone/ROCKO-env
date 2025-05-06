@@ -75,8 +75,8 @@ class DiffDriveController(Node):
         self.right_v1, self.right_v0 = self.right_v0, smooth_right_vel
          
         # Calculate velocities from body vector
-        linear_vel = self.desired_robot_body_vector.linear.x
-        angular_vel = self.desired_robot_body_vector.angular.z
+        linear_vel = self.desired_robot_body_vector.twist.linear.x
+        angular_vel = self.desired_robot_body_vector.twist.angular.z
         left_vel = linear_vel - angular_vel
         right_vel = linear_vel + angular_vel
         

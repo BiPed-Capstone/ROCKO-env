@@ -79,7 +79,7 @@ class QuadEncoders(Node):
         self.new_vel_idx = (self.new_vel_idx + 1) % self.num_prev_vels
         velocity = np.average(self.prev_vels)
         
-        self.get_logger().info("left: %3.1f right: %3.1f avg: %3.1f" % (left_velocity, right_velocity, velocity))
+        # self.get_logger().info("left: %3.1f right: %3.1f avg: %3.1f" % (left_velocity, right_velocity, velocity))
         
         self.left_last_position = left_position
         self.right_last_position = right_position

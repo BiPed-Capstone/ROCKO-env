@@ -112,25 +112,14 @@ def generate_launch_description():
         )
     )
 
-    left_relative_encoder = Node(
+    encoders = Node(
         package="rocko_env",
-        executable="QuadEncoder.py",
-        name="left_wheel_joint_encoder",
+        executable="QuadEncoders.py",
         parameters=[{
-            "service_name": "left_wheel_joint_encoder_data",
-            "a_pin": 26,
-            "b_pin": 20
-        }]
-    )
-
-    right_relative_encoder = Node(
-        package="rocko_env",
-        executable="QuadEncoder.py",
-        name="right_wheel_joint_encoder",
-        parameters=[{
-            "service_name": "right_wheel_joint_encoder_data",
-            "a_pin": 19,
-            "b_pin": 16
+            "left_a_pin": 26,
+            "left_b_pin": 20,
+            "right_a_pin": 19,
+            "right_b_pin": 16
         }]
     )
     
@@ -145,8 +134,7 @@ def generate_launch_description():
         foxglove_bridge,
         diffdrive_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
-        left_relative_encoder,
-        right_relative_encoder,
+        encoders,
         joystick,
     ]
 

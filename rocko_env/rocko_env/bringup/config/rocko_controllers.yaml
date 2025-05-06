@@ -50,5 +50,5 @@ velocity_pid_controller:
       - right_wheel_joint
 
     gains:
-      pitch_pid_controller/left_wheel_joint:   {p: 2.0, i: 0.1, d: 0.0, i_clamp_max: 2.0, i_clamp_min: -2.0} # 2.0, 0.1, 0.0
-      pitch_pid_controller/right_wheel_joint:   {p: 2.0, i: 0.1, d: 0.0, i_clamp_max: 2.0, i_clamp_min: -2.0}
+      pitch_pid_controller/left_wheel_joint:   {p: 3.0, i: 0.1, d: 0.0, i_clamp_max: 2.0, i_clamp_min: -2.0} # 2.0, 0.1, 0.0
+      pitch_pid_controller/right_wheel_joint:   {p: 3.0, i: 0.1, d: 0.0, i_clamp_max: 2.0, i_clamp_min: -2.0}
