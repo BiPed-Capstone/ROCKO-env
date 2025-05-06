@@ -33,6 +33,10 @@ class QuadEncoders(Node):
         self.num_prev_vels = 3
         self.wheel_radius = 0.06 # 60 mm radius wheel
         self.meters_conversion = 145 * 1.355 / (2 * self.wheel_radius * np.pi) # 120 mm wheel diameter, 145 PPR encoder resolution at gearbox output shaft, 1.355 reduction from belts
+
+        self.left_velocity_filtered = 0.0
+        self.right_velocity_filtered = 0.0
+        self.filter_alpha = 0.05
         
         # create topics to get feedforward info
         self.left_feedforward_topic = self.create_subscription(
@@ -66,18 +70,28 @@ class QuadEncoders(Node):
         left_position = self.left_enc.read() / self.meters_conversion
         left_velocity = (left_position - self.left_last_position) / 0.01
         right_position = self.right_enc.read() / self.meters_conversion
-        right_velocity = (right_position - self.right_last_position) / 0.01 
+        right_velocity = (right_position - self.right_last_position) / 0.01
         
         # Account for different velocities from feedforwards
-        left_velocity -= self.left_feedforward
-        right_velocity -= self.right_feedforward
-        
-        # Find the average velocity of the robot
-        velocity = np.average([left_velocity, right_velocity])
+        # left_velocity -= self.left_feedforward
+        # right_velocity -= self.right_feedforward
+
+        # Lowpass filter the velocities
+        self.left_velocity_filtered = (
+            self.filter_alpha * left_velocity +
+            (1 - self.filter_alpha) * self.left_velocity_filtered
+        )
+        self.right_velocity_filtered = (
+            self.filter_alpha * right_velocity +
+            (1 - self.filter_alpha) * self.right_velocity_filtered
+        )
                 
-        self.prev_vels[self.new_vel_idx] = velocity
-        self.new_vel_idx = (self.new_vel_idx + 1) % self.num_prev_vels
-        velocity = np.average(self.prev_vels)
+        # Find the average velocity of the robot
+        velocity = np.average([self.left_velocity_filtered, self.right_velocity_filtered])
+
+        # self.prev_vels[self.new_vel_idx] = velocity
+        # self.new_vel_idx = (self.new_vel_idx + 1) % self.num_prev_vels
+        # velocity = np.average(self.prev_vels)
         
         # self.get_logger().info("left: %3.1f right: %3.1f avg: %3.1f" % (left_velocity, right_velocity, velocity))
         
