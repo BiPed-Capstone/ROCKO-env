@@ -24,6 +24,7 @@ if num_joysticks > 0:
     print("Controller connected:", controller.get_name())
 else:
     print("No controller detected.")
+    exit(1)
  
 # To get the number of axes, buttons, and hats on the controller
 num_axes = controller.get_numaxes()
