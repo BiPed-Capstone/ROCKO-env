@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Motor PWM Plot</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h2>Motor PWM Values</h2>
+    <canvas id="pwmChart" width="800" height="400"></canvas>
+    <script>
+        const ctx = document.getElementById('pwmChart').getContext('2d');
+        const data = {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Left Motor PWM',
+                    borderColor: 'rgb(255, 99, 132)',
+                    data: [],
+                    fill: false,
+                },
+                {
+                    label: 'Right Motor PWM',
+                    borderColor: 'rgb(54, 162, 235)',
+                    data: [],
+                    fill: false,
+                }
+            ]
+        };
+        const config = {
+            type: 'line',
+            data: data,
+            options: {
+                animation: false,
+                scales: {
+                    x: { title: { display: true, text: 'Time (s)' } },
+                    y: { title: { display: true, text: 'PWM Value' }, min: 0, max: 100 }
+                }
+            }
+        };
+        const pwmChart = new Chart(ctx, config);
+
+        let time = 0;
+        function fetchData() {
+            fetch('/data')
+                .then(response => response.json())
+                .then(json => {
+                    time += 1;
+                    data.labels.push(time);
+                    data.datasets[0].data.push(json.leftmotorpwm);
+                    data.datasets[1].data.push(json.rightmotorpwm);
+                    // Keep only the last 100 points
+                    if (data.labels.length > 100) {
+                        data.labels.shift();
+                        data.datasets[0].data.shift();
+                        data.datasets[1].data.shift();
+                    }
+                    pwmChart.update();
+                });
+        }
+        setInterval(fetchData, 200); // Fetch every 200ms
+    </script>
+</body>
+</html>

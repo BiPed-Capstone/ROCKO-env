@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Accel & Motor Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Live Accelerometer and Motor Data</h1>
+    <canvas id="accelChart" width="400" height="200"></canvas>
+    <canvas id="motorChart" width="400" height="200"></canvas>
+    <script>
+        const accelCtx = document.getElementById('accelChart').getContext('2d');
+        const motorCtx = document.getElementById('motorChart').getContext('2d');
+        const accelChart = new Chart(accelCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'X', data: [], borderColor: 'red', fill: false },
+                    { label: 'Y', data: [], borderColor: 'green', fill: false },
+                    { label: 'Z', data: [], borderColor: 'blue', fill: false }
+                ]
+            }
+        });
+        const motorChart = new Chart(motorCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Motor', data: [], borderColor: 'orange', fill: false }
+                ]
+            }
+        });
+
+        function fetchData() {
+            fetch('/data')
+                .then(res => res.json())
+                .then(data => {
+                    const now = new Date().toLocaleTimeString();
+                    // Accel
+                    accelChart.data.labels.push(now);
+                    accelChart.data.datasets[0].data.push(data.accel.x);
+                    accelChart.data.datasets[1].data.push(data.accel.y);
+                    accelChart.data.datasets[2].data.push(data.accel.z);
+                    if (accelChart.data.labels.length > 50) {
+                        accelChart.data.labels.shift();
+                        accelChart.data.datasets.forEach(ds => ds.data.shift());
+                    }
+                    accelChart.update();
+                    // Motor
+                    motorChart.data.labels.push(now);
+                    motorChart.data.datasets[0].data.push(data.motor);
+                    if (motorChart.data.labels.length > 50) {
+                        motorChart.data.labels.shift();
+                        motorChart.data.datasets[0].data.shift();
+                    }
+                    motorChart.update();
+                });
+        }
+        setInterval(fetchData, 200);
+    </script>
+</body>
+</html>

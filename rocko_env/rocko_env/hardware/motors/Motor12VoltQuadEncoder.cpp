@@ -10,6 +10,7 @@
 #include "hardware_interface/lexical_casts.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/float32.hpp"
 
 #include "rocko_env/Motor12VoltQuadEncoder.hpp"
 #include <wiringPi.h>
@@ -17,6 +18,8 @@
 
 namespace rocko_env
 {
+  std::string joint_name_;
+
   hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_init(
       const hardware_interface::HardwareInfo &info)
   {
@@ -92,6 +95,9 @@ namespace rocko_env
 
     _wheel.setup(info.joints[0].name, 0);
 
+    // Save joint name for topic selection
+    joint_name_ = info.joints[0].name;
+
     // Set up pins to have WiringPi numberings
     wiringPiSetup();
 
@@ -100,7 +106,7 @@ namespace rocko_env
 
     // Set up connection to client
     _node = rclcpp::Node::make_shared(_prefix + "_encoder_client");
-    std::string s = _prefix + "_encoder_data";
+    std::string s = "encoder_data";
     _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
 
     while (!_client->wait_for_service(std::chrono::seconds(1)))
@@ -195,9 +201,9 @@ namespace rocko_env
   hardware_interface::return_type Motor12VoltQuadEncoder::write(
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
-    // Convert from velocity in m/s to percent of full speed
-    double radPerSec = _wheel.cmd; // Multiply by wheel radius bc they add it for some reason and it makes the velocities wrong
-    int pwmVal = (std::sqrt(std::abs((radPerSec / MAX_RAD_PER_SEC))) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
+    // Convert from rad/sec to percent of full speed
+    double radPerSec = _wheel.cmd; 
+    int pwmVal = (std::abs((radPerSec / MAX_RAD_PER_SEC)) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
 
     // Set direction
     if (_wheel.cmd >= 0)
@@ -214,7 +220,8 @@ namespace rocko_env
       softPwmWrite(_speedPin, pwmVal);
     }
 
-    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
+    if (_prefix == "right_wheel_joint")
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
 
     return hardware_interface::return_type::OK;
   }
