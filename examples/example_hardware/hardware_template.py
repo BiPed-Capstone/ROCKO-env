@@ -1,13 +1,18 @@
 
 # TODO: Replace all uses of <ClassName> with the name of your class
+# TODO: Replace all uses of <ServiceType> with the name of the service message you just made in rocko_interfaces
+
+from rocko_interfaces.srv import <ServiceType>
+
 class <ClassName>(Node):
 
     def __init__(self):
+        super().__init__('<ClassName>_node')
         # Handle any hardware initialization here
 
         # Create a new service to send data to ros2_control
-        super().__init__('node')
-        self.srv = self.create_service(<ServiceType>, 'serviceName', self.callback)
+        
+        self.srv = self.create_service(<ServiceType>, '<ClassName>_service', self.callback)
 
 
     def callback(self, request, response):
