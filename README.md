@@ -2,6 +2,7 @@
 ROS packaging for biped robot codenamed 'ROCKO'  
 
 ## File Structure
+```
 ROCKO-env  
   examples  
     example_hardware  
@@ -105,3 +106,4 @@ ROCKO-env
     .gitignore  
     LICENSE  
     README.md
+```
