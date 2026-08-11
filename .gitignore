@@ -52,3 +52,6 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
+
+# MAC OS files
+.DS_STORE

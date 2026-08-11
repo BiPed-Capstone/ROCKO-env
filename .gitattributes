@@ -1,0 +1,43 @@
+# Normalize all text files to LF in the repository.
+# Everything here is consumed by ROS 2 on Linux (in a container or on the Pi),
+# so CRLF checkouts on Windows break shebang'd scripts with
+# "bad interpreter: /usr/bin/env python3^M".
+* text=auto eol=lf
+
+# Be explicit for the files that are executed or parsed by Linux tooling.
+*.py    text eol=lf
+*.sh    text eol=lf
+*.cpp   text eol=lf
+*.hpp   text eol=lf
+*.h     text eol=lf
+*.xml   text eol=lf
+*.xacro text eol=lf
+*.urdf  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.rviz  text eol=lf
+*.msg   text eol=lf
+*.srv   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.cfg   text eol=lf
+*.txt   text eol=lf
+CMakeLists.txt text eol=lf
+LICENSE text eol=lf
+
+# Binary assets: never touch line endings.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.stl   binary
+*.dae   binary
+*.STL   binary
+*.DAE   binary
+*.bag   binary
+*.db3   binary
+*.pcd   binary
+*.pyc   binary
+*.so    binary
