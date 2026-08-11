@@ -90,13 +90,7 @@ These are all listed in the `package.xml` files, and `rosdep` (step 2 of the bui
 
 **Used to build:** `hardware_interface`, `controller_interface`, `pluginlib`, `rclcpp`, `rclcpp_lifecycle`, `rclpy`, `generate_parameter_library`, `parameter_traits`, `backward_ros`, `rosidl_default_generators`
 
-**Used at runtime:** `controller_manager`, `forward_command_controller`, `joint_state_broadcaster`, `joint_state_publisher_gui`, `robot_state_publisher`, `ros2controlcli`, `ros2launch`, `rviz2`, `xacro`, `std_msgs`, `control_msgs`, `geometry_msgs`, `sensor_msgs`
-
-⚠️ **One exception:** `rocko.launch.py` starts `foxglove_bridge`, but it isn't listed in `package.xml`, so `rosdep` won't catch it. Install it yourself:
-
-```bash
-sudo apt install ros-jazzy-foxglove-bridge
-```
+**Used at runtime:** `controller_manager`, `forward_command_controller`, `joint_state_broadcaster`, `joint_state_publisher_gui`, `robot_state_publisher`, `ros2controlcli`, `ros2launch`, `rviz2`, `xacro`, `std_msgs`, `control_msgs`, `geometry_msgs`, `sensor_msgs`, `foxglove_bridge` (used by `rocko.launch.py`)
 
 ### WiringPi (Raspberry Pi only)
 
@@ -175,7 +169,6 @@ git clone https://github.com/BiPed-Capstone/ROCKO-env ROCKO-env
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
-sudo apt install ros-jazzy-foxglove-bridge        # rosdep misses this one
 
 # 3. On the Pi only: install WiringPi first, or step 4 fails to link
 #    https://github.com/WiringPi/WiringPi
@@ -244,7 +237,30 @@ If a controller shows as `inactive` or missing, that's usually a bad name or int
 
 ### Working on a laptop instead of the robot
 
-macOS and Windows have no usable ROS 2 Jazzy install, so you'd use a Linux machine or a `ros:jazzy` Docker container with the workspace mounted in. Docker behaves the same on Mac and Windows. On Windows, keep the clone inside the WSL2 filesystem or builds get very slow.
+macOS and Windows have no usable ROS 2 Jazzy install, so `docker/` at the repo root has a dev container: a single `ros:jazzy`-based image, used the same way on both OSes. The OS-specific bits (GUI display forwarding) live in small compose overrides, not in the image itself.
 
-But even in a container, the C++ hardware won't compile, because WiringPi doesn't exist off the Pi. Making off-robot development work needs either a stub WiringPi or CMake guards around the Pi-only source files, plus finishing the `use_mock_hardware` path ([#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)). Until then, laptop work is limited to editing code and reasoning about it.
+```bash
+# From the ROCKO-env repo root
+
+# macOS
+docker compose -f docker/compose.yml -f docker/compose.mac.yml up -d
+docker compose -f docker/compose.yml -f docker/compose.mac.yml exec ros2 bash
+
+# Windows (run from inside a WSL2 distro, with Docker Desktop's WSL2 integration on)
+docker compose -f docker/compose.yml -f docker/compose.windows.yml up -d
+docker compose -f docker/compose.yml -f docker/compose.windows.yml exec ros2 bash
+```
+
+See the comments in `docker/compose.mac.yml` / `docker/compose.windows.yml` for the one-time XQuartz/WSLg setup each OS needs.
+
+Inside the container, it's the same workflow as the [Building it](#building-it) section above — this repo is bind-mounted at `/ros2_ws/src/ROCKO-env` (no separate Docker copy of the packages to keep in sync), and `build/`/`install`/`log` live in a named Docker volume, not on your host:
+
+```bash
+cd /ros2_ws
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install
+source install/setup.bash
+```
+
+**This does not make the full robot build off-Pi.** The container runs on your laptop's CPU, not the Pi's, and `rocko_env`'s hardware plugin still needs WiringPi, which only exists on real Pi GPIO hardware — that's a CPU/hardware problem, not an OS one, so Docker can't route around it. `colcon build --packages-select rocko_interfaces` works fine in the container today; the full `rocko_env` target needs either a stub WiringPi or CMake guards around the Pi-only source files, plus finishing the `use_mock_hardware` path ([#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)), before it'll link off-Pi. Until then, laptop work on `rocko_env` itself is limited to editing code and reasoning about it — the container mainly buys you a consistent, matching toolchain and a working `rocko_interfaces` build.
 

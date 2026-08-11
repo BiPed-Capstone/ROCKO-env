@@ -54,4 +54,4 @@ qtcreator-*
 CATKIN_IGNORE
 
 # MAC OS files
-.DS_STORE
+.DS_Store

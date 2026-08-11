@@ -1,0 +1,40 @@
+# Base service, OS-agnostic. Use with an override on top:
+#   docker compose -f compose.yml -f compose.mac.yml up -d
+#   docker compose -f compose.yml -f compose.windows.yml up -d
+#
+# ROCKO-env (the repo this file lives in) is bind-mounted at
+# /ros2_ws/src/ROCKO-env, i.e. exactly where the top-level README's
+# non-Docker instructions already put it ("clone into ~/ros2_ws/src/").
+# There is no second copy of the packages anywhere under docker/.
+#
+# build/, install/, log/ live in a named volume, not a bind mount: bind
+# mounts for build output are slow on Mac/Windows and would otherwise dirty
+# git status. `docker compose down -v` clears it for a clean rebuild.
+services:
+  ros2:
+    build:
+      context: .
+      args:
+        # On native Linux, set these to your host UID/GID so bind-mounted
+        # files aren't root-owned: UID=$(id -u) GID=$(id -g) docker compose build
+        # Docker Desktop on Mac/Windows remaps ownership itself, so the
+        # defaults are fine there.
+        USERNAME: ${USERNAME:-rocko}
+        USER_UID: ${UID:-1000}
+        USER_GID: ${GID:-1000}
+    image: rocko-env-dev:latest
+    container_name: rocko-env-dev
+    working_dir: /ros2_ws
+    user: ${USERNAME:-rocko}
+    environment:
+      - ROS_DOMAIN_ID=42
+      - ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+    volumes:
+      - workspace:/ros2_ws
+      - ..:/ros2_ws/src/ROCKO-env
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+volumes:
+  workspace:

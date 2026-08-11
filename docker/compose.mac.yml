@@ -1,0 +1,16 @@
+# macOS override: GUI apps (rviz2, rqt) via XQuartz.
+#
+# One-time host setup:
+#   brew install --cask xquartz
+#   # then, in XQuartz settings: Security > "Allow connections from network clients"
+#   defaults write org.xquartz.X11 nolisten_tcp -bool false
+#   # reboot, then each session:
+#   xhost +localhost
+services:
+  ros2:
+    environment:
+      - DISPLAY=host.docker.internal:0
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/home/${USERNAME:-rocko}/.Xauthority
+    volumes:
+      - ${HOME}/.Xauthority:/home/${USERNAME:-rocko}/.Xauthority:ro

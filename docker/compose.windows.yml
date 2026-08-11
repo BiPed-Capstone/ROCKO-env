@@ -1,0 +1,16 @@
+# Windows override: GUI apps (rviz2, rqt) via WSLg.
+#
+# Run `docker compose` from inside a WSL2 distro (not PowerShell/cmd), with
+# Docker Desktop's WSL2 integration enabled. WSLg forwards GUI apps for free
+# - no XQuartz-equivalent install needed - and $DISPLAY is already set in
+# your WSL2 shell, so this override just passes it through.
+#
+# Not on the WSL2 backend? Install VcXsrv, start it with "Disable access
+# control" checked, and replace the environment line below with:
+#   - DISPLAY=host.docker.internal:0
+services:
+  ros2:
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
