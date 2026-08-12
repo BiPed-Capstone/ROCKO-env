@@ -2,6 +2,8 @@
 #   docker compose -f compose.yml -f compose.mac.yml up -d
 #   docker compose -f compose.yml -f compose.windows.yml up -d
 #
+# Based on: https://github.com/shakirth-anisha/docker-ros2-workspace/tree/main
+#
 # ROCKO-env (the repo this file lives in) is bind-mounted at
 # /ros2_ws/src/ROCKO-env, i.e. exactly where the top-level README's
 # non-Docker instructions already put it ("clone into ~/ros2_ws/src/").

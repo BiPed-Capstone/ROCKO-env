@@ -1,5 +1,7 @@
 # Windows override: GUI apps (rviz2, rqt) via WSLg.
 #
+# Based on: https://github.com/shakirth-anisha/docker-ros2-workspace/tree/main
+#
 # Run `docker compose` from inside a WSL2 distro (not PowerShell/cmd), with
 # Docker Desktop's WSL2 integration enabled. WSLg forwards GUI apps for free
 # - no XQuartz-equivalent install needed - and $DISPLAY is already set in

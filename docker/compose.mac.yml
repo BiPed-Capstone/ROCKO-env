@@ -1,5 +1,7 @@
 # macOS override: GUI apps (rviz2, rqt) via XQuartz.
 #
+# Base on: https://github.com/shakirth-anisha/docker-ros2-workspace/tree/main
+#
 # One-time host setup:
 #   brew install --cask xquartz
 #   # then, in XQuartz settings: Security > "Allow connections from network clients"

@@ -2,6 +2,8 @@
 # the OS-specific bits (GUI display forwarding, networking) live in the
 # compose override files, not here.
 #
+# Based on: https://github.com/shakirth-anisha/docker-ros2-workspace/tree/main
+#
 # This image does NOT bake in ROCKO's ROS package dependencies (rosdep does
 # that at container start from the mounted package.xml files, same as the
 # non-Docker build in the top-level README) and it cannot build the WiringPi
