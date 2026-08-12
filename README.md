@@ -168,6 +168,7 @@ git clone https://github.com/BiPed-Capstone/ROCKO-env ROCKO-env
 # 2. Install dependencies
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
+sudo apt update
 rosdep install --from-paths src --ignore-src -r -y
 
 # 3. On the Pi only: install WiringPi first, or step 4 fails to link
@@ -263,4 +264,3 @@ source install/setup.bash
 ```
 
 **This does not make the full robot build off-Pi.** The container runs on your laptop's CPU, not the Pi's, and `rocko_env`'s hardware plugin still needs WiringPi, which only exists on real Pi GPIO hardware — that's a CPU/hardware problem, not an OS one, so Docker can't route around it. `colcon build --packages-select rocko_interfaces` works fine in the container today; the full `rocko_env` target needs either a stub WiringPi or CMake guards around the Pi-only source files, plus finishing the `use_mock_hardware` path ([#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)), before it'll link off-Pi. Until then, laptop work on `rocko_env` itself is limited to editing code and reasoning about it — the container mainly buys you a consistent, matching toolchain and a working `rocko_interfaces` build.
-
