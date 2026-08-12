@@ -20,11 +20,11 @@ services:
         # Docker Desktop on Mac/Windows remaps ownership itself, so the
         # defaults are fine there.
         USERNAME: ${USERNAME:-rocko}
-        USER_UID: ${UID:-1000}
-        USER_GID: ${GID:-1000}
+        USER_UID: ${UID:-1001}
+        USER_GID: ${GID:-1001}
     image: rocko-env-dev:latest
     container_name: rocko-env-dev
-    working_dir: /ros2_ws
+    working_dir: /ros2_ws/
     user: ${USERNAME:-rocko}
     environment:
       - ROS_DOMAIN_ID=42
@@ -35,6 +35,7 @@ services:
     stdin_open: true
     tty: true
     command: /bin/bash
+        # - source /opt/ros/jazzy/setup.bash
 
-volumes:
+volumes :
   workspace:

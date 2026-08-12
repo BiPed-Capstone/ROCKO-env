@@ -9,7 +9,7 @@
 FROM ros:jazzy
 
 ARG USERNAME=rocko
-ARG USER_UID=1000
+ARG USER_UID=1001
 ARG USER_GID=$USER_UID
 
 RUN groupadd --gid $USER_GID $USERNAME \
@@ -23,6 +23,7 @@ RUN groupadd --gid $USER_GID $USERNAME \
 RUN apt-get update && apt-get install -y \
     python3-colcon-common-extensions \
     python3-rosdep \
+    iputils-ping \
     git \
     vim \
     && rm -rf /var/lib/apt/lists/*
