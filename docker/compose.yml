@@ -30,12 +30,21 @@ services:
       - ROS_DOMAIN_ID=42
       - ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
     volumes:
+        # When we build the ros packges, they will live in the workspace on our volume
       - workspace:/ros2_ws
+      # Mounts the src of the packges to the workspace
       - ..:/ros2_ws/src/ROCKO-env
+      - ../build_ros.sh:/ros2_ws/build_ros.sh
     stdin_open: true
     tty: true
-    command: /bin/bash
-        # - source /opt/ros/jazzy/setup.bash
+    command:
+        - /bin/bash
+        - -c
+        - |
+          chmod +x /ros2_ws/build_ros.sh
+          cd ~/ros2_ws
+          source /opt/ros/humble/setup.bash
+          exec /bin/bash
 
 volumes :
   workspace:
