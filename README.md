@@ -2,6 +2,10 @@
 
 This is the ROS 2 code for **ROCKO**, a two-wheeled self-balancing robot. Everything here runs on a Raspberry Pi mounted on the robot.
 
+This README is the front door: what the robot is, how the pieces connect, and how to build and run
+it. Deeper material lives in **[`docs/`](docs/)** — subsystem explanations, procedures, architecture
+decision records, and code audits. See [Documentation](#documentation) at the bottom for the map.
+
 ---
 
 ## Getting Started
@@ -264,3 +268,36 @@ source install/setup.bash
 ```
 
 **This does not make the full robot build off-Pi.** The container runs on your laptop's CPU, not the Pi's, and `rocko_env`'s hardware plugin still needs WiringPi, which only exists on real Pi GPIO hardware — that's a CPU/hardware problem, not an OS one, so Docker can't route around it. `colcon build --packages-select rocko_interfaces` works fine in the container today; the full `rocko_env` target needs either a stub WiringPi or CMake guards around the Pi-only source files, plus finishing the `use_mock_hardware` path ([#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)), before it'll link off-Pi. Until then, laptop work on `rocko_env` itself is limited to editing code and reasoning about it — the container mainly buys you a consistent, matching toolchain and a working `rocko_interfaces` build.
+
+---
+
+## Documentation
+
+[`docs/`](docs/) holds everything that doesn't belong on the front page.
+
+| Where | What's in it |
+| --- | --- |
+| [`docs/architecture/`](docs/architecture/) | How a subsystem works and **why** — start with [the control cascade](docs/architecture/control-cascade.md) |
+| [`docs/guides/`](docs/guides/) | Procedures — including [how to record a result so it reproduces](docs/guides/reproducing-results.md) |
+| [`docs/decisions/`](docs/decisions/) | Architecture Decision Records: a choice, its alternatives, its cost |
+| [`docs/claude-analysis/`](docs/claude-analysis/) | Code audits with findings and severities |
+
+**If you are new**, read this README, then
+[`docs/architecture/control-cascade.md`](docs/architecture/control-cascade.md) for why "go faster"
+means "lean further", then
+[`docs/claude-analysis/balance-loop-findings.md`](docs/claude-analysis/balance-loop-findings.md) for
+an honest account of what is wrong with the balance loop today and in what order to fix it.
+
+**If you are about to change something**, the relevant ADRs are
+[0001 — the version lock](docs/decisions/0001-version-lock.md) (Jazzy and ros2_control 4.x are
+pinned, and the build enforces it) and
+[0002 — the cascade](docs/decisions/0002-cascaded-balance-control.md).
+
+### Working with AI agents in this repo
+
+[`CLAUDE.md`](CLAUDE.md) is the working agreement every Claude Code session loads automatically. The
+short version: **this repo exists so people learn robotics**, so an agent plans and asks before it
+implements, never edits PID gains or version pins on its own judgment, and cannot claim that
+balancing works — it has no robot. Repeatable workflows live in
+[`.claude/skills/`](.claude/skills/) (building, control-loop changes, tuning, adding hardware,
+writing docs) and review agents in [`.claude/agents/`](.claude/agents/).

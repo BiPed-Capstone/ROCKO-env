@@ -45,7 +45,7 @@ services:
         - |
           chmod +x /ros2_ws/build_ros.sh
           cd ~/ros2_ws
-          source /opt/ros/humble/setup.bash
+          source /opt/ros/jazzy/setup.bash
           exec /bin/bash
 
 volumes :

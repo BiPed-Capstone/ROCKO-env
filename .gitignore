@@ -55,3 +55,6 @@ CATKIN_IGNORE
 
 # MAC OS files
 .DS_Store
+
+# Claude Code: share settings.json and skills, keep personal overrides local
+.claude/settings.local.json
