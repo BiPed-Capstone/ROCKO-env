@@ -32,7 +32,7 @@ the workspace root, never from `src/`.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd ~/ros2_ws
+cd "${ROS2_WS:-$HOME/ros2_ws}"   # Pi: ~/ros2_ws · dev container: /ros2_ws (compose sets ROS2_WS)
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
 source install/setup.bash
@@ -48,7 +48,9 @@ Off-Pi, build only what can build:
 colcon build --packages-select rocko_interfaces --symlink-install
 ```
 
-`build_ros.sh` at the repo root wraps the sequence above and is what the container uses.
+`build_ros.sh` at the repo root runs the same build, plus `sudo apt-get update` first and without
+the final `source install/setup.bash`. The container mounts it at `/ros2_ws/build_ros.sh` and makes
+it executable but does not run it — run `./build_ros.sh` yourself.
 
 ## Docker dev container
 
@@ -66,11 +68,40 @@ The repo is bind-mounted at `/ros2_ws/src/ROCKO-env`; `build/`, `install/`, `log
 volume so they neither dirty `git status` nor crawl on a Mac. `docker compose down -v` wipes it for
 a clean rebuild.
 
-**Unverified suspicion:** `docker/compose.yml` (startup command) and `build_ros.sh` both
-`cd ~/ros2_ws`, but the container's workspace volume is mounted at `/ros2_ws` and the user is
-`rocko`, so `~` is `/home/rocko`. If `/home/rocko/ros2_ws` doesn't exist, `build_ros.sh` runs
-`rosdep`/`colcon` in the wrong directory. Not yet tested in a running container — check with
-`docker compose ... exec ros2 bash -c 'ls -d ~/ros2_ws /ros2_ws'` before relying on the script.
+**Where `build_ros.sh` builds.** The script `cd`s to `$ROS2_WS`, defaulting to `~/ros2_ws`. That
+default is right on the Pi but wrong in the container: the workspace volume is mounted at
+`/ros2_ws` and the user is `rocko`, so `~` is `/home/rocko`, which has no `ros2_ws`. Before this was
+fixed, the `cd` failed, the script (which has no `set -e`) carried on, and `rosdep`/`colcon` ran
+in whatever directory you launched it from — correct only when that happened to be `/ros2_ws`.
+`docker/compose.yml` now sets `ROS2_WS=/ros2_ws`, and the script exits with an error if the
+workspace directory is missing.
+
+Use compose rather than plain `docker run`. The image ships an empty `/ros2_ws`: `src/ROCKO-env`
+and `build_ros.sh` both arrive through compose's bind mounts, and `ROS2_WS` through its
+`environment:`. A bare `docker run` gets none of the three, and fails differently depending on what
+you leave out — no script mounted: `bash: ./build_ros.sh: No such file or directory`; script but no
+repo: `rosdep` reports `given path 'src' does not exist`; script and repo but no `ROS2_WS`: the
+script's own `ERROR: workspace '/home/rocko/ros2_ws' not found`. The equivalent of what compose does:
+
+```bash
+# from the repo root
+docker run --rm -it -e ROS2_WS=/ros2_ws \
+  -v "$PWD:/ros2_ws/src/ROCKO-env" \
+  -v "$PWD/build_ros.sh:/ros2_ws/build_ros.sh" \
+  rocko-env-dev:latest ./build_ros.sh
+```
+
+Without compose's named `workspace` volume, `build/`, `install/` and `log/` land in the container's
+writable layer and vanish with `--rm`.
+
+To check a running container: `docker compose ... exec ros2 bash -c 'echo $ROS2_WS; ls -d $ROS2_WS'`
+should print `/ros2_ws` twice. If it prints a blank line and `.`, the container was created before
+this change and still has the old environment — recreate it with
+`docker compose ... up -d` (compose recreates a container whose config changed) or `down` then `up -d`.
+
+**What was and wasn't verified.** The script's behavior was verified through `docker compose run`
+with `rosdep`/`colcon` stubbed to print their working directory. It was *not* verified with a real
+build, and not against a container recreated from the new compose file.
 
 ## Verifying, beyond "it compiled"
 

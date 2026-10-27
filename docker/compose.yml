@@ -31,6 +31,9 @@ services:
     environment:
       - ROS_DOMAIN_ID=42
       - ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+      # Workspace root inside the container. build_ros.sh reads this; without it
+      # the script would guess ~/ros2_ws, which is /home/rocko/ros2_ws here.
+      - ROS2_WS=/ros2_ws
     volumes:
         # When we build the ros packges, they will live in the workspace on our volume
       - workspace:/ros2_ws
@@ -44,7 +47,7 @@ services:
         - -c
         - |
           chmod +x /ros2_ws/build_ros.sh
-          cd ~/ros2_ws
+          cd "$$ROS2_WS"
           source /opt/ros/jazzy/setup.bash
           exec /bin/bash
 

@@ -2,8 +2,8 @@
 
 This is the ROS 2 code for **ROCKO**, a two-wheeled self-balancing robot. Everything here runs on a Raspberry Pi mounted on the robot.
 
-This README is the front door: what the robot is, how the pieces connect, and how to build and run
-it. Deeper material lives in **[`docs/`](docs/)** — subsystem explanations, procedures, architecture
+This README is the main documentation: what the robot is, how the pieces connect, and how to build and run
+it. More material lives in **[`docs/`](docs/)**. This includes subsystem explanations, procedures, architecture
 decision records, and code audits. See [Documentation](#documentation) at the bottom for the map.
 
 ---
@@ -266,6 +266,8 @@ rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
 source install/setup.bash
 ```
+
+`./build_ros.sh` (repo root) runs these same steps, plus `sudo apt-get update` first. In the container, compose sets `ROS2_WS=/ros2_ws` so the script builds in the right place; on the Pi it defaults to `~/ros2_ws`.
 
 **This does not make the full robot build off-Pi.** The container runs on your laptop's CPU, not the Pi's, and `rocko_env`'s hardware plugin still needs WiringPi, which only exists on real Pi GPIO hardware — that's a CPU/hardware problem, not an OS one, so Docker can't route around it. `colcon build --packages-select rocko_interfaces` works fine in the container today; the full `rocko_env` target needs either a stub WiringPi or CMake guards around the Pi-only source files, plus finishing the `use_mock_hardware` path ([#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)), before it'll link off-Pi. Until then, laptop work on `rocko_env` itself is limited to editing code and reasoning about it — the container mainly buys you a consistent, matching toolchain and a working `rocko_interfaces` build.
 

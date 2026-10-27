@@ -1,11 +1,18 @@
+#!/usr/bin/env bash
 # Builds the ROS packages
 # Intended to be ran inside the Docker container or on the robot
 yellow='\e[0;33m'
 white='\e[0;37m'
 
-echo -e "${yellow}Building ROS packages..."
+# The workspace root (the folder that contains src/). On the Pi this is ~/ros2_ws.
+# In the Docker dev container it is /ros2_ws, so docker/compose.yml sets ROS2_WS there.
+WS="${ROS2_WS:-$HOME/ros2_ws}"
+
+echo -e "${yellow}Building ROS packages in ${WS}..."
 echo -e "${white}"
-cd ~/ros2_ws
+# Stop here if the workspace is missing: without this, every later command
+# would run in whatever directory the script happened to be launched from.
+cd "$WS" || { echo "ERROR: workspace '$WS' not found. Set ROS2_WS to your workspace root." >&2; exit 1; }
 source /opt/ros/jazzy/setup.bash
 
 echo -e "${yellow}Updating package list..."
