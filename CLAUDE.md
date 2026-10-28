@@ -58,8 +58,13 @@ has been verified as far as the ladder allows and the evidence is written down.
    three is still dirty, stop and hand the human the remaining findings; do not grind silently.
 7. **Document in the same change** (§7): journal entry, architecture page, ADR if the choice is not
    obvious, README, and the verification ladder's status table.
-8. **Commit** verified work to the working branch in logical commits, one goal at a time. Never
-   commit to `main`, never push.
+8. **Commit, then publish `ai-forward`.** Commit verified work to the working branch in logical
+   commits, one goal at a time. On `ai-forward`, once the review loop is finished, push it. First
+   `git fetch origin`, then `git log --oneline HEAD..origin/ai-forward`: it lists commits the remote
+   has and you do not, and it must print **nothing** (an `unknown revision` error only means the
+   branch is not on the remote yet). If it lists commits, a human has pushed: stop and report it, and
+   do not merge, rebase or force. Otherwise `git push origin ai-forward` (`git push -u origin
+   ai-forward` the first time). Never commit to `main`, never push another branch, never force-push.
 9. **Report honestly** (§4 closes with what this means): the tiers you ran and what they printed,
    the findings you fixed and any you declined (with why), the proposals you filed, what you did
    **not** verify, and the procedure a human should follow on the robot.
@@ -84,8 +89,20 @@ damage hardware or silently change what the project supports.
 | *Adding* a safeguard (a tipover cutoff, a watchdog, a clamp) | **The guardrails**: `.claude/hooks/`, `.claude/settings.json`, `.claude/settings.local.json`, `.claude/commands/`, `.mcp.json`, `.git/config`, `.git/hooks/` (the hook *asks*) |
 | Gains in a separate `*_sim.yaml`, once a physics sim exists | **Anything on a robot**: `ros2 launch`/`run` on a Pi, a flash, a first tethered test |
 
-Also off limits: `git push`, committing to `main`, merging. Of these only `git push` is backed by a
-permission prompt (`ask`); committing to `main` is policy and nothing stops it, so don't.
+**Pushing is allowed for one thing only:** `git push origin ai-forward` (or `git push -u origin
+ai-forward`), in exactly those words. `.claude/settings.json` allows those two commands by exact
+match, so in the default permission mode any other `git push` (another branch, `--force`, extra
+arguments) prompts a human. Don't attempt one, and never force-push or delete a remote branch. A
+push publishes: everything on `ai-forward` is readable by whoever can read the team's GitHub repo,
+so never commit secrets or credentials.
+
+**These rules stop accidents, not a determined agent.** `gh api` is also on the allow-list and can
+move or delete any remote ref without a prompt; a chain of allowed commands such as
+`git fetch origin && git push origin ai-forward` runs without one; the push target is whatever
+`.git/config` says; and a rule added by answering "don't ask again", or kept in
+`settings.local.json` or a user's own settings, is invisible to this file. Keep to the spirit.
+
+Also off limits: committing to `main` and merging. Nothing stops those, so don't.
 
 When the hook denies an edit, do **not** work around it with `sed -i` or a shell redirect. The hook
 does not watch Bash, but the rule applies all the same. Write a proposal

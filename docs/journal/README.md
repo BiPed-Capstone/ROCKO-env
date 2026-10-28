@@ -67,4 +67,5 @@ Exact commands a stranger runs to get the same result.
 
 | Date | Goal |
 | --- | --- |
-| 2026-10-27 | [Make the AI-forward loop real: mock hardware, off-Pi build, verify script](2026-10-27-ai-forward-bootstrap.md) |
+| 2026-10-27 | [Make the AI-forward loop real: mock hardware, off-Pi build, verify scripts](2026-10-27-ai-forward-bootstrap.md) |
+| 2026-10-28 | [Let the agent push `ai-forward`](2026-10-28-allow-ai-forward-push.md) |

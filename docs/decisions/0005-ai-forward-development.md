@@ -51,9 +51,17 @@ On the `ai-forward` branch:
    test "could a student explain this in five sentences?".
 5. **Building better verifiers is first-class work.** The `bootstrap-sim` skill is an ordered
    backlog toward Tier 3.
-6. **Checkpoints, not publication.** The AI may commit verified work to its working branch in logical
-   commits. It never commits to `main` and never pushes. Only the push is backed by a permission
-   prompt (`ask`); committing to `main` is policy.
+6. **Checkpoints, and publishing one branch.** The AI may commit verified work to its working branch
+   in logical commits and, on `ai-forward`, push it to `origin` after the review loop. It first
+   fetches and pushes only if its branch is not `behind` the remote, and it never forces. It never
+   commits to `main` and never pushes any other branch. Committing to `main` is policy only; the
+   push limits are *limited* (not guaranteed) by permission rules (item 7). *Amended 2026-10-28:*
+   this item originally said the AI "never pushes". The maintainer lifted that for `ai-forward`
+   because the branch is expected to hold only the AI's own commits, so publishing it is the natural
+   end of the loop and there is little human work to disturb. A push without `--force` cannot
+   overwrite anything whatever the branch holds, and that is not relied on either: the check for
+   commits the remote has and the agent lacks, and the no-force rule, cover a human who does push to
+   it.
 7. **Permissions that follow from the above** (`.claude/settings.json`), and why:
 
    | Setting | Why |
@@ -62,7 +70,7 @@ On the `ai-forward` branch:
    | `allow` `git add`, `git commit` | Checkpoint commits (item 6) |
    | `allow` `colcon test`, `ros2 topic echo` | Build/test, and read-only; but `colcon` runs repo-controlled code (see the trust decision below) |
    | `ask` `ros2 launch`, `ros2 run` (unchanged) | On a Pi these drive real motors |
-   | `ask` `git push` (new) | Publication is a human act |
+   | `allow` exactly `git push origin ai-forward` and `git push -u origin ai-forward`; `allow` `git fetch origin` (amended 2026-10-28; was `ask` on every `git push`) | Publishing the AI's own branch is the end of the loop. Exact-match rules cannot be stretched into `--force` or another branch, and the broad `ask` rule had to go because `ask` outranks `allow`. In the default permission mode every other `git push` falls back to a prompt (not so for `gh api`, see below) |
    | `NotebookEdit` dropped from the hook matcher | There are no notebooks here, and the tool's path field is `notebook_path`, which the hook does not read |
 
    The first row is a real trust decision; see "The allow-list is a trust decision" below.
@@ -101,6 +109,18 @@ On the `ai-forward` branch:
     `git diff --output=<file>`. The branch accepts that for an interactive loop run by the
     maintainer. For an unattended or less-trusted run, move `docker compose`, `gh api` and
     `git commit` back to `ask`, or scope them; that is the maintainer's call, not the agent's.
+  - **A push publishes, and its limits rest on permission matching.** Everything on `ai-forward` is
+    readable by whoever can read the GitHub repo, and the run journals hold local paths and tool
+    output, so nothing secret may ever be committed. That `--force`, another branch or extra
+    arguments prompt relies on Claude Code's documented rule order (deny, then ask, then allow;
+    unlisted commands prompt), on the exact-match form of the two allow rules, and on the default
+    permission mode with no extra rule from `settings.local.json`, a user's own settings or an
+    answered "don't ask again". It does not stop `gh api` (allowed; it can move or delete any remote
+    ref), a chain of allowed commands, or a changed push target in `.git/config`. The allowed
+    command ran once with nothing to send; whether the rule or the session's permission mode let it
+    through is not established, and the refused forms were not run. If a human starts committing to
+    `ai-forward` it becomes a shared branch, and the agent stops when the remote has commits it
+    lacks, which is the intended behavior.
   - **`CLAUDE.md`, the agent definitions and the skills are not guarded.** An agent could edit the
     rules it works under. The control is a human reading the diff of those files before merging.
   - **Students learn less by doing.** The explanation trail narrows the gap but does not close it.

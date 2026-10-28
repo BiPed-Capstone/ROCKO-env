@@ -25,12 +25,14 @@
       "Bash(git show:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
+      "Bash(git fetch origin)",
+      "Bash(git push origin ai-forward)",
+      "Bash(git push -u origin ai-forward)",
       "Bash(gh api:*)"
     ],
     "ask": [
       "Bash(ros2 launch:*)",
-      "Bash(ros2 run:*)",
-      "Bash(git push:*)"
+      "Bash(ros2 run:*)"
     ]
   },
   "hooks": {

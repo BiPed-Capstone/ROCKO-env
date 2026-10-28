@@ -2,7 +2,7 @@
 
 - **Date / commit:** 2026-10-27, built on `923fa38`; the commits on `ai-forward` that add this file
 - **Branch:** `ai-forward`, cut from `main` at `923fa38` (the maintainer's `build_ros.sh` and compose
-  fix; local only, not pushed)
+  fix; both branches were pushed to `origin` on 2026-10-28, at the maintainer's instruction)
 - **Environment:** `rocko-env-dev` container, `ros:jazzy` **arm64** on Docker Desktop for macOS,
   `pid_controller` 4.42.1. Nothing was run on a Raspberry Pi. x86_64 untried.
 
@@ -40,7 +40,7 @@ verifiers themselves.
 | Area | Change | Why |
 | --- | --- | --- |
 | `.claude/hooks/` | Guard rewritten as `guard_protected_files.py` (+ a short `.sh` wrapper that just runs it): fails closed, judges whole lines of the whole file, denies gain/pin/safety edits, asks on guardrail edits. 70-case test suite | [ADR 0005](../decisions/0005-ai-forward-development.md) |
-| `settings.json` | `docker compose`, `git add/commit`, `colcon test`, `ros2 topic echo` allowed; `git push` asks | ADR 0005, and its trust-decision caveats |
+| `settings.json` | `docker compose`, `git add/commit`, `colcon test`, `ros2 topic echo` allowed; `git push` asked (changed 2026-10-28: see [the push entry](2026-10-28-allow-ai-forward-push.md)) | ADR 0005, and its trust-decision caveats |
 | `rocko_env/CMakeLists.txt` | `ROCKO_SKIP_WIRINGPI` option; default OFF fails when WiringPi is missing; ON where WiringPi exists also fails (stale cache) | Off-Pi build ([ADR 0003](../decisions/0003-simulation-target.md) follow-on 2) |
 | `build_ros.sh`, `docker/compose.yml` | Always pass the flag (`ON` in the container); exit 1 if the build fails | A failed build used to say `Done!` and exit 0 |
 | `*.ros2_control.xacro` (2) | `xacro:if` mock block (one `MockRocko` system); real blocks under `xacro:unless` | Follow-on 1: `use_mock_hardware` finally does something |
@@ -169,7 +169,7 @@ so the hook sees YAML structure, not just lines (it may not be installed on the 
 - Partway through, the maintainer's OneDrive `Documents` folder was reset by something outside this
   work, and the repo disappeared from its path. It was recovered from the Docker bind mount's view
   and the work continued in a non-synced local copy (`~/projects/ROCKO-env`). `923fa38` and this
-  branch exist only locally.
+  branch were local-only until they were pushed on 2026-10-28.
 - Several of my own checks were wrong before they were right (item 5 above). The mutation check on
   the hook tests found two tests that did not test what they claimed; that is the reason the ladder
   asks for a control that fails *for the right reason*.
