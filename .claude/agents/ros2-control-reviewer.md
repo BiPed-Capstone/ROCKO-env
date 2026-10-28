@@ -12,7 +12,9 @@ stuck `inactive`. Find those.
 ## Check
 
 **Plugin discovery — all five must line up, or the plugin is invisible at runtime:**
-1. `.cpp` in `add_library(rocko_env SHARED ...)` in `rocko_env/CMakeLists.txt`
+1. `.cpp` in `add_library(rocko_env SHARED ...)` in `rocko_env/CMakeLists.txt` — or, for a source
+   that needs a Pi-only library, added with `target_sources` inside the `ROCKO_SKIP_WIRINGPI`
+   block (that is where `Motor12VoltQuadEncoder.cpp` correctly lives; do not flag it as missing)
 2. include dir in `target_include_directories` **and** in the `install(DIRECTORY ...)` block
 3. `<class name>` / `type` / `base_class_type` in `rocko_env_hardware.xml` or
    `rocko_env_controllers.xml`, matching the real namespaced C++ type
@@ -43,8 +45,24 @@ keys. Both `rocko.launch.py` and `rocko_tank_mode.launch.py` still consistent.
 Jazzy's `ros2_control` 4.x; do not accept Humble-era or rolling-only APIs. Do not accept a change to
 a pin — see `docs/decisions/0001-version-lock.md`.
 
-**Educational quality.** This is a teaching repo: is the change followable by a student? Are new
-interface names self-describing? Is a non-obvious choice commented?
+**Mock parity.** `use_mock_hardware:=true` swaps the real plugins for one `MockRocko` system. It
+only means something if it exports **exactly** the joint and interface names the real plugins do. For
+any change to either side, compare the `<ros2_control>` blocks in `rocko.ros2_control.xacro` and
+`rocko_tank_mode.ros2_control.xacro`: a name added to one and not the other is a High finding,
+because Tier 2 would then pass against a wiring the robot does not have.
+
+**Fail-closed defaults.** `use_mock_hardware` must default to `false` in every launch file — a robot
+launched with no arguments must get real hardware, never a mock. The CMake default must still
+*require* WiringPi, and `build_ros.sh` must pass `ROCKO_SKIP_WIRINGPI` explicitly (CMake caches it).
+
+**Launch files and the gain guard.** The guard hook cannot see a launch file that loads a *different*
+YAML (say a `*_sim.yaml`, which is exempt from the gain guard) or that passes its own `update_rate`
+or gains as a parameter override. Flag either as High: the launch files that start the robot must
+load the guarded `rocko_controllers.yaml` / `rocko_tank_mode_controllers.yaml`, unmodified.
+
+**Educational quality.** The repo's code is written by AI and explained to students, so it has to be
+readable on its own: are new interface names self-describing? Is a non-obvious choice commented with
+its *why*? (The `explainability-reviewer` goes deeper; flag only what you trip over.)
 
 ## Method
 
@@ -55,8 +73,16 @@ in two places. Try to expand the URDF if the toolchain is available:
 xacro rocko_env/rocko_env/description/urdf/rocko.urdf.xacro use_mock_hardware:=false > /tmp/rocko.urdf
 ```
 
-Remember `rocko_env` cannot link off a Raspberry Pi (WiringPi). A link failure off-Pi is expected,
-not a finding.
+Off a Raspberry Pi there is no WiringPi. The container builds `rocko_env` with
+`-DROCKO_SKIP_WIRINGPI=ON` (set by `docker/compose.yml`, passed by `build_ros.sh`), which **leaves
+out `Motor12VoltQuadEncoder.cpp`**. Two consequences for you:
+
+- A CMake "WiringPi not found" failure *without* that flag is the intended fail-closed default, not a
+  finding.
+- A change to the motor plugin is **not compiled** in the container. Say so as a PLAUSIBLE finding
+  ("uncompiled in Tier 1; needs a Pi build") rather than treating a green container build as proof.
+
+To check controllers against the mock, see `docs/architecture/verification-ladder.md` (Tier 2).
 
 ## Output
 

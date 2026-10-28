@@ -19,7 +19,8 @@ an explicit "unknown" — a blank is indistinguishable from a forgotten field.
 Result:        <what you were measuring, and what happened>
 Date:          YYYY-MM-DD
 Commit:        <git rev-parse --short HEAD>   (and note if the tree was dirty)
-Launch:        <ros2 launch rocko_env rocko.launch.py | rocko_tank_mode.launch.py>
+Launch:        <ros2 launch rocko_env rocko.launch.py | rocko_tank_mode.launch.py>, with every argument
+Hardware:      <real | mock (use_mock_hardware:=true)>   (a mock result is a wiring check, not a measurement)
 Config:        <which *_controllers.yaml, and any gain differing from the committed value>
 Battery:       <volts at start, volts at end>
 Surface:       <carpet / tile / plywood / ...>
@@ -40,7 +41,9 @@ Observed:      <what actually happened, in plain words>
   plant gain the PID sees *drops as the battery drains*. The same gains behave differently at 12.4 V
   and 11.1 V. Until H-1 is fixed, voltage is not optional context — it is part of the plant.
 - **Surface.** Wheel friction and compliance change the plant. Carpet and tile are different robots.
-- **Launch file and config.** Balancing and tank mode are different control structures entirely.
+- **Launch file, arguments and config.** Balancing and tank mode are different control structures
+  entirely. `use_mock_hardware:=true` runs the controllers against a mock with no physics, so
+  anything it "measures" is the mock's, not the robot's.
 - **Logs.** So a disagreement can be settled by looking, not by re-running from memory.
 
 ## Capturing the run
@@ -99,4 +102,4 @@ a video and hard to see in a plot.
 
 An AI agent working in this repo **cannot** produce any of these numbers — it has no robot. If an
 agent hands you a gain change, it owes you this block as a *test procedure to run*, with the results
-blank. See [`CLAUDE.md`](../../CLAUDE.md) §7.
+blank. See [`CLAUDE.md`](../../CLAUDE.md) §9.

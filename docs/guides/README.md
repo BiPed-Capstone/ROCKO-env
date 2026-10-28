@@ -6,9 +6,12 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 | Guide | For |
 | --- | --- |
 | [`reproducing-results.md`](reproducing-results.md) | Recording a result so someone else gets the same number |
+| [`verify-in-container.md`](verify-in-container.md) | Building and checking a change on your laptop with no robot: build, static checks, the mock |
 
-Building, running, and the Docker dev container are in the [root README](../../README.md) — it is the
-canonical copy, deliberately not duplicated here.
+Building and running the robot code, and the Docker dev container, are in the
+[root README](../../README.md) — the canonical copy, deliberately not duplicated here.
+[`verify-in-container.md`](verify-in-container.md) is the narrower walk-through for checking a change
+without the robot; it repeats only the commands and what to expect.
 
 ## What a guide in here must have
 

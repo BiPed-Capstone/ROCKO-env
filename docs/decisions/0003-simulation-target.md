@@ -1,34 +1,56 @@
 # ADR 0003 — Simulate with `gz_ros2_control` for off-robot development
 
-- **Status:** Proposed — **nothing in this ADR is implemented yet**
-- **Date:** 2026-09-20
+- **Status:** Proposed — **the decision itself (a Gazebo physics simulation) is not implemented.**
+  Follow-on steps 1 and 2 are implemented on the `ai-forward` branch only; see "Progress" below.
+- **Date:** 2026-09-20 (progress added 2026-10-27)
 - **Deciders:** ROCKO capstone team
 
-> Read the status line. This ADR records an intention. Today there is **no simulation** in this
-> repository, and no page in `docs/` should describe one as working until this ADR is `Accepted`.
+> Read the status line. This ADR records an intention. Today there is **no physics simulation** in
+> this repository, and no page in `docs/` should describe one as working until this ADR is
+> `Accepted`. On `ai-forward` there is a *mock* that checks controller wiring; it has no physics and
+> is not a simulation. See the [verification ladder](../architecture/verification-ladder.md).
+
+## Progress (on `ai-forward`; not on `main`)
+
+| Follow-on | State |
+| --- | --- |
+| 1. `use_mock_hardware` selects a mock plugin | **Done.** Selects `mock_components/GenericSystem`. Verified by `verify_mock.sh`. |
+| 2. `rocko_env` configures and builds off-Pi | **Done**, with a deliberate cost: `-DROCKO_SKIP_WIRINGPI=ON` leaves out the motor plugin, so `Motor12VoltQuadEncoder.cpp` is **not compiled** off a Pi. The Pi default is unchanged and still requires WiringPi. |
+| 3. Measured inertial properties | Not done. Needs a person with the robot. |
+| 4. `gz_ros2_control` and a world | Not done. |
+| 5. Document the sim-to-real gap | Not done. |
+
+**An open disagreement.** Finding **M-4** in
+[`balance-loop-findings.md`](../claude-analysis/balance-loop-findings.md) recommends a `SimPlant`
+hardware plugin (about 200 lines of C++ integrating cart-pole dynamics) over a full Gazebo setup.
+This ADR chose Gazebo before that audit. They need reconciling by a human; the `bootstrap-sim` skill
+lays out the trade and recommends `SimPlant` first.
 
 ## Context
 
-Two facts make the current situation expensive:
+As of 2026-09-20, when this ADR was written (before the `ai-forward` work in "Progress" above), two
+facts made the situation expensive:
 
-1. **`rocko_env` only builds on a Raspberry Pi.** The motor plugin links against
+1. **`rocko_env` only built on a Raspberry Pi.** The motor plugin links against
    [WiringPi](https://github.com/WiringPi/WiringPi), which needs real Pi GPIO. Off-Pi — including in
-   the Docker dev container — only `rocko_interfaces` builds. This is a hardware constraint, not an
-   OS one, so Docker cannot route around it.
+   the Docker dev container — only `rocko_interfaces` built. This is a hardware constraint, not an
+   OS one, so Docker cannot route around it. (On `ai-forward` the rest of `rocko_env` now builds
+   off-Pi with the motor plugin left out; the constraint on that one file remains.)
 2. **Balance tuning requires the physical robot.** Every gain experiment needs a charged battery, a
    floor, and somebody to catch the robot. That throttles iteration to a few students in one room,
-   and a fall can damage hardware.
+   and a fall can damage hardware. This is still true.
 
-There is a `use_mock_hardware` argument threaded through the launch files and the xacro macro
-(`rocko_env/rocko_env/description/ros2_control/rocko.ros2_control.xacro:4`), but it is **accepted and
-then ignored** — no `mock_components/GenericSystem` exists anywhere in the repo. It offers no
-protection against driving real motors
-([issue #10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)).
+There was a `use_mock_hardware` argument threaded through the launch files and the xacro macro
+(`rocko.ros2_control.xacro:4` at the time), but it was **accepted and then ignored** — no
+`mock_components/GenericSystem` existed anywhere in the repo. It offered no protection against
+driving real motors ([issue #10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)). On
+`ai-forward` it now selects a mock.
 
 ## Decision
 
-Adopt **`gz_ros2_control`** (Gazebo + `ros2_control`) as ROCKO's simulation target, so the full
-`rocko_env` package builds and the balance cascade runs off-robot against simulated physics.
+Adopt **`gz_ros2_control`** (Gazebo + `ros2_control`) as ROCKO's simulation target, so `rocko_env`
+builds off-robot (less the WiringPi motor plugin, which needs a Pi) and the balance cascade runs
+off-robot against simulated physics.
 
 Gazebo, rather than a non-physical mock, because the goal is not only "does it compile" but "can the
 cascade be tuned without a robot." An inverted pendulum needs real dynamics — mass, inertia, gravity,
@@ -54,7 +76,7 @@ cascade untouched. That is the payoff for the layering in [ADR 0002](0002-cascad
 
 ## Consequences
 
-- **Good:** balance tuning becomes possible on a laptop; the full package builds off-Pi; CI can
+- **Good:** balance tuning becomes possible on a laptop; the package builds off-Pi (everything but the WiringPi motor plugin, which stays uncompiled there); CI can
   compile and load `rocko_env`; a student can break things without breaking hardware.
 - **Bad:** the URDF needs **real inertial properties** — masses, inertia tensors, wheel friction — and
   `rocko_description.urdf.xacro` does not have trustworthy ones today. Sim gains will not transfer
@@ -71,8 +93,10 @@ cascade untouched. That is the payoff for the layering in [ADR 0002](0002-cascad
 
 ## References
 
-- `rocko_env/rocko_env/description/ros2_control/rocko.ros2_control.xacro:4` — the ignored parameter
-- `rocko_env/CMakeLists.txt:75-80` — the unconditional WiringPi link
+- `rocko_env/rocko_env/description/ros2_control/rocko.ros2_control.xacro` — where the mock now
+  lives (the parameter was ignored at line 4 when this ADR was written)
+- `rocko_env/CMakeLists.txt`, the `ROCKO_SKIP_WIRINGPI` block — replaced the unconditional WiringPi
+  link that was at lines 75-80
 - [Root README, "Working on a laptop instead of the robot"](../../README.md)
 - [issue #10 — `use_mock_hardware` does nothing](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)
 - [gz_ros2_control docs](https://control.ros.org/jazzy/doc/gz_ros2_control/doc/index.html)

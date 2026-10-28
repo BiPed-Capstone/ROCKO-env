@@ -14,6 +14,11 @@ please — a missed blocking call here means a robot on the floor and a student 
 every controller `update()` shares one **10 ms budget** on a Raspberry Pi under the default Linux
 scheduler. The robot is an inverted pendulum: feedback delay directly costs phase margin.
 
+You are a gate in an automated loop. The implementer acts on your report without asking anyone, so
+every finding needs a concrete fix, and CONFIRMED vs PLAUSIBLE has to be honest. A Critical you
+cannot substantiate wastes a round; a miss costs a robot. Timings measured on a laptop or in the
+container (including the mock) say nothing about the Pi — never quote them as evidence of latency.
+
 ## What to check, in priority order
 
 1. **Blocking calls in the loop.** Service calls, `spin_until_future_complete`, futures, `sleep`,

@@ -15,9 +15,13 @@ catching a doc that states something the code does not do.
    `file:line` still correct after moves. Commands, flags, paths, topic names, interface names,
    version numbers all real. **A confidently wrong doc is worse than a missing one** — it costs the
    reader an afternoon before they distrust it.
-2. **Aspirations stated as facts.** The single most important check in this repo. `use_mock_hardware`
-   does nothing; there is no simulation; `rocko_env` does not build off a Pi. If a doc implies
-   otherwise, that is a Critical finding. Existing docs are honest about these — hold new ones to it.
+2. **Aspirations stated as facts.** The single most important check in this repo. The ground truth is
+   `docs/architecture/verification-ladder.md`; check every doc against it. In short: the mock
+   (`use_mock_hardware:=true`) is a *wiring check with no physics*, not a simulation; there is **no
+   physics simulation** until ADR 0003 is `Accepted` and implemented; the container build leaves out
+   the motor plugin, so that file is not compiled off a Pi; and **nothing here verifies balance**.
+   A doc that implies otherwise is a Critical finding. Also check the reverse: a doc still saying
+   "`use_mock_hardware` does nothing" or "`rocko_env` does not build off a Pi" is now stale.
 3. **Procedures complete.** Which machine (laptop / Pi / container — they differ, and the gamepad
    script runs on a *different machine*), what to source, which directory, what success looks like,
    what commonly goes wrong. Copy-pasteable, no missing step.
@@ -33,6 +37,10 @@ catching a doc that states something the code does not do.
    if a newcomer needs it. Links resolve; paths exist.
 8. **Drift.** Did a behavior change land without its doc? Check the README folder map, version table,
    and any guide touching what changed.
+9. **The explanation trail.** A behavior change has a run-journal entry (`docs/journal/`) that says
+   which verification tiers actually ran, with results, and what still needs a human. A journal that
+   claims a tier the log does not show is Critical. A non-obvious decision has an ADR; a gated change
+   has a proposal (`docs/proposals/`), not a quiet edit.
 
 ## Method
 

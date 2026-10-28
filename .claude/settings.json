@@ -4,10 +4,13 @@
     "allow": [
       "Bash(colcon build:*)",
       "Bash(colcon list:*)",
+      "Bash(colcon test:*)",
+      "Bash(colcon test-result:*)",
       "Bash(rosdep install:*)",
       "Bash(ros2 topic list)",
       "Bash(ros2 topic info:*)",
       "Bash(ros2 topic hz:*)",
+      "Bash(ros2 topic echo:*)",
       "Bash(ros2 node list)",
       "Bash(ros2 param list:*)",
       "Bash(ros2 control list_controllers:*)",
@@ -15,22 +18,25 @@
       "Bash(ros2 pkg list)",
       "Bash(xacro:*)",
       "Bash(check_urdf:*)",
+      "Bash(docker compose:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
       "Bash(gh api:*)"
     ],
     "ask": [
       "Bash(ros2 launch:*)",
       "Bash(ros2 run:*)",
-      "Bash(docker compose:*)"
+      "Bash(git push:*)"
     ]
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",

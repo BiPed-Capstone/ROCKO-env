@@ -24,6 +24,7 @@ pin, a framework choice, a rejected alternative, a deliberate limitation.
 | [0002](0002-cascaded-balance-control.md) | Balance via nested velocity → pitch PID cascade | Accepted |
 | [0003](0003-simulation-target.md) | Simulate with `gz_ros2_control` for off-robot development | Proposed |
 | [0004](0004-device-io-in-cpp.md) | Device I/O belongs in C++ hardware plugins, not Python nodes | Proposed |
+| [0005](0005-ai-forward-development.md) | Develop with an AI-forward agent loop (the `ai-forward` branch) | Proposed |
 
 ## Template
 

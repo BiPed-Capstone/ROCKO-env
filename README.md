@@ -94,13 +94,13 @@ These are all listed in the `package.xml` files, and `rosdep` (step 2 of the bui
 
 **Used to build:** `hardware_interface`, `controller_interface`, `pluginlib`, `rclcpp`, `rclcpp_lifecycle`, `rclpy`, `generate_parameter_library`, `parameter_traits`, `backward_ros`, `rosidl_default_generators`
 
-**Used at runtime:** `controller_manager`, `forward_command_controller`, `joint_state_broadcaster`, `joint_state_publisher_gui`, `robot_state_publisher`, `ros2controlcli`, `ros2launch`, `rviz2`, `xacro`, `std_msgs`, `control_msgs`, `geometry_msgs`, `sensor_msgs`, `foxglove_bridge` (used by `rocko.launch.py`)
+**Used at runtime:** `controller_manager`, `diff_drive_controller`, `forward_command_controller`, `joint_state_broadcaster`, `pid_controller`, `joint_state_publisher_gui`, `robot_state_publisher`, `ros2controlcli`, `ros2launch`, `rviz2`, `xacro`, `std_msgs`, `control_msgs`, `geometry_msgs`, `sensor_msgs`, `foxglove_bridge` (used by `rocko.launch.py`)
 
 ### WiringPi (Raspberry Pi only)
 
-The motor code uses [WiringPi](https://github.com/WiringPi/WiringPi) for GPIO and software PWM. There's a copy of `wiringPi.h` checked into `rocko_env/hardware/WiringPi/` for reference, but that header alone isn't enough. The actual compiled library has to be installed on the Pi, or the build won't link.
+The motor code uses [WiringPi](https://github.com/WiringPi/WiringPi) for GPIO and software PWM. There's a copy of `wiringPi.h` checked into `rocko_env/hardware/WiringPi/` for reference, but that header alone isn't enough. The actual compiled library has to be installed on the Pi, or CMake stops with "WiringPi not found".
 
-This is also the reason you can't build the full project on a normal laptop. More on that below.
+This is also why a laptop build has to leave the motor plugin out (`-DROCKO_SKIP_WIRINGPI=ON`). More on that below.
 
 ### Python libraries
 
@@ -123,6 +123,12 @@ Heads up: **none of these are pinned**. There's no `requirements.txt` yet, so `p
 
 ```
 ROCKO-env
+├── CLAUDE.md                       How AI agents work in this repo (read this branch's rules first)
+├── build_ros.sh                    Installs dependencies and builds, in the container or on the Pi
+├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware, mock on and off (container)
+├── verify_mock.sh                  Checks the controllers load and chain on mock hardware (container)
+├── docker/                         Dev container for laptops (compose files + Dockerfile)
+├── docs/                           Architecture, guides, decisions, run journal, proposals, audits
 ├── examples/example_hardware/      Skeleton templates. Copy when adding new hardware
 ├── joystick/computer_joystick.py   Runs on YOUR laptop, not the robot. Sends gamepad input over TCP
 ├── rocko_env/                      The main package
@@ -140,7 +146,7 @@ ROCKO-env
 │       │   └── utils/                  RateLimiter.py smooths out sudden changes
 │       ├── description/
 │       │   ├── urdf/                   The robot's physical shape and joints (xacro files)
-│       │   ├── ros2_control/           Which hardware plugin drives which joint, and GPIO pins
+│       │   ├── ros2_control/           Which hardware plugin drives which joint, and GPIO pins; also the mock
 │       │   ├── rviz/                   Saved RViz visualization layouts
 │       │   └── launch/                 view_robot.launch.py shows the model, no hardware
 │       ├── hardware/
@@ -175,8 +181,10 @@ source /opt/ros/jazzy/setup.bash
 sudo apt update
 rosdep install --from-paths src --ignore-src -r -y
 
-# 3. On the Pi only: install WiringPi first, or step 4 fails to link
+# 3. On the Pi only: install WiringPi first, or step 4 stops with "WiringPi not found"
 #    https://github.com/WiringPi/WiringPi
+#    (Not on a Pi? Skip this and add --cmake-args -DROCKO_SKIP_WIRINGPI=ON to step 4.
+#     See "Working on a laptop" below for what that build can and cannot do.)
 
 # 4. Build (run this from ~/ros2_ws, not from inside src/)
 colcon build --symlink-install
@@ -210,7 +218,7 @@ ros2 launch rocko_env view_robot.launch.py description_package:=rocko_env
 
 That `description_package:=rocko_env` bit is annoying but currently required, because the default value is wrong ([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)).
 
-Useful launch arguments: `gui:=true` opens RViz alongside. There's also a `use_mock_hardware` argument, but be warned: **it currently does nothing at all**, so it won't protect you from driving real motors ([#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)).
+Useful launch arguments: `gui:=true` opens RViz alongside in tank mode (`rocko.launch.py` declares it but does not use it), without its saved layout for now: the layouts are never installed, finding L-4 in [the audit](docs/claude-analysis/balance-loop-findings.md)). `use_mock_hardware:=true` swaps the real motor and IMU plugins for ROS's `mock_components/GenericSystem` and skips the nodes that read real sensors. It defaults to `false`, so a plain launch on the robot gets real hardware. **The mock is not a simulation**: it has no physics, each command is just echoed back as a state, and pitch stays at 0.0. It checks that the controllers *wire up*, and tells you nothing about whether the robot balances (see [the verification ladder](docs/architecture/verification-ladder.md)). With the mock on, ROS never loads the motor driver, so nothing launched by these files can move the wheels; with it off (the default), it does.
 
 You can also run individual nodes, which is handy when debugging one piece:
 
@@ -258,18 +266,24 @@ docker compose -f docker/compose.yml -f docker/compose.windows.yml exec ros2 bas
 
 See the comments in `docker/compose.mac.yml` / `docker/compose.windows.yml` for the one-time XQuartz/WSLg setup each OS needs.
 
-Inside the container, it's the same workflow as the [Building it](#building-it) section above — this repo is bind-mounted at `/ros2_ws/src/ROCKO-env` (no separate Docker copy of the packages to keep in sync), and `build/`/`install`/`log` live in a named Docker volume, not on your host:
+Inside the container, it's the [Building it](#building-it) workflow above with one difference (the flag on the `colcon build` line, because there is no WiringPi off the Pi) — this repo is bind-mounted at `/ros2_ws/src/ROCKO-env` (no separate Docker copy of the packages to keep in sync), and `build/`/`install`/`log` live in a named Docker volume, not on your host:
 
 ```bash
 cd /ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install
+colcon build --symlink-install --cmake-args -DROCKO_SKIP_WIRINGPI=ON
 source install/setup.bash
 ```
 
-`./build_ros.sh` (repo root) runs these same steps, plus `sudo apt-get update` first. In the container, compose sets `ROS2_WS=/ros2_ws` so the script builds in the right place; on the Pi it defaults to `~/ros2_ws`.
+`./build_ros.sh` (repo root) runs these same steps, plus `sudo apt-get update` first, and exits 1 if the build fails. Inside the container run it as `cd /ros2_ws && src/ROCKO-env/build_ros.sh`: the `/ros2_ws/build_ros.sh` copy is a separate single-file mount that can go stale if the file is replaced while the container runs. In the container, compose sets `ROS2_WS=/ros2_ws` so the script builds in the right place, and `ROCKO_SKIP_WIRINGPI=ON` so it leaves out the motor plugin; on the Pi it defaults to `~/ros2_ws` and requires WiringPi.
 
-**This does not make the full robot build off-Pi.** The container runs on your laptop's CPU, not the Pi's, and `rocko_env`'s hardware plugin still needs WiringPi, which only exists on real Pi GPIO hardware — that's a CPU/hardware problem, not an OS one, so Docker can't route around it. `colcon build --packages-select rocko_interfaces` works fine in the container today; the full `rocko_env` target needs either a stub WiringPi or CMake guards around the Pi-only source files, plus finishing the `use_mock_hardware` path ([#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)), before it'll link off-Pi. Until then, laptop work on `rocko_env` itself is limited to editing code and reasoning about it — the container mainly buys you a consistent, matching toolchain and a working `rocko_interfaces` build.
+**What the container can and cannot do.** The container runs on your laptop's CPU, not the Pi's, and the motor plugin needs WiringPi, which only exists on real Pi GPIO hardware — a hardware limit, not an OS one, so Docker can't route around it. So the container build:
+
+- **builds** `rocko_interfaces` and `rocko_env`, **without** `Motor12VoltQuadEncoder.cpp`. A green container build says nothing about that file; only a build on the Pi compiles it.
+- **can run the mock**: `verify_mock.sh` launches the controllers against `mock_components/GenericSystem` and checks they load, chain and stay active. Run it with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh` (add `tank` for tank mode). The step-by-step version, with the expected output and what to do when it fails, is [Verify a change without the robot](docs/guides/verify-in-container.md).
+- **cannot simulate the robot.** There is no physics; see [the verification ladder](docs/architecture/verification-ladder.md) and [ADR 0003](docs/decisions/0003-simulation-target.md). It also cannot drive motors or read the real IMU.
+
+Without `-DROCKO_SKIP_WIRINGPI=ON` the build stops with "WiringPi not found", on purpose: a robot should never be built without its motor driver by accident. If a build directory was ever used for a skip build and you later build on a Pi, run `rm -rf build/rocko_env` first: CMake remembers the flag between builds (it stops with "WiringPi IS installed here" when that has happened). In a skip build, launching **without** `use_mock_hardware:=true` fails with `Could not create class of type rocko_env::Motor12VoltQuadEncoder`, because that plugin is not in it.
 
 ---
 
@@ -282,6 +296,8 @@ source install/setup.bash
 | [`docs/architecture/`](docs/architecture/) | How a subsystem works and **why** — start with [the control cascade](docs/architecture/control-cascade.md) |
 | [`docs/guides/`](docs/guides/) | Procedures — including [how to record a result so it reproduces](docs/guides/reproducing-results.md) |
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records: a choice, its alternatives, its cost |
+| [`docs/journal/`](docs/journal/README.md) | One entry per AI-written change: what was asked, what changed, which checks actually ran |
+| [`docs/proposals/`](docs/proposals/README.md) | Changes waiting on a human decision (gains, version pins, safety behavior) |
 | [`docs/claude-analysis/`](docs/claude-analysis/) | Code audits with findings and severities |
 
 **If you are new**, read this README, then
@@ -297,9 +313,16 @@ pinned, and the build enforces it) and
 
 ### Working with AI agents in this repo
 
+This is the **`ai-forward` branch**. The code here is meant to be written by AI under human
+direction; `main` uses a human-gated workflow instead. Why they differ:
+[ADR 0005](docs/decisions/0005-ai-forward-development.md).
+
 [`CLAUDE.md`](CLAUDE.md) is the working agreement every Claude Code session loads automatically. The
-short version: **this repo exists so people learn robotics**, so an agent plans and asks before it
-implements, never edits PID gains or version pins on its own judgment, and cannot claim that
-balancing works — it has no robot. Repeatable workflows live in
-[`.claude/skills/`](.claude/skills/) (building, control-loop changes, tuning, adding hardware,
-writing docs) and review agents in [`.claude/agents/`](.claude/agents/).
+short version: an agent takes a goal, plans, implements, **checks its own work** against the
+[verification ladder](docs/architecture/verification-ladder.md), has reviewer agents inspect it, and
+iterates — without asking permission along the way. It still keeps the code simple, explains every
+change in [`docs/journal/`](docs/journal/README.md), and stops for a human on the things it cannot
+verify: PID gains, version pins, and weakening a safety behavior (it writes a
+[proposal](docs/proposals/README.md) instead). It cannot claim that balancing works — it has no
+robot. Repeatable workflows live in [`.claude/skills/`](.claude/skills/) and review agents in
+[`.claude/agents/`](.claude/agents/).

@@ -5,27 +5,37 @@ description: Procedure and real-time rules for changing anything in ROCKO's 100 
 
 # Changing the 100 Hz control path
 
-## Stop and teach first
+This is the most consequential code in the repo and the easiest to break invisibly. You may change
+it without asking anyone — **but only through this procedure**, because nothing you can run here
+observes the robot balancing.
 
-This is the most educationally valuable code in the repo and the easiest to break invisibly. Before
-any edit, produce for the human:
+## 1. Self-check before the first edit
 
-1. **Which cycle stage** you are touching — `read()`, `update()`, or `write()` — and what else runs
-   in that same 10 ms.
-2. **The concept.** Why does this matter for a balancing robot? Loop delay eats phase margin: an
-   inverted pendulum with a 20 ms feedback delay is a genuinely harder plant than the same robot at
-   2 ms, and no gain set recovers the difference. Say that in your own words, for this change.
-3. **A measurement or an admission.** Either the number that justifies the change, or a clear
-   statement that you are reasoning without one.
-4. **Your open questions**, then wait.
+Write these four answers into the run journal ([`docs/journal/`](../../../docs/journal/README.md)).
+They are not a gate; they are what makes the change reviewable and explainable afterwards.
 
-## The budget
+1. **Which cycle stage** you touch — `read()`, `update()`, or `write()` — and what else runs in that
+   same 10 ms.
+2. **The concept, in your own words, for this change.** Why does it matter to a balancing robot? Loop
+   delay eats phase margin: an inverted pendulum with a 20 ms feedback delay is a genuinely harder
+   plant than the same robot at 2 ms, and no gain set recovers the difference. A student will read
+   this paragraph; write it for them.
+3. **A measurement or an admission.** The number that justifies the change and the tier it came from,
+   or a plain statement that you are reasoning without one. Timings from the container or the mock
+   say nothing about the Pi's scheduler — never cite them as latency evidence.
+4. **Is it gated?** A change to a gain, `update_rate`, a version pin, or that removes or weakens a
+   safety behavior is not yours to make: write a proposal ([`docs/proposals/`](../../../docs/proposals/README.md))
+   and continue with everything else. The hook will deny the edit if you try.
+
+Then implement. Do not wait.
+
+## 2. The budget
 
 `update_rate: 100` in `rocko_env/rocko_env/bringup/config/rocko_controllers.yaml` means **10 ms**
 for the whole chain, on Pi-class hardware, with Linux's default scheduler. Every hardware plugin's
 `read()`, every controller's `update()`, and every `write()` shares that window.
 
-## Hard rules inside read/update/write
+## 3. Hard rules inside read/update/write
 
 Never, in the loop:
 
@@ -38,12 +48,13 @@ Never, in the loop:
   `RCLCPP_INFO_THROTTLE`, or push telemetry through `realtime_tools::RealtimePublisher`.
 - **Touch the filesystem**, or take a mutex that a non-RT thread also holds. Cross the boundary with
   `realtime_tools::RealtimeBuffer` (single producer, single consumer) or `RealtimeBox`.
-- **Fail into a safe-looking value.** This one is worth its own line: a failed IMU read reported as
-  pitch = 0.0 tells the controller the robot is perfectly upright at the exact moment it has no idea
-  where it is. Return `hardware_interface::return_type::ERROR`, or hold the last sample *and* set a
-  fault flag something acts on. Never invent data.
+- **Fail into a safe-looking value.** A failed IMU read reported as pitch = 0.0 tells the controller
+  the robot is perfectly upright at the exact moment it has no idea where it is. Return
+  `hardware_interface::return_type::ERROR`, or hold the last sample *and* set a fault flag something
+  acts on. Never invent data. The same goes for ignoring a return value: a dropped
+  `set_value()` is a command that silently did not happen.
 
-## Rules specific to this robot
+## 4. Rules specific to this robot
 
 - **One IMU transaction per cycle.** Reading roll, pitch, and yaw as three separate I²C
   transactions produces an attitude from three different instants — an orientation the robot was
@@ -59,7 +70,7 @@ Never, in the loop:
 - **Determinism beats average speed.** A bounded 3 ms is better than a usually-0.5 ms that sometimes
   takes 30. Optimize the worst case.
 
-## Files in the critical path
+## 5. Files in the critical path
 
 - `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp`, `include/rocko_env/wheel.hpp`
 - `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.cpp`
@@ -67,12 +78,22 @@ Never, in the loop:
 - `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp`
 - `rocko_env/rocko_env/bringup/config/rocko_controllers.yaml`
 
-## After implementing
+**`Motor12VoltQuadEncoder.cpp` is not compiled in the container.** It needs WiringPi, so the
+off-Pi build leaves it out (`-DROCKO_SKIP_WIRINGPI=ON`). A green Tier 1 build says nothing about an
+edit to that file. Read it twice, have `realtime-auditor` read it, and write in the journal that it
+is uncompiled and needs a Pi build. Do not let a green build imply otherwise.
 
-Run the review loop from `CLAUDE.md` §5. `realtime-auditor` is **mandatory** here. Iterate until it
-returns clean, cap at three rounds, then report.
+## 6. After implementing
 
-## Known findings — read before proposing anything
+Run the loop from [CLAUDE.md](../../../CLAUDE.md): verify up the ladder (see `build-verify`), then
+review in parallel — **`realtime-auditor` is mandatory here**, plus `ros2-control-reviewer` and
+`explainability-reviewer`. Fix every confirmed finding and go round again. Cap at three rounds; if
+round three is still dirty, stop and hand the remaining findings to the human.
+
+Finish with the hardware procedure: what a person should do, tethered, to see whether the robot
+actually behaves — what to launch, what success looks like, when to abort.
+
+## 7. Known findings — read before proposing anything
 
 [`docs/claude-analysis/balance-loop-findings.md`](../../../docs/claude-analysis/balance-loop-findings.md)
 already catalogues the live problems (blocking service calls in the loop, IMU failure reporting
@@ -82,3 +103,9 @@ upright, open-loop motor command, no tipover cutoff, no watchdog) with severitie
 Check whether your idea is already written up there. If it is, reference the finding ID (C-1, H-3, …)
 instead of rediscovering it, and **respect the stated ordering** — C-1 dominates the sensor work, so
 sensor improvements landed first will be measured against a still-broken feedback path.
+
+Note what the findings do and do not tell you to do. Fixing C-1 (move device I/O into C++) or C-2
+(stop reporting upright on failure) is code you may write — and a *reduction* of the fail-safe
+behavior never is. Adding a tipover cutoff (H-4) or a watchdog (C-3) *adds* a safeguard, which is
+always allowed; choosing its threshold is a hardware decision, so make it a named parameter and put
+the proposed value in a proposal.

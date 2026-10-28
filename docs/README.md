@@ -8,6 +8,8 @@ wheel, the folder map, and the build and run instructions. This directory is the
 | [`architecture/`](architecture/) | How a subsystem works, and **why it is built that way** |
 | [`guides/`](guides/) | Procedures — do this, get that |
 | [`decisions/`](decisions/) | Architecture Decision Records: choices, alternatives, consequences |
+| [`journal/`](journal/README.md) | One entry per AI-written change: the goal, what changed, and which checks **actually ran** |
+| [`proposals/`](proposals/README.md) | Changes waiting on a human decision: PID gains, version pins, safety behavior |
 | [`claude-analysis/`](claude-analysis/) | AI-produced audits of the code, with findings and severities |
 
 ## If you are new
@@ -20,8 +22,19 @@ wheel, the folder map, and the build and run instructions. This directory is the
 4. [`claude-analysis/balance-loop-findings.md`](claude-analysis/balance-loop-findings.md) — the honest
    current state: what is wrong with the balance loop today and in what order to fix it.
 
+## If you are reviewing AI-written changes
+
+- [`decisions/0005-ai-forward-development.md`](decisions/0005-ai-forward-development.md) — how this
+  branch is worked on and why.
+- [`architecture/verification-ladder.md`](architecture/verification-ladder.md) — what the AI can
+  check, and what it cannot. Read this before trusting any "verified" claim.
+- [`journal/`](journal/README.md) — what each change did and which checks ran.
+- [`proposals/`](proposals/README.md) — decisions the AI left for you.
+
 ## If you are about to change something
 
+- [`guides/verify-in-container.md`](guides/verify-in-container.md) — check a change on your laptop
+  with no robot.
 - [`guides/reproducing-results.md`](guides/reproducing-results.md) — record a result so someone else
   can get the same number.
 - [`decisions/README.md`](decisions/README.md) — write an ADR when the answer to "why is it like

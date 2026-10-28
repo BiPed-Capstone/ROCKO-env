@@ -48,9 +48,12 @@ Severity reflects impact on the robot staying upright, not code quality.
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
 | M-3 | Medium | PWM value is never clamped to its valid range |
-| M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi |
+| M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi — **partly fixed on `ai-forward`** (wiring mock and off-Pi build exist; no physics) |
+| M-5 | Medium | `AddFeedforwardController` ignores the result of `set_value()`, so a failed command write is silently dropped |
 | L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances |
 | L-2 | Low | IMU class is named for a part that is no longer used; dead imports |
+| L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build |
+| L-4 | Low | The RViz configs are never installed, so three launch files cannot find them |
 
 ---
 
@@ -373,17 +376,18 @@ relying on WiringPi's internal handling.
 
 ---
 
-### M-4 — `use_mock_hardware` is dead
+### M-4 — `use_mock_hardware` was dead (partly fixed on `ai-forward`)
 
-**Where** `rocko_env/rocko_env/description/ros2_control/rocko.ros2_control.xacro:4`
+**Where (at audit time, 2026-09-20)** `rocko_env/rocko_env/description/ros2_control/rocko.ros2_control.xacro:4`
 
-The flag is plumbed from all three launch files through the xacro args and into the macro
-signature, and the macro body never references it. Combined with the unconditional WiringPi link
-in `rocko_env/CMakeLists.txt:75-78`, `rocko_env` cannot be built or run anywhere except on the Pi.
+At audit time the flag was plumbed from all three launch files through the xacro args and into the
+macro signature, and the macro body never referenced it. Combined with the unconditional WiringPi
+link in `rocko_env/CMakeLists.txt:75-78`, `rocko_env` could not be built or run anywhere except on
+the Pi. See the status paragraph below for what has changed on `ai-forward`.
 
 **Why it matters**
 
-Every iteration currently requires booting the robot. This is the single largest tax on
+At audit time every iteration required booting the robot. This is the single largest tax on
 development speed, and it means none of the failsafes above can be tested without risking the
 hardware.
 
@@ -399,6 +403,42 @@ A cart-pole plant model is on the order of 150–200 lines of C++ and is far mor
 full Gazebo setup: the gains will not transfer exactly, but it exercises the entire real control
 stack — chained controllers, sign conventions, units, the watchdog, arm/disarm, the tipover cutoff
 — on a laptop, with no hardware. That is where the wedding-day risk actually lives.
+
+**Status on `ai-forward` (2026-10-27):** fix items 1 and 2 are done; item 3 is not.
+
+- Item 1: `rocko_env` now builds in the container with `-DROCKO_SKIP_WIRINGPI=ON`. This leaves out
+  `Motor12VoltQuadEncoder.cpp`, so that file is still **not compiled** off a Pi. The Pi default is
+  unchanged and still requires WiringPi.
+- Item 2: `use_mock_hardware:=true` selects `mock_components/GenericSystem`. As this finding
+  predicted, it only echoes commands and holds pitch at 0.0, so it checks controller *wiring* and
+  nothing about balance. Verified by `verify_mock.sh`.
+- Item 3 (`SimPlant`) is the missing piece and is the recommended Tier 3. It conflicts with
+  [ADR 0003](../decisions/0003-simulation-target.md), which chose Gazebo; see the `bootstrap-sim`
+  skill for the trade.
+
+---
+
+### M-5 — A failed command write is silently dropped
+
+**Where** `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp:150`
+
+`command_interfaces_[i].set_value(...)` returns `bool`, and in Jazzy the method is `[[nodiscard]]`.
+The controller discards it, so if the write fails the cycle carries on as if the command went out.
+The compiler said so during the first off-Pi build:
+`warning: ignoring return value of ‘bool hardware_interface::LoanedCommandInterface::set_value…’`.
+
+**Why it matters**
+
+A dropped command leaves the previous command latched on the motor — the same family of failure as
+H-2, and a silent fallback of the kind the critical-path rules forbid. How often `set_value` returns
+`false` in practice is **not measured**; this is a latent defect found by reading a warning, not an
+observed one.
+
+**Fix**
+
+Check the result. On `false`, return `controller_interface::return_type::ERROR` (or hold the last
+good command *and* raise a fault flag something acts on) rather than continuing as if it worked.
+Count failures and report them with a throttled log, never one per cycle.
 
 ---
 
@@ -428,6 +468,40 @@ accelerometer output with a filter running on the Pi.
 
 ---
 
+### L-3 — Warnings from the first off-Pi build
+
+Seen in the container build on 2026-10-27; none affects behavior today.
+
+- `AddFeedforwardController.hpp:25` includes `realtime_tools/realtime_buffer.h`, deprecated in
+  Jazzy in favor of `realtime_buffer.hpp`. Rename the include.
+- `rocko_env/rocko_env/controllers/utils/RateLimiter.py` has two docstrings (starting at lines 7
+  and 39) containing `\param` tags. Python 3.12 reports each as
+  `SyntaxWarning: invalid escape sequence '\p'`, and a later Python will make that an error. Make
+  them raw strings (`r"""`).
+
+---
+
+### L-4 — The RViz configs are never installed
+
+**Where** `rocko_env/CMakeLists.txt` (the `install(DIRECTORY ...)` blocks);
+`rocko_env/rocko_env/bringup/launch/rocko_tank_mode.launch.py:82`, `rocko_gui.launch.py:78`,
+`rocko_env/rocko_env/description/launch/view_robot.launch.py:82`
+
+`rocko_env/rocko_env/description/rviz/` holds `rocko.rviz` and `rocko_view.rviz`, but no
+`install(DIRECTORY ...)` block lists it, so `install/rocko_env/share/rocko_env/rviz/` does not exist
+(checked in the container build, 2026-10-27). The three launch files above look for their config
+there. The README presents `ros2 launch rocko_env view_robot.launch.py description_package:=rocko_env`
+as working; it cannot find `rocko_view.rviz`. Found by the ros2-control review of the `ai-forward`
+change, not caused by it. Not fixed there, because a fix deserves its own goal and verification.
+
+**Fix**
+
+Add `rocko_env/description/rviz` to the description `install(DIRECTORY ...)` block, then confirm
+the three launch files start RViz with their configs (needs a display, so a person or a GUI-capable
+container).
+
+---
+
 ## Recommended order of work
 
 Ordered by risk removed per unit of effort.
@@ -441,7 +515,7 @@ Ordered by risk removed per unit of effort.
    plugin is already open.
 4. **C-1 (encoders)** — same treatment for the encoder reads.
 5. **H-2, M-1, M-3** — fix the `write()` path. Small, mechanical, low risk.
-6. **M-4** — CMake guard plus the `SimPlant` plugin, so the rest can be developed and tested on a
+6. **M-4** — CMake guard (done on `ai-forward`) plus the `SimPlant` plugin (not done), so the rest can be developed and tested on a
    laptop.
 7. **C-3, H-4** — watchdog and tipover cutoff, developed against `SimPlant`.
 8. **H-5** — real-time scheduling and core isolation; measure the period histogram before and

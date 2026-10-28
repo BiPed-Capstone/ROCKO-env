@@ -7,6 +7,7 @@ How ROCKO's subsystems work and why they are built this way. These pages explain
 | Page | Covers |
 | --- | --- |
 | [`control-cascade.md`](control-cascade.md) | The nested velocity → pitch → feedforward control loop |
+| [`verification-ladder.md`](verification-ladder.md) | The five tiers of checking a change, what each proves and cannot show, and which exist today |
 
 The [root README](../../README.md) holds the end-to-end signal path diagram (laptop gamepad → TCP →
 Pi → controller chain → motors) and the repository folder map. It is the canonical version of both —
