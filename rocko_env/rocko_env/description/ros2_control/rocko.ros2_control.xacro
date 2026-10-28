@@ -3,6 +3,43 @@
 
   <xacro:macro name="rocko_ros2_control" params="name prefix use_mock_hardware">
 
+    <!-- use_mock_hardware:=true  -> the one MockRocko system below.
+         use_mock_hardware:=false -> the real motor and IMU plugins (what runs on the robot). -->
+
+    <xacro:if value="${use_mock_hardware}">
+      <!-- A WIRING CHECK, NOT A SIMULATION. mock_components/GenericSystem has no physics: it
+           echoes each velocity command back as that joint's velocity state, and the IMU states
+           (yaw/pitch/roll) stay at 0.0. A balance controller therefore always looks "fine" here.
+           What it does prove: every controller rocko.launch.py spawns (the four cascade
+           controllers) loads, claims interfaces that exist, and chains and activates.
+           It exports the same joint and interface names as the real plugins, so the real
+           rocko_controllers.yaml loads against it unchanged. Keep the two in step. -->
+      <ros2_control name="MockRocko" type="system">
+        <hardware>
+          <plugin>mock_components/GenericSystem</plugin>
+        </hardware>
+        <joint name="left_wheel_joint">
+          <command_interface name="velocity"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="yaw"/>
+          <state_interface name="pitch"/>
+          <state_interface name="roll"/>
+        </joint>
+        <joint name="right_wheel_joint">
+          <command_interface name="velocity"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="yaw"/>
+          <state_interface name="pitch"/>
+          <state_interface name="roll"/>
+        </joint>
+      </ros2_control>
+    </xacro:if>
+
+    <!-- The real hardware, exactly as it was before the mock existed. Not re-indented, so the
+         diff shows that nothing inside changed. -->
+    <xacro:unless value="${use_mock_hardware}">
     <ros2_control name="LeftDriveMotor" type="actuator">
       <hardware>
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>
@@ -49,6 +86,7 @@
         <state_interface name="roll"/>
       </joint>
     </ros2_control>
+    </xacro:unless>
 
   </xacro:macro>
 

@@ -45,8 +45,7 @@ generate_parameter_library(add_feedforward_controller_parameters
 add_library(
   rocko_env
   SHARED
-  # Hardware .cpp files
-  rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp
+  # Hardware .cpp files (the WiringPi motor plugin is added below, once we know WiringPi exists)
   rocko_env/hardware/sensors/icm20948/ICM20948.cpp
   rocko_env/hardware/WiringPi/wiringPi.h
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp
@@ -72,10 +71,40 @@ $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/in
 $<INSTALL_INTERFACE:include/rocko_env>
 )
 
+# WiringPi drives the Pi's GPIO pins, and only the motor plugin uses it. It exists only on a
+# Raspberry Pi, so a laptop/container build has to opt out explicitly:
+#   colcon build --cmake-args -DROCKO_SKIP_WIRINGPI=ON
+# The default is deliberately unchanged: with WiringPi missing the build FAILS, so a robot can
+# never be built without its motor driver by accident. A skip build loads and wires the
+# controllers (with use_mock_hardware:=true), but it cannot drive motors.
+# See docs/decisions/0003-simulation-target.md.
+option(ROCKO_SKIP_WIRINGPI "Leave out the WiringPi motor plugin (off-Pi builds only)" OFF)
+
 find_library(WIRINGPI_LIBRARIES NAMES wiringPi)
-target_link_libraries(rocko_env PUBLIC 
-                        Python::Python 
-                        ${WIRINGPI_LIBRARIES} 
+
+if(ROCKO_SKIP_WIRINGPI)
+  if(WIRINGPI_LIBRARIES)
+    # CMake remembers an option in build/<package>/CMakeCache.txt between builds, so a skip build
+    # run once in a Pi's build directory would keep skipping. WiringPi being present here is the
+    # giveaway. A warning would print once and then be silent on every later build, so this stops
+    # the build instead: a robot must never be built without its motor driver by accident.
+    message(FATAL_ERROR "ROCKO_SKIP_WIRINGPI=ON, but WiringPi IS installed here. That is almost "
+                        "certainly a stale CMake cache. On a Pi run `rm -rf build/rocko_env` (or "
+                        "pass -DROCKO_SKIP_WIRINGPI=OFF) and build again.")
+  endif()
+  message(WARNING "ROCKO_SKIP_WIRINGPI=ON: building WITHOUT Motor12VoltQuadEncoder. "
+                  "This build cannot drive motors; use it only with use_mock_hardware:=true.")
+else()
+  if(NOT WIRINGPI_LIBRARIES)
+    message(FATAL_ERROR "WiringPi not found. On a Raspberry Pi, install it. On a laptop or in "
+                        "the Docker container, pass -DROCKO_SKIP_WIRINGPI=ON (no motor plugin).")
+  endif()
+  target_sources(rocko_env PRIVATE rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp)
+  target_link_libraries(rocko_env PUBLIC ${WIRINGPI_LIBRARIES})
+endif()
+
+target_link_libraries(rocko_env PUBLIC
+                        Python::Python
                         add_feedforward_controller_parameters)
 
 # Export plugins
@@ -112,6 +141,8 @@ install(TARGETS rocko_env add_feedforward_controller_parameters
 # Python stuff
 ament_python_install_package(${PROJECT_NAME})
 
+# With --symlink-install these are run in place, not copied, so each source file must be
+# executable (git mode 100755) and start with a shebang. RateLimiter.py is only imported, not run.
 install(PROGRAMS
   rocko_env/hardware/sensors/icm20948/ICM20948.py
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py

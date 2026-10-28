@@ -34,6 +34,10 @@ services:
       # Workspace root inside the container. build_ros.sh reads this; without it
       # the script would guess ~/ros2_ws, which is /home/rocko/ros2_ws here.
       - ROS2_WS=/ros2_ws
+      # There is no WiringPi off the Pi. build_ros.sh turns this into
+      # -DROCKO_SKIP_WIRINGPI=ON, which leaves out the motor plugin so the rest of
+      # rocko_env builds. That build cannot drive motors; see docs/decisions/0003.
+      - ROCKO_SKIP_WIRINGPI=ON
     volumes:
         # When we build the ros packges, they will live in the workspace on our volume
       - workspace:/ros2_ws

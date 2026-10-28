@@ -19,6 +19,7 @@ from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -36,7 +37,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "use_mock_hardware",
             default_value="false",
-            description="Start robot with mock hardware mirroring command to its states.",
+            description=(
+                "true: swap the motor and IMU hardware plugins for mock_components/GenericSystem. "
+                "A wiring check only, with no physics. false (default): real hardware."
+            ),
         )
     )
 
@@ -57,7 +61,11 @@ def generate_launch_description():
             use_mock_hardware,
         ]
     )
-    robot_description = {"robot_description": robot_description_content}
+    # Declare the URDF a string. Without value_type, launch_ros tries to parse it as YAML, so a
+    # stray ": " in any xacro comment makes the whole launch fail with a parse error.
+    robot_description = {
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
+    }
 
     robot_controllers = PathJoinSubstitution(
         [

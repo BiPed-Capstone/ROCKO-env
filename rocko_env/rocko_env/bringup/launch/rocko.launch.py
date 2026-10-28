@@ -13,12 +13,13 @@
 # limitations under the License.
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler, ExecuteProcess
-from launch.conditions import IfCondition
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, ExecuteProcess, LogInfo
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -35,8 +36,16 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "use_mock_hardware",
-            default_value="true",
-            description="Start robot with mock hardware mirroring command to its states.",
+            # "false" keeps what actually ran before the flag worked: it used to default to "true"
+            # but was ignored, so real hardware always loaded. A robot launched with no arguments
+            # must get real hardware.
+            default_value="false",
+            description=(
+                "true: swap the motor and IMU hardware plugins for mock_components/GenericSystem "
+                "and skip the nodes that talk to real sensors. A wiring check only, with no "
+                "physics: commands are echoed back as states and pitch stays 0.0. "
+                "false (default): real hardware, which is what runs on the robot."
+            ),
         )
     )
 
@@ -57,7 +66,11 @@ def generate_launch_description():
             use_mock_hardware,
         ]
     )
-    robot_description = {"robot_description": robot_description_content}
+    # Declare the URDF a string. Without value_type, launch_ros tries to parse it as YAML, so a
+    # stray ": " in any xacro comment makes the whole launch fail with a parse error.
+    robot_description = {
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
+    }
 
     robot_controllers = PathJoinSubstitution(
         [
@@ -93,9 +106,11 @@ def generate_launch_description():
                    ],
     )
 
+    # These two nodes talk to the real IMU and encoders (I2C, GPIO), so they only start on the robot.
     gyro = Node(
         package="rocko_env",
         executable="ICM20948.py",
+        condition=UnlessCondition(use_mock_hardware),
     )
     
     encoders = Node(
@@ -106,7 +121,8 @@ def generate_launch_description():
             "left_b_pin": 20,
             "right_a_pin": 19,
             "right_b_pin": 16
-        }]
+        }],
+        condition=UnlessCondition(use_mock_hardware),
     )
 
     # left_relative_encoder = Node(
@@ -141,7 +157,15 @@ def generate_launch_description():
         executable="Joystick.py",
     )
 
+    # Printed first, so nobody mistakes a mock run for a live robot.
+    mock_banner = LogInfo(
+        msg="MOCK HARDWARE (use_mock_hardware:=true): no motors, no IMU, pitch stays 0.0. "
+            "A wiring check only.",
+        condition=IfCondition(use_mock_hardware),
+    )
+
     nodes = [
+        mock_banner,
         control_node,
         robot_state_pub_node,
         foxglove_bridge,
