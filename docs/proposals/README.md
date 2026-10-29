@@ -80,4 +80,4 @@ Record: commit SHA, launch file and config, battery voltage, surface, where the 
 
 | # | Proposal | Gate | Status |
 | --- | --- | --- | --- |
-| — | *none yet* | | |
+| [0001](0001-allow-container-mount-check.md) | Allow `./check_container_mount.sh` without a prompt | guardrail | Open |

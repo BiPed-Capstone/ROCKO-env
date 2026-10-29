@@ -7,7 +7,10 @@ records the status of each tier.** Every other page links here instead of restat
 > Last verified 2026-10-27 on the `ai-forward` branch, in the `rocko-env-dev` container
 > (`ros:jazzy`, **arm64** on Docker Desktop for macOS; `pid_controller` 4.42.1). An x86_64 container
 > has not been tried. Evidence is in the
-> [run journal](../journal/2026-10-27-ai-forward-bootstrap.md).
+> [run journal](../journal/2026-10-27-ai-forward-bootstrap.md). On 2026-10-29, after the container
+> was recreated for the [mount check](../journal/2026-10-29-container-mount-check.md), these all
+> passed again: the hook tests, a clean `build_ros.sh`, `verify_urdf.sh`, and `verify_mock.sh` in both
+> modes. The `pid_controller` version was not read again.
 
 ## Why a ladder
 
@@ -32,6 +35,10 @@ The exact commands, expected output and failure modes are in the
 | 2 | Mock | `verify_mock.sh`, `verify_mock.sh tank` (container) | **Works**; shown to fail on deliberate breaks |
 | 3 | Simulation | — | **Not built.** [ADR 0003](../decisions/0003-simulation-target.md) is still `Proposed` |
 | 4 | Robot | A person, tethered | **Human only.** Not something an agent can run or observe |
+
+Before any tier that uses the container, `check_container_mount.sh` (run on the laptop) says whether
+the container is looking at your checkout. It is a precondition, not a tier: it proves one thing and
+leaves out others (see the blind spots).
 
 ### What a pass proves, and what it cannot show
 
@@ -65,6 +72,11 @@ fixed; see the journal.)
 | 0 | Delete one `yaw` state from the mock block | `verify_urdf.sh` `FAIL`, exit 1, from the parity check: `< left_wheel_joint state yaw` (real has it, mock does not) |
 | 0 | Give only the mock a `<sensor>`; make the real hardware export an interface twice; put a third plugin in the mock block | each `FAIL`, exit 1 (`> sensor mock_only state orientation`; `< joint left_wheel_joint state velocity`; `plugins=2`) |
 | 2 | Start a mock launch, then run `verify_mock.sh` | `ERROR: a controller_manager (ros2_control_node) is already running`, exit 2 |
+| pre | Run `check_container_mount.sh` from a real git worktree while the container mounts the main checkout | `FAIL`, exit 1, with the fix. After the printed `up -d --force-recreate` from the worktree: `ok` from the worktree and `FAIL` from the main checkout. After the same from the main checkout: `ok` again |
+| pre | Delete that worktree and make a new one at the same path, so the container still mounts the deleted folder | `FAIL`, exit 1. Plain `up -d` prints `Running` and the check still fails; only `up -d --force-recreate` fixes it |
+| pre | Run it with no container (`COMPOSE_PROJECT_NAME=zzz`), with no `docker` on `PATH`, and through a symlink | exit 2 each time, with a message that names the real cause |
+| pre | Send SIGINT, SIGTERM and SIGHUP to the script's process group while a stand-in `docker` hangs; then SIGKILL | the marker file is removed for the first three; SIGKILL leaves it, which `.gitignore` covers |
+| 1 | Append a comment to `AddFeedforwardController.cpp`, build, restore the original with its older timestamp, build again | the second build recompiles nothing: build output from another checkout can survive a switch, so `check_container_mount.sh` printing `ok` is not enough |
 | 0 | Reintroduce, one at a time, 28 bugs into a copy of the hook (among them `fault` matching `default`, a crash instead of failing closed, no case-folding, no symlink resolution, CRLF not normalised, comments not stripped, YAML compared case-insensitively or with its indentation ignored, a gain judged as a token instead of a whole line, an unmatched edit waved through, the Edit tool's newline-eating not modelled, a quadratic comment scan) | The hook test suite goes red for each: 28 of 28. It has 80 hook cases (79 on a case-sensitive filesystem such as Linux or WSL2, which skips the one case about differently-cased paths) plus a check that `settings.json` wires the hook up, and asserts the exit status as well as the decision. Rerun the mutation check with `.claude/hooks/mutation-check-guard.py` |
 
 **Also checked:** the real-hardware `<ros2_control>` elements (`use_mock_hardware:=false`) are
@@ -85,6 +97,7 @@ because they show what each tier is for.
 | Review of the hook | The guard hook failed *open*: a crash made the harness skip it. It now fails closed |
 | Docs review, then a test | `build_ros.sh` could not fail: no `set -e`, ends in `echo`, so a failed build said `Done!` and exited 0. Tier 1 now exits 1 |
 | Testing the fix | The container's `/ros2_ws/build_ros.sh` was a stale copy that no longer matched the edited host file (see the blind spots) |
+| Asking whether the repo was ready for a new session | The container mounts one fixed folder, so a session in a git worktree would have run every tier against the main checkout's files and passed (see the blind spots) |
 
 ## Blind spots, stated plainly
 
@@ -97,6 +110,20 @@ because they show what each tier is for.
   a file mounted alone is pinned when the container starts, so replacing it on the host while the
   container runs leaves the container with an older version. Run `src/ROCKO-env/build_ros.sh`, which
   is always current. Not fixed in `compose.yml`.
+- **The container serves one checkout at a time.** `docker/compose.yml` mounts `..` (the checkout
+  holding that compose file) under a fixed container name, and every checkout's compose file is in a
+  folder called `docker`, so compose treats them all as one project. A git worktree or a second clone
+  is therefore verified against whichever checkout last ran `up -d`, and passes. `up -d` is itself the
+  switch, and it takes the container away from a session in another checkout. A container per checkout
+  (a project name per checkout and no fixed `container_name`) would remove the problem; `compose.yml`
+  is not changed.
+- **`check_container_mount.sh` closes only part of that.** It says whether the container sees your
+  files. It does not say the build output is yours (measured: it is not recompiled when the files are
+  older), so rebuild from clean after a switch. A recreated container also loses the ROS packages
+  `build_ros.sh` installed, so that rebuild needs the network. Nothing makes anyone run the script,
+  and it prompts in the default permission mode until
+  [proposal 0001](../proposals/0001-allow-container-mount-check.md) is accepted. Only Docker Desktop
+  for macOS was tried: Linux and WSL2 were not.
 - **The Pi build has not been run.** Nothing here compiles the motor plugin against real WiringPi or
   checks that the `OFF` path produces a working `librocko_env.so`.
 - **Dependency versions are not pinned.** `rosdep` installs the current Jazzy release of

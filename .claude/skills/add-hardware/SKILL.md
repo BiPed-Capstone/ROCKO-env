@@ -91,7 +91,8 @@ the transfer itself.
 
 ## Verify
 
-Work up the ladder in the `build-verify` skill and record each tier in the run journal:
+Work up the ladder in the `build-verify` skill and record each tier in the run journal. Before
+any tier, run `./check_container_mount.sh` (see "Before any tier" there):
 
 1. Tier 1 first — `build_ros.sh` in the container (`verify_urdf.sh` exits 2 without a build). A
    device that needs a Pi-only library is **not compiled there**; say so.

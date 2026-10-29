@@ -27,6 +27,21 @@ being present does.
 | Raspberry Pi (Ubuntu 24.04, Jazzy, WiringPi) | 0, 1 (the only place the motor plugin builds), 2, and 4 | A human's machine; `ros2 launch` here drives real motors. Not run by an agent |
 | Simulation | 3 | See the ladder for whether it exists; `bootstrap-sim` builds it |
 
+## Before any tier (Docker target) — is the container looking at your files?
+
+```bash
+./check_container_mount.sh     # on the laptop, from the repo root of your checkout
+```
+
+There is one dev container per laptop and it shows whichever checkout last ran `up -d`. In another
+checkout (a second clone, a git worktree) the tiers below still run and still pass, but on the *other*
+folder's files: the same mistake as a sensor that cannot fail. Run it at the start of a session and
+whenever you change checkout. Exit 0 `ok`: carry on. Exit 1 `FAIL`: it prints the fix and the
+rebuild-from-clean command; `ok` does not say the build output is yours, so after a switch clean
+the build before Tier 1. Exit 2: could not tell. What it proves, what it cannot, and how it was
+tested are in the [guide](../../../docs/guides/verify-in-container.md) and the
+[ladder's blind spots](../../../docs/architecture/verification-ladder.md).
+
 ## Tier 1 — the build
 
 This repo is **not** a colcon workspace. It lives inside one, at `<ws>/src/ROCKO-env`. Build from the

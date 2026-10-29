@@ -125,6 +125,7 @@ Heads up: **none of these are pinned**. There's no `requirements.txt` yet, so `p
 ROCKO-env
 ├── CLAUDE.md                       How AI agents work in this repo (read this branch's rules first)
 ├── build_ros.sh                    Installs dependencies and builds, in the container or on the Pi
+├── check_container_mount.sh        Checks the dev container is mounting THIS checkout, so the verify scripts test your files (laptop)
 ├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware, mock on and off (container)
 ├── verify_mock.sh                  Checks the controllers load and chain on mock hardware (container)
 ├── docker/                         Dev container for laptops (compose files + Dockerfile)
@@ -276,6 +277,8 @@ source install/setup.bash
 ```
 
 `./build_ros.sh` (repo root) runs these same steps, plus `sudo apt-get update` first, and exits 1 if the build fails. Inside the container run it as `cd /ros2_ws && src/ROCKO-env/build_ros.sh`: the `/ros2_ws/build_ros.sh` copy is a separate single-file mount that can go stale if the file is replaced while the container runs. In the container, compose sets `ROS2_WS=/ros2_ws` so the script builds in the right place, and `ROCKO_SKIP_WIRINGPI=ON` so it leaves out the motor plugin; on the Pi it defaults to `~/ros2_ws` and requires WiringPi.
+
+There is one container per laptop, and it sees one folder: the *checkout* (a folder holding a copy of this repo) that last ran `docker compose ... up -d`. If you have more than one checkout (a second clone, or a git worktree: an extra working folder for the same repository, made with `git worktree add`), or you moved or re-cloned the repo, run `./check_container_mount.sh` **on the laptop, from that checkout's root**, before building. Otherwise the commands above can run, and pass, against the other checkout's files. [Verify a change without the robot](docs/guides/verify-in-container.md) has the details and what to do when it fails.
 
 **What the container can and cannot do.** The container runs on your laptop's CPU, not the Pi's, and the motor plugin needs WiringPi, which only exists on real Pi GPIO hardware — a hardware limit, not an OS one, so Docker can't route around it. So the container build:
 

@@ -58,3 +58,6 @@ CATKIN_IGNORE
 
 # Claude Code: share settings.json and skills, keep personal overrides local
 .claude/settings.local.json
+
+# Left behind only if check_container_mount.sh is killed with SIGKILL (Ctrl+C cleans up)
+.mount-check.*

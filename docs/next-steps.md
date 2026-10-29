@@ -98,6 +98,11 @@ Not agent work. Each is recorded where it was raised.
 - A PyYAML-based gain check, because the hook reads lines, not YAML: the hook's docstring.
 - The single-file `build_ros.sh` mount in `docker/compose.yml`, which goes stale: the ladder's blind
   spots and the [2026-10-27 journal](journal/2026-10-27-ai-forward-bootstrap.md).
+- Whether the dev container should be one per checkout (a compose project name per checkout and no
+  fixed `container_name`, so a worktree gets its own container and build volume), or whether
+  `check_container_mount.sh` is enough: the ladder's
+  [blind spots](architecture/verification-ladder.md#blind-spots-stated-plainly). Whether to allow
+  the script without a prompt: [proposal 0001](proposals/0001-allow-container-mount-check.md).
 - Gazebo vs `SimPlant` (2.1).
 - Whether `main` should adopt any of the `ai-forward` workflow: ADR 0005.
 - Which wheel radius is right (0.7).

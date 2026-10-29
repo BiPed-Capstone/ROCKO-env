@@ -30,6 +30,57 @@ docker compose -f docker/compose.yml exec -T ros2 bash -c 'echo $ROS2_WS $ROCKO_
 Success: it prints `/ros2_ws ON`. Anything else means the container predates those settings:
 recreate it with `docker compose -f docker/compose.yml up -d`.
 
+### Check the container is looking at *your* files
+
+Three words first. A **checkout** is a folder on your laptop holding a copy of this repo's files; most
+people have one. A second `git clone`, or a **git worktree** (an extra working folder for the same
+repository, made with `git worktree add <folder> <branch>`; some AI tools make one per session), is
+another checkout. The container **mounts** a folder: it shares that laptop folder into the container,
+here at `/ros2_ws/src/ROCKO-env`.
+
+There is one container per laptop, and it mounts the checkout whose `docker/compose.yml` last ran
+`up -d`. So `up -d` is itself the switch: run from your checkout it points the container at you, and
+it takes the container away from anything running in another checkout. If the container is already
+up, you may skip `up -d`, and then it is still showing whichever checkout it had. In the wrong
+checkout, steps 2 to 4 still run and the container commands can still pass, but they test the other
+folder's files.
+
+```bash
+./check_container_mount.sh
+```
+
+Run it on the laptop, from the repo root, at the start of a session and whenever you change checkout.
+Success: `ok    the container sees this checkout: <your folder>`, exit 0. It creates an empty marker
+file in your checkout, asks the container whether it can see that file, and deletes it.
+
+What `ok` does **not** say: that the build output inside the container came from your checkout. The
+build folder survives a switch, and `make` (the tool CMake uses to compile) only recompiles a file
+whose source is newer than its output. A checkout whose files are older than the last build is
+therefore not recompiled. This was tested: appending a comment to a controller, building, then
+restoring the original file with its old timestamp and building again recompiled nothing. After a
+switch, rebuild from clean (the second command below).
+
+If it prints `FAIL` (exit 1), it prints the commands to run. Add the same extra `-f` file you
+started the container with (`compose.mac.yml` or `compose.windows.yml`), if any:
+
+```bash
+docker compose -f docker/compose.yml up -d --force-recreate
+docker compose -f docker/compose.yml exec -T ros2 bash -c 'cd /ros2_ws && rm -rf build install log && src/ROCKO-env/build_ros.sh'
+```
+
+- `--force-recreate` is there because plain `up -d` is not always enough. If you deleted a checkout
+  and cloned it again at the same path, compose sees nothing change, prints `Running`, and the
+  container keeps showing the deleted folder. This was tested.
+- A new container has none of the ROS packages the old one installed, and `build_ros.sh` installs them
+  again, so the second command needs the network and takes minutes. The build volume itself is kept,
+  which is why it has to be emptied by hand.
+- Recreating stops anything running in the container, for another session too, and leaves that
+  checkout failing this check until it does the same. Run the check again whenever you switch.
+
+Exit 2 means it could not tell: no `docker` command (you are in the container, or on the Pi, rather
+than on the laptop), Docker is not running, or the container is not up. Docker's own message is
+printed above ours. Only Docker Desktop for macOS has been tried.
+
 ## 2. Build (Tier 1)
 
 ```bash

@@ -267,12 +267,27 @@ the container; `-T` because no terminal is attached):
 
 ```bash
 docker compose -f docker/compose.yml up -d
+./check_container_mount.sh                                                                    # precondition, host
 docker compose -f docker/compose.yml exec -T ros2 bash -c 'cd /ros2_ws && src/ROCKO-env/build_ros.sh'   # Tier 1
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_urdf.sh       # Tier 0
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh       # Tier 2
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh tank
 .claude/hooks/test-guard-protected-files.sh                                                   # Tier 0, host
 ```
+
+**One container, one checkout.** A laptop has one dev container, and it shows whichever *checkout*
+(a folder holding a copy of this repo: a second clone, or a git worktree) last ran
+`docker compose -f <checkout>/docker/compose.yml up -d`. Work in a checkout it is not showing and the
+commands above still run and still pass, but they test the *other* folder's files. Run
+`./check_container_mount.sh` from the repo root, in those words, at the start of a session and
+whenever you change checkout: exit 0 means the container sees your files; exit 1 means it does not,
+and it prints the fix; exit 2 means it could not tell (no Docker, or the container is not running).
+`up -d` is itself the switch: it points the container at the checkout you run it from and takes it
+away from a session using another one. And `ok` does not mean the build output is yours: after a
+switch, rebuild from clean (the fix prints the command) before you trust Tiers 1 and 2. It is not on
+the `settings.json` allow-list yet, so expect a prompt in the default permission mode
+([proposal 0001](docs/proposals/0001-allow-container-mount-check.md)). The full explanation is in
+[Verify a change without the robot](docs/guides/verify-in-container.md).
 
 `build_ros.sh` passes `-DROCKO_SKIP_WIRINGPI` (compose sets it to `ON`) and exits 1 if the build
 fails. Run it from `src/ROCKO-env/`, not `/ros2_ws/build_ros.sh`: that second copy is a single-file
