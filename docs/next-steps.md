@@ -5,8 +5,8 @@ and check. It owns three things no other page does: the **order**, **who** can d
 **status**. It deliberately does not repeat what a flaw *is* or how to fix it; each row links to the
 page that does, so that fact has one home.
 
-Checked against the code on 2026-10-28 (commit `059e602`). Several GitHub issues are already fixed in
-the code but still open, and some are only partly met; the
+Checked against the code on 2026-10-28 (commit `059e602`). Two GitHub issues that were already fixed
+(#15, #17) have been closed; others are only partly met, or fixed on this branch only. The
 [last section](#github-issues-against-the-code) says which.
 
 ## How to use it
@@ -109,20 +109,21 @@ An agent can draft these; a person checks the facts. They are listed in
 
 ## GitHub issues against the code
 
-Open on GitHub as of 2026-10-28 (#10 to #17, none labelled), compared with the tree. Closing or
-commenting on an issue is the maintainer's call; an agent lists what it thinks can be closed in its
-report instead.
+Issues #10 to #17 as of 2026-10-28 (none labelled), compared with the tree. #15 and #17 were closed
+that day, at the maintainer's instruction, with a comment naming the evidence on `main`. Closing or
+commenting on an issue is the maintainer's call: an agent lists what it thinks can be closed in its
+report, and closes one only when told to.
 
 | Issue | State in the code |
 | --- | --- |
-| [#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10) `use_mock_hardware` does nothing | **Done on `ai-forward`**: it selects `mock_components/GenericSystem`. Closes when the branch merges |
+| [#10](https://github.com/BiPed-Capstone/ROCKO-env/issues/10) `use_mock_hardware` does nothing | **Done on `ai-forward`**: it selects `mock_components/GenericSystem`. Left open on purpose: `main` does not have the fix. Close it when the branch merges |
 | [#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11) `view_robot.launch.py` default | **Open** (0.6) |
 | [#12](https://github.com/BiPed-Capstone/ROCKO-env/issues/12) no simulation | **Partly**: the mock landed, as the issue suggested first; no physics (2.3) |
 | [#13](https://github.com/BiPed-Capstone/ROCKO-env/issues/13) no tests | **Partly** (0.9) |
 | [#14](https://github.com/BiPed-Capstone/ROCKO-env/issues/14) unpinned Python dependencies | **Open** (0.8) |
-| [#15](https://github.com/BiPed-Capstone/ROCKO-env/issues/15) `setup.py` is dead code | **Already fixed on `main`** (the file was removed in `a7d302a`); can be closed now |
+| [#15](https://github.com/BiPed-Capstone/ROCKO-env/issues/15) `setup.py` is dead code | **Closed 2026-10-28.** Already fixed on `main` (the file was removed in `a7d302a`) |
 | [#16](https://github.com/BiPed-Capstone/ROCKO-env/issues/16) wheel radius disagrees | **Open** (0.7), and wider than the issue says |
-| [#17](https://github.com/BiPed-Capstone/ROCKO-env/issues/17) template metadata in `package.xml` | **Already fixed on `main`**: both packages have real descriptions and maintainers; can be closed now |
+| [#17](https://github.com/BiPed-Capstone/ROCKO-env/issues/17) template metadata in `package.xml` | **Closed 2026-10-28.** Already fixed on `main`: both packages have real descriptions and maintainers |
 
 ## Keeping this page true
 
