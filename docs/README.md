@@ -31,6 +31,11 @@ wheel, the folder map, and the build and run instructions. This directory is the
 - [`journal/`](journal/README.md) — what each change did and which checks ran.
 - [`proposals/`](proposals/README.md) — decisions the AI left for you.
 
+## If you want to know what to work on
+
+- [`next-steps.md`](next-steps.md) — the prioritized work queue: the order, who can do each item,
+  and what can check it. Start here when you have no specific goal.
+
 ## If you are about to change something
 
 - [`guides/verify-in-container.md`](guides/verify-in-container.md) — check a change on your laptop

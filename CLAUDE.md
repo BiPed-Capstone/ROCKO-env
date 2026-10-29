@@ -35,9 +35,11 @@ with no arguments gets real hardware.
 
 ## 2. The loop: goal in, verified change out
 
-A human gives you a goal. You return a change you have checked, reviewed and explained. **Do not stop
-to ask permission for ungated work** — a change is not done when it compiles, it is done when it
-has been verified as far as the ladder allows and the evidence is written down.
+A human gives you a goal. If they have not, take the first row of
+[`docs/next-steps.md`](docs/next-steps.md) that you can do and check. You return a change you
+have checked, reviewed and explained. **Do not stop to ask permission for ungated work** — a
+change is not done when it compiles, it is done when it has been verified as far as the ladder
+allows and the evidence is written down.
 
 1. **Restate the goal as checkable success criteria**, in the run journal. "Make the pitch loop
    better" is not checkable; "all four controllers reach `active` on the mock and the tank launch
@@ -57,7 +59,8 @@ has been verified as far as the ladder allows and the evidence is written down.
 6. **Fix every confirmed finding**, then go back to step 4. At most **three** review rounds. If round
    three is still dirty, stop and hand the human the remaining findings; do not grind silently.
 7. **Document in the same change** (§7): journal entry, architecture page, ADR if the choice is not
-   obvious, README, and the verification ladder's status table.
+   obvious, README, the verification ladder's status table, and the row in
+   [`docs/next-steps.md`](docs/next-steps.md) if the change finishes, starts or blocks an item.
 8. **Commit, then publish `ai-forward`.** Commit verified work to the working branch in logical
    commits, one goal at a time. On `ai-forward`, once the review loop is finished, push it. First
    `git fetch origin`, then `git log --oneline HEAD..origin/ai-forward`: it lists commits the remote
@@ -221,6 +224,8 @@ run well above the control rate (equal periods alias); near-zero is still a comm
 Procedure and reasoning: the `control-loop-change` skill. Known problems:
 [`balance-loop-findings.md`](docs/claude-analysis/balance-loop-findings.md) — cite finding IDs
 (C-1, H-3, …) rather than rediscovering them, and respect its stated order of work.
+[`docs/next-steps.md`](docs/next-steps.md) puts that order into a queue, adjusted for what can be
+checked today, with who can do each item and what can check it.
 
 ---
 

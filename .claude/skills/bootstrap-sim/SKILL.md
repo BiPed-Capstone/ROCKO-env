@@ -25,7 +25,7 @@ Update it when a step lands. Work top to bottom; each step is its own goal with 
 | 6 | The plant exists and the same controllers run against it | `rocko_sim.launch.py` starts it; the same `rocko_controllers.yaml` loads; `ros2 control list_controllers` shows all active; pitch now **changes** when the wheels move | Agent |
 | 7 | Scenarios with pass/fail | A scenario runner executes: hold upright 10 s, recover from an impulse, follow a velocity step. Each scenario writes a metrics file and exits non-zero on failure | Agent |
 | 8 | Sim-to-real gap, written down | `docs/architecture/sim-to-real-gap.md` lists what the model omits (backlash, PWM aliasing, battery sag, IMU latency) and what each omission does to a gain | Agent |
-| 9 | Let the loop run it | `.claude/settings.json` allows the sim launch command; `verification-ladder.md` marks Tier 3 as built; `tune-gains` is now actionable | Agent |
+| 9 | Let the loop run it | `.claude/settings.json` allows the sim launch command; `verification-ladder.md` marks Tier 3 as built; `tune-gains` is now actionable | Agent writes a **proposal** for the settings change (it edits a guardrail, `CLAUDE.md` §3); a human approves it |
 
 Order matters. Step 4 is first of the gating human steps because a sim with invented inertia is
 *confidently wrong* — worse for a student than no sim (ADR 0003). If you reach step 4 and the numbers
