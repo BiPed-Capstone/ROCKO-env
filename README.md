@@ -128,6 +128,7 @@ ROCKO-env
 ├── check_container_mount.sh        Checks the dev container is mounting THIS checkout, so the verify scripts test your files (laptop)
 ├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware, mock on and off (container)
 ├── verify_mock.sh                  Checks the controllers load and chain on mock hardware (container)
+├── .githooks/                      Git hooks: no commit on main, no push but a fast-forward of ai-forward to origin. Inactive until copied into .git/hooks/ (proposal 0002, item E)
 ├── docker/                         Dev container for laptops (compose files + Dockerfile)
 ├── docs/                           Architecture, guides, decisions, run journal, proposals, audits
 ├── examples/example_hardware/      Skeleton templates. Copy when adding new hardware

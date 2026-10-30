@@ -146,6 +146,10 @@ Success: every *case* line starts `ok` (the `---` lines are section headings), a
 is 0. A `skip` line is fine: the one case about differently-cased paths only applies on a
 case-insensitive filesystem (macOS, Windows), so Linux and WSL2 skip it.
 
+If you changed the git hooks in `.githooks/`, run `.githooks/test-git-hooks.sh` as well (also on the
+laptop, also no container). Success: `PASS: every case behaved.` and exit status 0. It builds a
+throwaway repository and remote in a temporary folder and never touches this one.
+
 ## 4. Run the mock (Tier 2)
 
 ```bash

@@ -1,0 +1,44 @@
+#!/bin/sh
+# Refuse any push except a fast-forward of refs/heads/ai-forward on origin: no other branch, no tag,
+# no deletion, no force, no other remote. A person who really means it: ROCKO_HUMAN=1 git push ...
+#
+# git runs this file before every `git push`, once it knows what would change on the remote and
+# before it sends anything; exit 1 cancels the whole push, every branch in it. $1 is the remote's
+# name, and stdin has one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
+# Inactive until a person copies it into .git/hooks (proposal 0002, item E). Not `core.hooksPath`:
+# git would then run the hooks from the .githooks folder of whatever files are checked out, and main
+# has none, so after `git switch main` there would be no hooks at all (a relative or absolute path alike).
+set -u
+[ "${ROCKO_HUMAN:-}" = 1 ] && exit 0
+
+if [ "$1" != origin ]; then
+  echo "refused: push to origin only, not $1" >&2
+  exit 1
+fi
+
+# git's id for "no commit": all zeros (40 of them, 64 in a SHA-256 repository). The same line as in
+# git's own example hook, .git/hooks/pre-push.sample.
+no_commit="$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" != refs/heads/ai-forward ]; then
+    echo "refused: only refs/heads/ai-forward may be pushed from this checkout, not $remote_ref" >&2
+    exit 1
+  fi
+  # git writes "(delete)" as the local ref of a deletion. The fast-forward test below would refuse it
+  # too, but its message would blame the wrong thing.
+  if [ "$local_ref" = "(delete)" ]; then
+    echo "refused: deleting a remote branch" >&2
+    exit 1
+  fi
+  # Fast-forward: the remote's commit is already in our history, so the push loses nothing there.
+  # git refuses any other push by itself unless it is forced (--force, --force-with-lease, or a + before
+  # the branch name); this check is what refuses the forced ones. merge-base also fails when we do not
+  # have the remote's commit at all, which means someone else pushed: fetch and look (CLAUDE.md
+  # section 2, step 8).
+  if [ "$remote_sha" != "$no_commit" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+    echo "refused: not a fast-forward of the remote ai-forward (force push, or the remote has commits you lack). Run git fetch origin." >&2
+    exit 1
+  fi
+done
+exit 0

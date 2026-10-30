@@ -1,0 +1,19 @@
+#!/bin/sh
+# Refuse `git commit` on main. This checkout's agent commits to ai-forward only (CLAUDE.md §2).
+# A person who really means to commit to main: ROCKO_HUMAN=1 git commit ...
+#
+# git runs this file before every `git commit`, from the top of the checkout; exit 1 cancels the
+# commit. Only `git commit` runs it: git merge, cherry-pick, revert and rebase can still add commits
+# to main in this clone. What keeps those off GitHub is pre-push, which refuses any push to main.
+# Inactive until a person copies it into .git/hooks (proposal 0002, item E). Not `core.hooksPath`:
+# git would then run the hooks from the .githooks folder of whatever files are checked out, and main
+# has none, so after `git switch main` there would be no hooks at all (a relative or absolute path alike).
+set -u
+[ "${ROCKO_HUMAN:-}" = 1 ] && exit 0
+# Empty on a detached HEAD, and such a commit is allowed. HEAD is detached in the middle of a rebase
+# too, so `git rebase -x 'git commit ...'` on main gets through and lands on main: pre-push again.
+branch="$(git branch --show-current)" || { echo "refused: could not tell which branch this is" >&2; exit 1; }
+if [ "$branch" = main ]; then
+  echo "refused: no commits on main in this checkout (CLAUDE.md section 2). Use ai-forward." >&2
+  exit 1
+fi

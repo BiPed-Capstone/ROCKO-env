@@ -77,6 +77,23 @@ or (b) the goal is ambiguous in a way that changes the design and reading the co
 settle it. Ask one question with your recommendation. If the environment is broken, diagnose it
 rather than paper over it; a tier you could not run is reported as *not run*.
 
+**Unattended runs.** Nobody is answering prompts when the run is headless (started with
+`claude -p`) or the person says they are away. Then:
+
+- A tool call that comes back refused counts as a hook denial (§3): do not retry it by another route
+  (`sed -i`, a differently spelled command). Write a proposal that names the exact command, unless
+  an open one already does (cite it), and carry on with whatever does not need it. A session that
+  waits at a prompt instead just stalls while the person is away, so avoid commands you know prompt.
+- If `./check_container_mount.sh` is refused, or you skip it because it would prompt, report everything
+  that runs in the container as *not run* (`verify_urdf.sh`, Tier 1 and Tier 2): without it those results cannot be tied to this checkout
+  (§8). The host checks still count.
+- Pick work by the rule in [`docs/next-steps.md`](docs/next-steps.md), *How to use it*, item 6:
+  Wave 0 rows an agent can write and check. Wave 1 or later only when the person names the row.
+- Stop, rather than invent work, when no such row is left, when step 6's third round is still dirty,
+  or when nothing else can go on without the refused command.
+- Nobody reads the chat. Put the step 9 report in the journal entry (the commit message, when there
+  is none) and end it with a line saying why you stopped.
+
 ---
 
 ## 3. What a human still decides
@@ -273,6 +290,7 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh       # Tier 2
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh tank
 .claude/hooks/test-guard-protected-files.sh                                                   # Tier 0, host
+.githooks/test-git-hooks.sh                                                                   # Tier 0, host; only if you changed .githooks/
 ```
 
 **One container, one checkout.** A laptop has one dev container, and it shows whichever *checkout*

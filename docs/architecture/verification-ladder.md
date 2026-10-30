@@ -30,7 +30,7 @@ The exact commands, expected output and failure modes are in the
 
 | Tier | Name | Script | Status |
 | --- | --- | --- | --- |
-| 0 | Static | `verify_urdf.sh` (container); `.claude/hooks/test-guard-protected-files.sh` (laptop) | **Works.** Needs a Tier 1 build first |
+| 0 | Static | `verify_urdf.sh` (container); `.claude/hooks/test-guard-protected-files.sh`, `.githooks/test-git-hooks.sh` (laptop) | **Works.** Needs a Tier 1 build first (`verify_urdf.sh`). The git hooks it tests are not installed in this clone until [proposal 0002](../proposals/0002-unattended-run-settings.md) item E |
 | 1 | Build | `build_ros.sh` (container) | **Works** off-Pi, *without* the motor plugin; exits 1 when the build fails. **The Pi build (flag `OFF`) has not been run** since the CMake change |
 | 2 | Mock | `verify_mock.sh`, `verify_mock.sh tank` (container) | **Works**; shown to fail on deliberate breaks |
 | 3 | Simulation | — | **Not built.** [ADR 0003](../decisions/0003-simulation-target.md) is still `Proposed` |
@@ -44,7 +44,7 @@ leaves out others (see the blind spots).
 
 | Tier | A pass proves | It cannot show |
 | --- | --- | --- |
-| 0 | The URDF expands and parses in all four modes (balancing and tank, mock off and on), and each holds the right hardware: the two real motor plugins (and the IMU, in balancing mode) when the mock is off, exactly one `MockRocko` system when it is on; no plugin of any other kind; and the mock exports exactly the same interfaces (joints, sensors and gpio; a duplicate counts as a difference) as the real hardware: 12 in balancing mode, 6 in tank mode. The guard hook blocks what it should and passes what it should | That anything compiles or runs |
+| 0 | The URDF expands and parses in all four modes (balancing and tank, mock off and on), and each holds the right hardware: the two real motor plugins (and the IMU, in balancing mode) when the mock is off, exactly one `MockRocko` system when it is on; no plugin of any other kind; and the mock exports exactly the same interfaces (joints, sensors and gpio; a duplicate counts as a difference) as the real hardware: 12 in balancing mode, 6 in tank mode. The guard hook blocks what it should and passes what it should. The git hooks in `.githooks/`, installed by copy in a throwaway repository, refuse and allow what they should | That anything compiles or runs. That the git hooks are installed in your clone |
 | 1 | `rocko_interfaces` and `rocko_env` compile and link; declared dependencies install | Anything about **`Motor12VoltQuadEncoder.cpp`** (left out off-Pi: it needs WiringPi). Anything at runtime |
 | 2 | Every controller **the launch file spawns** (the four cascade controllers in balancing mode; the diff-drive controller and joint-state broadcaster in tank mode) loads against the mock, claims interfaces the hardware layer exports, chains, activates and stays active; `Joystick.py` and `DiffDriveController.py` have not crashed. It refuses to run while another controller manager is up, so it cannot be fooled by a leftover one | **Physics.** The mock echoes each command back as a state and holds pitch at 0.0, so a controller that would drop the robot on the floor passes just the same. It does not start every controller named in the YAML, and it skips the IMU and encoder nodes |
 | 3 | *(when built)* controller behavior against modeled dynamics | Everything the model omits: backlash, PWM aliasing, battery sag, IMU latency |
@@ -58,7 +58,7 @@ see it: start `rocko.launch.py use_mock_hardware:=true` in the container, then r
 ## Evidence that the tiers can fail
 
 A tier is not "built" until it has been seen to fail on something deliberately broken, **for the right
-reason**. (Four of the controls below first failed for the *wrong* reason, or did not fail at all, and were
+reason**. (Several of the controls below first failed for the *wrong* reason, or did not fail at all, and were
 fixed; see the journal.)
 
 | Tier | Break | Result |
@@ -78,6 +78,7 @@ fixed; see the journal.)
 | pre | Send SIGINT, SIGTERM and SIGHUP to the script's process group while a stand-in `docker` hangs; then SIGKILL | the marker file is removed for the first three; SIGKILL leaves it, which `.gitignore` covers |
 | 1 | Append a comment to `AddFeedforwardController.cpp`, build, restore the original with its older timestamp, build again | the second build recompiles nothing: build output from another checkout can survive a switch, so `check_container_mount.sh` printing `ok` is not enough |
 | 0 | Reintroduce, one at a time, 28 bugs into a copy of the hook (among them `fault` matching `default`, a crash instead of failing closed, no case-folding, no symlink resolution, CRLF not normalised, comments not stripped, YAML compared case-insensitively or with its indentation ignored, a gain judged as a token instead of a whole line, an unmatched edit waved through, the Edit tool's newline-eating not modelled, a quadratic comment scan) | The hook test suite goes red for each: 28 of 28. It has 80 hook cases (79 on a case-sensitive filesystem such as Linux or WSL2, which skips the one case about differently-cased paths) plus a check that `settings.json` wires the hook up, and asserts the exit status as well as the decision. Rerun the mutation check with `.claude/hooks/mutation-check-guard.py` |
+| 0 | Break each of twelve checks in `.githooks/pre-commit` and `pre-push` one at a time in a copy, with `.githooks/mutation-check.py`, which first runs the unbroken test and stops if that is red (any ref name allowed, a ref matched by its ending, any remote allowed, a deletion not recognised, no fast-forward check, a refusal only when we have the remote's commit, a refusal that forgets its `exit 1`, the person's `ROCKO_HUMAN=1` escape removed, or any value of it accepted, in each file as it applies; `main` not detected) | `.githooks/test-git-hooks.sh` goes red for each (between 1 and 11 cases). Several things first passed for the wrong reason and were fixed: a push that *git* refused counted as the hook's work, the mutation check printed PASS with a red baseline, and the test would have acted on a real repository had `GIT_DIR` (or `git -c` settings) been set (without the fix, in a copy, pointed at a stand-in repository, it committed to it, added a remote to its config and pushed several refs to its remote). 24 cases in a throwaway repository and remote. The hooks are installed by copying into `.git/hooks`: `core.hooksPath .githooks` stops working on a branch without the folder (a commit and a push of `main` went through). git 2.48.1 on macOS |
 
 **Also checked:** the real-hardware `<ros2_control>` elements (`use_mock_hardware:=false`) are
 semantically identical to those at `HEAD` — 3 of 3 blocks in balancing mode, 2 of 2 in tank mode —
@@ -124,6 +125,14 @@ because they show what each tier is for.
   and it prompts in the default permission mode until
   [proposal 0001](../proposals/0001-allow-container-mount-check.md) is accepted. Only Docker Desktop
   for macOS was tried: Linux and WSL2 were not.
+- **No tier can test a permission rule.** Whether a `Bash(...)` string in `settings.json` matches
+  the command an agent types, and whether the guard hook still denies and asks under each permission
+  mode, can only be seen in a live session, by a person (the session transcript's per-call
+  `permissionDecision` records then say why each call was accepted). The check is
+  [proposal 0002](../proposals/0002-unattended-run-settings.md)'s *Test for a human*, and it must be
+  run outside `auto` mode, where a classifier can approve a call whose rule does not match. The git
+  hooks in `.githooks/` are tested on a throwaway repository and are inactive in this one until that
+  proposal's item E is done.
 - **The Pi build has not been run.** Nothing here compiles the motor plugin against real WiringPi or
   checks that the `OFF` path produces a working `librocko_env.so`.
 - **Dependency versions are not pinned.** `rosdep` installs the current Jazzy release of

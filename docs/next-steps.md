@@ -21,12 +21,26 @@ Checked against the code on 2026-10-28 (commit `059e602`). Two GitHub issues tha
    here.
 5. Gated change (gains, version pins, weakening a safety behavior, the guardrails)? Write a
    [proposal](proposals/README.md) and put its number in the row.
+6. **Nobody watching** (a headless run, started with `claude -p`, or the person said they are away)?
+   Take only rows in [Wave 0](#wave-0--do-now-nothing-blocks-these) that are *open* or *partly done*,
+   whose *Who* starts with `agent`, and whose *Best check today* names a tier (not `—` or `none`): nothing could check
+   the others, and "done" without a check is what `CLAUDE.md` §4 forbids. Today that is 0.1 to 0.6
+   and 0.9. Work them in order. Wave 1 and later only when the person names the row. For an
+   `agent + robot` row, write the code, run the checks, write the robot procedure into the journal
+   entry, and set the status to *done, awaiting robot*. If what is left belongs to another row (0.1's
+   end state needs 1.1), say so in the row; the status is still *done, awaiting robot*. Then go on to
+   the next row.
 
 ## Reading the table
 
 - **Who.** *agent*: an AI can write it and check it as far as the
   [verification ladder](architecture/verification-ladder.md) allows. *agent + robot*: an AI writes
   it, but only a person on the Pi can confirm it. *human*: needs a measurement or a decision.
+- **Status.** A row's status starts with one of these, so a loop can tell where it stands: *open*
+  (not started), *partly done* (some landed; the row says what is left), *done, awaiting robot* (the
+  code landed and was checked as far as the ladder allows; a person has to run the procedure in the
+  journal entry), *blocked on human* (agent work that waits on a decision or a measurement; the row says which),
+  *done*. Change the word in the same commit that changes the row's state.
 - **Best check today** is the highest tier that can say anything about the change, per the ladder.
   Until row 0.2 lands, the motor plugin is not compiled off a Pi at all. Nothing here is checked
   against dynamics until Tier 3 exists (rows 2.1 to 2.3), and only the robot (Tier 4) shows whether
@@ -47,9 +61,9 @@ first here, and Wave 1 keeps its steps 2 to 5 in sequence.
 | 0.4 | **L-3**: deprecated include; invalid escapes in `RateLimiter.py` | agent | T1 (warnings gone) | open. [L-3](claude-analysis/balance-loop-findings.md). The include is in the controller header, so the auditor is mandatory |
 | 0.5 | **L-4**: RViz layouts are never installed | agent | T1 (`install/.../share/rocko_env/rviz/` exists). That RViz opens with them needs a display, so a person | open. [L-4](claude-analysis/balance-loop-findings.md) |
 | 0.6 | [#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11): `view_robot.launch.py` default argument | agent | T1, plus a manual look that the default now resolves to an installed file (needs 0.5) | open, confirmed: the default is still `"description"`. The README's workaround goes away with the fix |
-| 0.7 | [#16](https://github.com/BiPed-Capstone/ROCKO-env/issues/16): the wheel radius disagrees | human measures, agent finishes | T2 | open. There are **four** values, not three: `0.06` m (the Python nodes), `0.127` m (the tank config) and `0.015` m (`wheel_radius` in `rocko_description.urdf.xacro`, which a Tier 3 model would use). An agent cannot know which is right. Measure once (the same measurement serves 2.2), then keep a single source |
-| 0.8 | [#14](https://github.com/BiPed-Capstone/ROCKO-env/issues/14): unpinned Python dependencies | agent + robot | — | open, no requirements file exists. The versions must come from a working Pi, otherwise the pins are invented |
-| 0.9 | [#13](https://github.com/BiPed-Capstone/ROCKO-env/issues/13): no tests in the packages | agent | T0, T2 | **partly met** on `ai-forward` by `verify_urdf.sh` and `verify_mock.sh`, which are scripts, not `colcon test`. Still missing: unit tests for `RateLimiter.py`, and running the checks under `colcon test` or CI |
+| 0.7 | [#16](https://github.com/BiPed-Capstone/ROCKO-env/issues/16): the wheel radius disagrees | human measures, agent finishes | T2 | blocked on human. There are **four** values, not three: `0.06` m (the Python nodes), `0.127` m (the tank config) and `0.015` m (`wheel_radius` in `rocko_description.urdf.xacro`, which a Tier 3 model would use). An agent cannot know which is right. Measure once (the same measurement serves 2.2), then keep a single source |
+| 0.8 | [#14](https://github.com/BiPed-Capstone/ROCKO-env/issues/14): unpinned Python dependencies | agent + robot | — | blocked on human: no requirements file exists. The versions must come from a working Pi, otherwise the pins are invented |
+| 0.9 | [#13](https://github.com/BiPed-Capstone/ROCKO-env/issues/13): no tests in the packages | agent | T0, T2 | partly done on `ai-forward` by `verify_urdf.sh` and `verify_mock.sh`, which are scripts, not `colcon test`. Still missing: unit tests for `RateLimiter.py`, and running the checks under `colcon test` or CI |
 
 ## Wave 1 — the control-loop fixes, in the audit's order
 
@@ -72,8 +86,8 @@ period and feedback age *before* any tuning time is spent.
 | --- | --- | --- | --- | --- |
 | 2.1 | **Choose the Tier 3 plant**: Gazebo ([ADR 0003](decisions/0003-simulation-target.md)) or `SimPlant` ([M-4](claude-analysis/balance-loop-findings.md)) | human decides | — | open. The agent writes the proposal; `bootstrap-sim` has the comparison and a recommendation |
 | 2.2 | **Measure the robot** (`bootstrap-sim` step 4) | human | — | open. The agent writes `docs/guides/measure-inertia.md` first. Share the wheel measurement with 0.7 |
-| 2.3 | **Build the plant and the scenarios** (`bootstrap-sim` steps 6–7) and **the sim-to-real gap page** (step 8) | agent | T3, once built | steps 6–7 are blocked by 2.1 and 2.2; step 8 is not blocked by 2.1. [M-4](claude-analysis/balance-loop-findings.md) is partly done (the mock and the off-Pi build exist; the physics do not), and [#12](https://github.com/BiPed-Capstone/ROCKO-env/issues/12) is the same item |
-| 2.4 | **Let the loop run the sim** (`bootstrap-sim` step 9) | agent writes a proposal, human approves | — | it edits `.claude/settings.json`, a guardrail (`CLAUDE.md` §3) |
+| 2.3 | **Build the plant and the scenarios** (`bootstrap-sim` steps 6–7) and **the sim-to-real gap page** (step 8) | agent | T3, once built | open. Steps 6–7 are blocked by 2.1 and 2.2; step 8 is not blocked by 2.1. [M-4](claude-analysis/balance-loop-findings.md) is partly done (the mock and the off-Pi build exist; the physics do not), and [#12](https://github.com/BiPed-Capstone/ROCKO-env/issues/12) is the same item |
+| 2.4 | **Let the loop run the sim** (`bootstrap-sim` step 9) | agent writes a proposal, human approves | — | open. Needs 2.3 first; the agent then writes a proposal, because it edits `.claude/settings.json`, a guardrail (`CLAUDE.md` §3) |
 | 2.5 | **C-3**: teleop watchdog | agent writes, human sets the threshold | none (Tier 3 is not built). Tier 2 may show the velocity reference dropping after the timeout, since the mock runs `Joystick.py` (untried) | open. The right failsafe is counter-intuitive: read [C-3](claude-analysis/balance-loop-findings.md) before writing any code |
 | 2.6 | **H-4**: tipover cutoff | agent writes, human sets the threshold | none (Tier 3 is not built) | open. *Adding* a safeguard is allowed; its threshold goes in a proposal |
 
@@ -95,6 +109,10 @@ Not agent work. Each is recorded where it was raised.
 
 - The `settings.json` allow-list (it can run code around the hook) and whether `CLAUDE.md`, the
   agents and the skills should be guarded: [ADR 0005](decisions/0005-ai-forward-development.md).
+- What to allow, deny and enforce for a run nobody is watching: the permission mode, the loop's
+  commands, a narrower `gh`, a deny list, git hooks and a rule on `main`:
+  [proposal 0002](proposals/0002-unattended-run-settings.md). Guarding `CLAUDE.md`, the agents and
+  the skills should be decided together with its item A.
 - A PyYAML-based gain check, because the hook reads lines, not YAML: the hook's docstring.
 - The single-file `build_ros.sh` mount in `docker/compose.yml`, which goes stale: the ladder's blind
   spots and the [2026-10-27 journal](journal/2026-10-27-ai-forward-bootstrap.md).

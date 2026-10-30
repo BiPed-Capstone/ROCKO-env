@@ -118,7 +118,9 @@ it now counts whole `<plugin>` tags.
 On the host (no ROS needed): `.claude/hooks/test-guard-protected-files.sh` — the guard hook's own
 tests, which must stay green, and `bash -n` any shell script you touch, `python3 -m py_compile`
 any Python. The hook tests assert the exit status as well as the decision, because a hook that
-crashes lets the edit through.
+crashes lets the edit through. If you changed `.githooks/`, run `.githooks/test-git-hooks.sh` and
+`.githooks/mutation-check.py` too (the hooks are not installed in this clone until a person does it:
+[proposal 0002](../../../docs/proposals/0002-unattended-run-settings.md), item E).
 
 ## Tier 2 — the mock
 
