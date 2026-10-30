@@ -71,3 +71,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-10-28 | [Let the agent push `ai-forward`](2026-10-28-allow-ai-forward-push.md) |
 | 2026-10-29 | [Make the verify scripts notice when they are testing the wrong checkout](2026-10-29-container-mount-check.md) |
 | 2026-10-29 | [Get the repo ready for a run nobody is watching: rules, queue and git hooks](2026-10-29-unattended-run-readiness.md) |
+| 2026-10-29 | [Stop asking before every push to `ai-forward`](2026-10-29-push-without-asking.md) |

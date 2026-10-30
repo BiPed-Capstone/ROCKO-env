@@ -61,7 +61,10 @@ On the `ai-forward` branch:
    end of the loop and there is little human work to disturb. A push without `--force` cannot
    overwrite anything whatever the branch holds, and that is not relied on either: the check for
    commits the remote has and the agent lacks, and the no-force rule, cover a human who does push to
-   it.
+   it. *Amended 2026-10-29:* the maintainer asked that the agent push without asking each time
+   ("the agent should always be able to push code"); `CLAUDE.md` step 8 says so. The permission rules
+   are unchanged: the exact allow entries already let the command through, and widening them would
+   also let `--force` or `--delete` through.
 7. **Permissions that follow from the above** (`.claude/settings.json`), and why:
 
    | Setting | Why |
@@ -117,8 +120,12 @@ On the `ai-forward` branch:
     permission mode with no extra rule from `settings.local.json`, a user's own settings or an
     answered "don't ask again". It does not stop `gh api` (allowed; it can move or delete any remote
     ref), a chain of allowed commands, or a changed push target in `.git/config`. The allowed
-    command ran once with nothing to send; whether the rule or the session's permission mode let it
-    through is not established, and the refused forms were not run. If a human starts committing to
+    command ran once with nothing to send. It has since run three times as the bare command, and
+    each run has a permission record in the session transcript reading `reasonType: rule`,
+    `ruleSource: projectSettings`: the exact rule let it through. Written
+    `cd ... && git push origin ai-forward 2>&1 | tail -N`, it did not match the rule and the `auto`
+    classifier approved it instead, which in `default` mode should have prompted (not tried). The
+    refused forms were not run. If a human starts committing to
     `ai-forward` it becomes a shared branch, and the agent stops when the remote has commits it
     lacks, which is the intended behavior.
   - **`CLAUDE.md`, the agent definitions and the skills are not guarded.** An agent could edit the

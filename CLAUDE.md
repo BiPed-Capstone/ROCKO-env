@@ -62,12 +62,20 @@ allows and the evidence is written down.
    obvious, README, the verification ladder's status table, and the row in
    [`docs/next-steps.md`](docs/next-steps.md) if the change finishes, starts or blocks an item.
 8. **Commit, then publish `ai-forward`.** Commit verified work to the working branch in logical
-   commits, one goal at a time. On `ai-forward`, once the review loop is finished, push it. First
+   commits, one goal at a time. On `ai-forward`, once the review loop is finished, push it, **without
+   asking**: the maintainer has said so (2026-10-29: "the agent should always be able to push code").
+   Do not ask "shall I push?", offer it as a choice, or wait for a go-ahead; push every commit you
+   make on `ai-forward` before the turn ends, and report what went out. The only reasons not to are
+   the fetch check below and a third review round that is still dirty (step 6). First
    `git fetch origin`, then `git log --oneline HEAD..origin/ai-forward`: it lists commits the remote
    has and you do not, and it must print **nothing** (an `unknown revision` error only means the
    branch is not on the remote yet). If it lists commits, a human has pushed: stop and report it, and
    do not merge, rebase or force. Otherwise `git push origin ai-forward` (`git push -u origin
-   ai-forward` the first time). Never commit to `main`, never push another branch, never force-push.
+   ai-forward` the first time). Run it as its own command, with nothing chained or piped (no
+   `cd ... &&`, no `2>&1 | tail`): only the bare words match the allow rule. If the push is refused,
+   is declined at a prompt, or fails, stop and report it; do not try another form (`gh api`, a reworded
+   or chained command, another remote). Do not add a commit only to log the push: the remote is the
+   record of what went out. Never commit to `main`, never push another branch, never force-push.
 9. **Report honestly** (§4 closes with what this means): the tiers you ran and what they printed,
    the findings you fixed and any you declined (with why), the proposals you filed, what you did
    **not** verify, and the procedure a human should follow on the robot.
@@ -109,8 +117,8 @@ damage hardware or silently change what the project supports.
 | *Adding* a safeguard (a tipover cutoff, a watchdog, a clamp) | **The guardrails**: `.claude/hooks/`, `.claude/settings.json`, `.claude/settings.local.json`, `.claude/commands/`, `.mcp.json`, `.git/config`, `.git/hooks/` (the hook *asks*) |
 | Gains in a separate `*_sim.yaml`, once a physics sim exists | **Anything on a robot**: `ros2 launch`/`run` on a Pi, a flash, a first tethered test |
 
-**Pushing is allowed for one thing only:** `git push origin ai-forward` (or `git push -u origin
-ai-forward`), in exactly those words. `.claude/settings.json` allows those two commands by exact
+**Pushing is allowed for one thing only, and needs no go-ahead (step 8):** `git push origin
+ai-forward` (or `git push -u origin ai-forward`), in exactly those words. `.claude/settings.json` allows those two commands by exact
 match, so in the default permission mode any other `git push` (another branch, `--force`, extra
 arguments) prompts a human. Don't attempt one, and never force-push or delete a remote branch. A
 push publishes: everything on `ai-forward` is readable by whoever can read the team's GitHub repo,
