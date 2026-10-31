@@ -1,6 +1,6 @@
 # Proposal 0002 — settings and enforcement for a run nobody is watching
 
-- **Status:** Partly accepted: B, C and D applied 2026-10-30; A, E and F are still open
+- **Status:** Partly accepted: A, B, C and D applied 2026-10-30; E and F are still open
 - **Gate:** guardrail (`.claude/settings.json`, `.claude/settings.local.json`, `.git/hooks/`, the guard hook) and a GitHub setting
 - **Raised:** 2026-10-29, the commit that adds this file, run journal:
   [2026-10-29-unattended-run-readiness.md](../journal/2026-10-29-unattended-run-readiness.md)
@@ -15,7 +15,7 @@ that command matches.
 
 | Item | Where | What it does | Depends on |
 | --- | --- | --- | --- |
-| A | `.claude/settings.json` | Choose the permission mode on purpose (today: `auto`) | — |
+| A | `.claude/settings.json` | Choose the permission mode on purpose (was `auto`; `acceptEdits` since 2026-10-30) | — |
 | B | `.claude/settings.json` | Allow the commands the loop runs | — (includes [0001](0001-allow-container-mount-check.md)'s line) |
 | C | `.claude/settings.json`, `.claude/settings.local.json` | Replace the open-ended `gh api` with read-only `gh` commands | — |
 | D | `.claude/settings.json` | Refuse force-push, merge and a few more, even if a prompt is approved | — |
@@ -291,8 +291,8 @@ step 1:
    (with the container up). Expect no prompt; `ok ...` and exit 0 from the first, `ok` lines and
    exit 0 from the second. Then ask for `gh api repos/BiPed-Capstone/ROCKO-env` (a read): after C,
    expect a prompt; decline it.
-4. **A.** In the new session's records in the transcript, the mode is the one you chose (`default` or
-   `acceptEdits`, not `auto`).
+4. **A.** Start the session **without choosing a mode**. Its records in the transcript should read
+   `permissionMode: acceptEdits`; if they read `auto` or `default`, the app ignored `defaultMode`.
 5. **E.** Run `.githooks/test-git-hooks.sh` and `.githooks/mutation-check.py`. Success: `PASS` from
    each, exit 0. If you have not done step 2 of E yet, do it now; then `git switch main` and run
    `git commit --allow-empty -m test`:
@@ -339,4 +339,7 @@ These pages say what is true today and would be wrong afterwards (`CLAUDE.md` §
 `.claude/settings.local.json`. All nine deny rules and all ten new allow rules were tried in a live
 session (`auto` mode): the nine deny rules refused, three exact allow rules show a rule match, and the
 seven `:*` ones show no rule source. See the [journal](../journal/2026-10-30-apply-proposal-0002-b-d.md).
-**A (permission mode), E (git hooks) and F (GitHub ruleset) are not decided.**
+Later the same day the maintainer chose **A: `acceptEdits`**, and `"defaultMode": "acceptEdits"` was added
+to `.claude/settings.json` (see the [journal](../journal/2026-10-30-default-mode-accept-edits.md)).
+**E (git hooks) and F (GitHub ruleset) are not decided.** Nor is guarding `CLAUDE.md`, the agents and the skills,
+which Risk A said to decide with A: it stays open in [next-steps](../next-steps.md#decisions-waiting-on-the-maintainer).

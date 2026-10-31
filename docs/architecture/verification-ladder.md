@@ -130,7 +130,8 @@ because they show what each tier is for.
   mode, can only be seen in a live session, by a person (the session transcript's per-call
   `permissionDecision` records then say why each call was accepted or refused). The check is
   [proposal 0002](../proposals/0002-unattended-run-settings.md)'s *Test for a human*, and it must be
-  run outside `auto` mode, where a classifier can approve a call whose rule does not match. The git
+  run outside `auto` mode, where a classifier can approve a call whose rule does not match. The
+  project default is `acceptEdits` since 2026-10-30 and nothing has been run in it yet. The git
   hooks in `.githooks/` are tested on a throwaway repository and are inactive in this one until that
   proposal's item E is done.
 - **The Pi build has not been run.** Nothing here compiles the motor plugin against real WiringPi or

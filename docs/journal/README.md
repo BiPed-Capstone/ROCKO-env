@@ -73,3 +73,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-10-29 | [Get the repo ready for a run nobody is watching: rules, queue and git hooks](2026-10-29-unattended-run-readiness.md) |
 | 2026-10-29 | [Stop asking before every push to `ai-forward`](2026-10-29-push-without-asking.md) |
 | 2026-10-30 | [Apply items B, C and D of proposal 0002 to the settings](2026-10-30-apply-proposal-0002-b-d.md) |
+| 2026-10-30 | [Make `acceptEdits` the project's default permission mode](2026-10-30-default-mode-accept-edits.md) |

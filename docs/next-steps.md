@@ -111,9 +111,9 @@ Not agent work. Each is recorded where it was raised.
   agents and the skills should be guarded: [ADR 0005](decisions/0005-ai-forward-development.md).
 - What to allow, deny and enforce for a run nobody is watching: the permission mode, the loop's
   commands, a narrower `gh`, a deny list, git hooks and a rule on `main`:
-  [proposal 0002](proposals/0002-unattended-run-settings.md): B, C and D are applied (2026-10-30);
-  A, E and F are open. Guarding `CLAUDE.md`, the agents and the skills should be decided together
-  with A.
+  [proposal 0002](proposals/0002-unattended-run-settings.md): A, B, C and D are applied (2026-10-30);
+  E and F are open. Guarding `CLAUDE.md`, the agents and the skills is still undecided and matters
+  more now: under `acceptEdits` edits to them are expected not to prompt (not tried).
 - A PyYAML-based gain check, because the hook reads lines, not YAML: the hook's docstring.
 - The single-file `build_ros.sh` mount in `docker/compose.yml`, which goes stale: the ladder's blind
   spots and the [2026-10-27 journal](journal/2026-10-27-ai-forward-bootstrap.md).

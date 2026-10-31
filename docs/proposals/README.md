@@ -81,4 +81,4 @@ Record: commit SHA, launch file and config, battery voltage, surface, where the 
 | # | Proposal | Gate | Status |
 | --- | --- | --- | --- |
 | [0001](0001-allow-container-mount-check.md) | Allow `./check_container_mount.sh` without a prompt | guardrail | Accepted (applied 2026-10-30 with 0002, item B) |
-| [0002](0002-unattended-run-settings.md) | Settings and enforcement for a run nobody is watching (items A to F; B includes 0001) | guardrail | Partly accepted: B, C, D applied 2026-10-30; A, E, F open |
+| [0002](0002-unattended-run-settings.md) | Settings and enforcement for a run nobody is watching (items A to F; B includes 0001) | guardrail | Partly accepted: A, B, C, D applied 2026-10-30; E, F open |

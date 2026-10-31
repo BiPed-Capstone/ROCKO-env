@@ -86,8 +86,11 @@ or (b) the goal is ambiguous in a way that changes the design and reading the co
 settle it. Ask one question with your recommendation. If the environment is broken, diagnose it
 rather than paper over it; a tier you could not run is reported as *not run*.
 
-**Unattended runs.** Nobody is answering prompts when the run is headless (started with
-`claude -p`) or the person says they are away. Then:
+**Unattended runs.** Nobody is answering prompts when the run is headless (started with `claude -p`)
+or the person says they are away. A session that does not pick a permission mode is set to start in
+`acceptEdits` (`.claude/settings.json`, proposal 0002 item A, 2026-10-30): edits should not prompt,
+and a command that is not on the allow-list should. Whether the desktop app honors that over its own
+mode picker, and what the guard hook does in that mode, is not verified. Then:
 
 - A tool call that comes back refused counts as a hook denial (§3): do not retry it by another route
   (`sed -i`, a differently spelled command). Write a proposal that names the exact command, unless
@@ -120,12 +123,12 @@ damage hardware or silently change what the project supports.
 
 **Pushing is allowed for one thing only, and needs no go-ahead (step 8):** `git push origin
 ai-forward` (or `git push -u origin ai-forward`), in exactly those words. `.claude/settings.json`
-allows those two commands by exact match, so in the default permission mode any other `git push`
-prompts a human, except that a push spelled `git push --force ...`, `-f`, `--force-with-lease`,
-`--delete` or `--no-verify` is refused outright by the deny list (proposal 0002, item D; tried
-2026-10-30 in `auto` mode). Don't attempt one, and never force-push or delete a remote branch. A
-push publishes: everything on `ai-forward` is readable by whoever can read the team's GitHub repo,
-so never commit secrets or credentials.
+allows those two commands by exact match, so in `default` mode (and, untested, in `acceptEdits`) any
+other `git push` prompts a human, except that a push spelled `git push --force ...`, `-f`,
+`--force-with-lease`, `--delete` or `--no-verify` is refused outright by the deny list (proposal
+0002, item D; tried 2026-10-30 in `auto` mode). Don't attempt one, and never force-push or delete a
+remote branch. A push publishes: everything on `ai-forward` is readable by whoever can read the
+team's GitHub repo, so never commit secrets or credentials.
 
 **These rules stop accidents, not a determined agent.** `gh api` is off the allow-list (proposal 0002,
 item C) but can still move or delete any remote ref, and in `auto` mode a classifier decides whether it
