@@ -19,20 +19,40 @@
       "Bash(xacro:*)",
       "Bash(check_urdf:*)",
       "Bash(docker compose:*)",
+      "Bash(./check_container_mount.sh)",
+      "Bash(.claude/hooks/test-guard-protected-files.sh)",
+      "Bash(docker inspect:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git branch --show-current)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git fetch origin)",
       "Bash(git push origin ai-forward)",
       "Bash(git push -u origin ai-forward)",
-      "Bash(gh api:*)"
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh pr view:*)"
     ],
     "ask": [
       "Bash(ros2 launch:*)",
       "Bash(ros2 run:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --delete:*)",
+      "Bash(git push --no-verify:*)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git merge:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(gh pr merge:*)"
     ]
   },
   "hooks": {
