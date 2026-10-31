@@ -111,16 +111,17 @@ Not agent work. Each is recorded where it was raised.
   agents and the skills should be guarded: [ADR 0005](decisions/0005-ai-forward-development.md).
 - What to allow, deny and enforce for a run nobody is watching: the permission mode, the loop's
   commands, a narrower `gh`, a deny list, git hooks and a rule on `main`:
-  [proposal 0002](proposals/0002-unattended-run-settings.md). Guarding `CLAUDE.md`, the agents and
-  the skills should be decided together with its item A.
+  [proposal 0002](proposals/0002-unattended-run-settings.md): B, C and D are applied (2026-10-30);
+  A, E and F are open. Guarding `CLAUDE.md`, the agents and the skills should be decided together
+  with A.
 - A PyYAML-based gain check, because the hook reads lines, not YAML: the hook's docstring.
 - The single-file `build_ros.sh` mount in `docker/compose.yml`, which goes stale: the ladder's blind
   spots and the [2026-10-27 journal](journal/2026-10-27-ai-forward-bootstrap.md).
 - Whether the dev container should be one per checkout (a compose project name per checkout and no
   fixed `container_name`, so a worktree gets its own container and build volume), or whether
   `check_container_mount.sh` is enough: the ladder's
-  [blind spots](architecture/verification-ladder.md#blind-spots-stated-plainly). Whether to allow
-  the script without a prompt: [proposal 0001](proposals/0001-allow-container-mount-check.md).
+  [blind spots](architecture/verification-ladder.md#blind-spots-stated-plainly). (The script has been
+  on the allow-list since 2026-10-30: [proposal 0001](proposals/0001-allow-container-mount-check.md).)
 - Gazebo vs `SimPlant` (2.1).
 - Whether `main` should adopt any of the `ai-forward` workflow: ADR 0005.
 - Which wheel radius is right (0.7).

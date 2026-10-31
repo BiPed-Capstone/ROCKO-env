@@ -122,13 +122,13 @@ because they show what each tier is for.
   files. It does not say the build output is yours (measured: it is not recompiled when the files are
   older), so rebuild from clean after a switch. A recreated container also loses the ROS packages
   `build_ros.sh` installed, so that rebuild needs the network. Nothing makes anyone run the script,
-  and it prompts in the default permission mode until
-  [proposal 0001](../proposals/0001-allow-container-mount-check.md) is accepted. Only Docker Desktop
+  though it has been on the allow-list since 2026-10-30
+  ([proposal 0001](../proposals/0001-allow-container-mount-check.md)). Only Docker Desktop
   for macOS was tried: Linux and WSL2 were not.
 - **No tier can test a permission rule.** Whether a `Bash(...)` string in `settings.json` matches
   the command an agent types, and whether the guard hook still denies and asks under each permission
   mode, can only be seen in a live session, by a person (the session transcript's per-call
-  `permissionDecision` records then say why each call was accepted). The check is
+  `permissionDecision` records then say why each call was accepted or refused). The check is
   [proposal 0002](../proposals/0002-unattended-run-settings.md)'s *Test for a human*, and it must be
   run outside `auto` mode, where a classifier can approve a call whose rule does not match. The git
   hooks in `.githooks/` are tested on a throwaway repository and are inactive in this one until that

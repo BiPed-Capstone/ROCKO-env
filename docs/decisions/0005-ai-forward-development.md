@@ -73,7 +73,8 @@ On the `ai-forward` branch:
    | `allow` `git add`, `git commit` | Checkpoint commits (item 6) |
    | `allow` `colcon test`, `ros2 topic echo` | Build/test, and read-only; but `colcon` runs repo-controlled code (see the trust decision below) |
    | `ask` `ros2 launch`, `ros2 run` (unchanged) | On a Pi these drive real motors |
-   | `allow` exactly `git push origin ai-forward` and `git push -u origin ai-forward`; `allow` `git fetch origin` (amended 2026-10-28; was `ask` on every `git push`) | Publishing the AI's own branch is the end of the loop. Exact-match rules cannot be stretched into `--force` or another branch, and the broad `ask` rule had to go because `ask` outranks `allow`. In the default permission mode every other `git push` falls back to a prompt (not so for `gh api`, see below) |
+   | `allow` exactly `git push origin ai-forward` and `git push -u origin ai-forward`; `allow` `git fetch origin` (amended 2026-10-28; was `ask` on every `git push`) | Publishing the AI's own branch is the end of the loop. Exact-match rules cannot be stretched into `--force` or another branch, and the broad `ask` rule had to go because `ask` outranks `allow`. In the default permission mode every other `git push` falls back to a prompt, except that `--force`, `-f`, `--force-with-lease`, `--delete` and `--no-verify` spelled first are refused outright by the deny list added 2026-10-30 |
+   | *Amended 2026-10-30* ([proposal 0002](../proposals/0002-unattended-run-settings.md) B, C, D): `allow` `./check_container_mount.sh`, the guard hook's test, `docker inspect`, four read-only `git` commands and `gh issue view`/`list`, `gh pr view`; `gh api` removed from `allow`; a `deny` list for force-push, `--delete`, `--no-verify`, `git merge`, `git reset --hard` and `gh pr merge` | The loop's own commands and read-only lookups; `gh api` could make any REST call with a login that has `repo` scope. A deny rule matches the start of the command, so it is a net for the careless case: `git commit -m x --no-verify` gets past it (tried) |
    | `NotebookEdit` dropped from the hook matcher | There are no notebooks here, and the tool's path field is `notebook_path`, which the hook does not read |
 
    The first row is a real trust decision; see "The allow-list is a trust decision" below.
@@ -108,26 +109,33 @@ On the `ai-forward` branch:
   - **The allow-list is a trust decision.** Anything the agent may run without a prompt can write
     files or run code *around* the hook: `docker compose` (the container bind-mounts the repo
     read-write, `.claude/` included, and the container user has passwordless `sudo`), `colcon` and
-    `xacro` (both run repo-controlled code), `git commit`, `gh api` (any HTTP verb), and
+    `xacro` (both run repo-controlled code), `git commit`, and
     `git diff --output=<file>`. The branch accepts that for an interactive loop run by the
-    maintainer. For an unattended or less-trusted run, move `docker compose`, `gh api` and
+    maintainer. For an unattended or less-trusted run, move `docker compose` and
     `git commit` back to `ask`, or scope them; that is the maintainer's call, not the agent's.
+    *Amended 2026-10-30:* `gh api` (any HTTP verb) was taken off the list and a deny list was added
+    ([proposal 0002](../proposals/0002-unattended-run-settings.md), items C and D). `docker compose`
+    and `git commit` stay unscoped; that proposal says why.
   - **A push publishes, and its limits rest on permission matching.** Everything on `ai-forward` is
     readable by whoever can read the GitHub repo, and the run journals hold local paths and tool
-    output, so nothing secret may ever be committed. That `--force`, another branch or extra
-    arguments prompt relies on Claude Code's documented rule order (deny, then ask, then allow;
-    unlisted commands prompt), on the exact-match form of the two allow rules, and on the default
-    permission mode with no extra rule from `settings.local.json`, a user's own settings or an
-    answered "don't ask again". It does not stop `gh api` (allowed; it can move or delete any remote
-    ref), a chain of allowed commands, or a changed push target in `.git/config`. The allowed
-    command ran once with nothing to send. It has since run three times as the bare command, and
-    each run has a permission record in the session transcript reading `reasonType: rule`,
-    `ruleSource: projectSettings`: the exact rule let it through. Written
-    `cd ... && git push origin ai-forward 2>&1 | tail -N`, it did not match the rule and the `auto`
-    classifier approved it instead, which in `default` mode should have prompted (not tried). The
-    refused forms were not run. If a human starts committing to
-    `ai-forward` it becomes a shared branch, and the agent stops when the remote has commits it
-    lacks, which is the intended behavior.
+    output, so nothing secret may ever be committed. That another branch or extra arguments prompt
+    relies on Claude Code's documented rule order (deny, then ask, then allow; unlisted commands
+    prompt), on the exact-match form of the two allow rules, and on the default permission mode with
+    no extra rule from `settings.local.json`, a user's own settings or an answered "don't ask
+    again". Since 2026-10-30 a push that starts `git push --force`, `-f`, `--force-with-lease`,
+    `--delete` or `--no-verify` is refused outright by the deny list (all five tried, in `auto`
+    mode); `git push origin ai-forward --force` is not, and still falls to the prompt in `default`
+    mode (not tried). It does not stop `gh api` (off the allow-list since 2026-10-30, but in `auto`
+    the classifier approved a read-only call; it can move or delete any remote ref), a chain of
+    allowed commands, or a changed push target in `.git/config`. The bare `git push origin
+    ai-forward` has run three times, and each run has a permission record in the session transcript
+    reading `reasonType: rule`, `ruleSource: projectSettings`: the exact rule let it through.
+    Written `git push origin ai-forward 2>&1 | tail -N; echo ...`, it did not match the rule and the
+    `auto` classifier approved it instead, which in `default` mode should have prompted (not tried).
+    Which of the pipe, the redirect or the `echo` broke the match is not known, and neither is
+    whether a `cd ... &&` prefix would. If a human starts committing to `ai-forward` it becomes a
+    shared branch, and the agent stops when the remote has commits it lacks, which is the intended
+    behavior.
   - **`CLAUDE.md`, the agent definitions and the skills are not guarded.** An agent could edit the
     rules it works under. The control is a human reading the diff of those files before merging.
   - **Students learn less by doing.** The explanation trail narrows the gap but does not close it.

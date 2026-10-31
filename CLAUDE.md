@@ -71,8 +71,9 @@ allows and the evidence is written down.
    has and you do not, and it must print **nothing** (an `unknown revision` error only means the
    branch is not on the remote yet). If it lists commits, a human has pushed: stop and report it, and
    do not merge, rebase or force. Otherwise `git push origin ai-forward` (`git push -u origin
-   ai-forward` the first time). Run it as its own command, with nothing chained or piped (no
-   `cd ... &&`, no `2>&1 | tail`): only the bare words match the allow rule. If the push is refused,
+   ai-forward` the first time). Run it as its own command, with nothing chained,
+   piped, redirected or appended (no `cd ... &&`, no `2>&1 | tail`, no `; echo`): the wrapped form did
+   not match the allow rule. If the push is refused,
    is declined at a prompt, or fails, stop and report it; do not try another form (`gh api`, a reworded
    or chained command, another remote). Do not add a commit only to log the push: the remote is the
    record of what went out. Never commit to `main`, never push another branch, never force-push.
@@ -92,7 +93,7 @@ rather than paper over it; a tier you could not run is reported as *not run*.
   (`sed -i`, a differently spelled command). Write a proposal that names the exact command, unless
   an open one already does (cite it), and carry on with whatever does not need it. A session that
   waits at a prompt instead just stalls while the person is away, so avoid commands you know prompt.
-- If `./check_container_mount.sh` is refused, or you skip it because it would prompt, report everything
+- If `./check_container_mount.sh` is refused, or you skip it, report everything
   that runs in the container as *not run* (`verify_urdf.sh`, Tier 1 and Tier 2): without it those results cannot be tied to this checkout
   (§8). The host checks still count.
 - Pick work by the rule in [`docs/next-steps.md`](docs/next-steps.md), *How to use it*, item 6:
@@ -118,19 +119,24 @@ damage hardware or silently change what the project supports.
 | Gains in a separate `*_sim.yaml`, once a physics sim exists | **Anything on a robot**: `ros2 launch`/`run` on a Pi, a flash, a first tethered test |
 
 **Pushing is allowed for one thing only, and needs no go-ahead (step 8):** `git push origin
-ai-forward` (or `git push -u origin ai-forward`), in exactly those words. `.claude/settings.json` allows those two commands by exact
-match, so in the default permission mode any other `git push` (another branch, `--force`, extra
-arguments) prompts a human. Don't attempt one, and never force-push or delete a remote branch. A
+ai-forward` (or `git push -u origin ai-forward`), in exactly those words. `.claude/settings.json`
+allows those two commands by exact match, so in the default permission mode any other `git push`
+prompts a human, except that a push spelled `git push --force ...`, `-f`, `--force-with-lease`,
+`--delete` or `--no-verify` is refused outright by the deny list (proposal 0002, item D; tried
+2026-10-30 in `auto` mode). Don't attempt one, and never force-push or delete a remote branch. A
 push publishes: everything on `ai-forward` is readable by whoever can read the team's GitHub repo,
 so never commit secrets or credentials.
 
-**These rules stop accidents, not a determined agent.** `gh api` is also on the allow-list and can
-move or delete any remote ref without a prompt; a chain of allowed commands such as
-`git fetch origin && git push origin ai-forward` runs without one; the push target is whatever
-`.git/config` says; and a rule added by answering "don't ask again", or kept in
-`settings.local.json` or a user's own settings, is invisible to this file. Keep to the spirit.
+**These rules stop accidents, not a determined agent.** `gh api` is off the allow-list (proposal 0002,
+item C) but can still move or delete any remote ref, and in `auto` mode a classifier decides whether it
+prompts; a chain of allowed commands such as `git fetch origin && git push origin ai-forward` runs
+without one; the push target is whatever `.git/config` says; and a rule added by answering "don't ask
+again", or kept in `settings.local.json` or a user's own settings, is invisible to this file. Keep to
+the spirit.
 
-Also off limits: committing to `main` and merging. Nothing stops those, so don't.
+Also off limits: committing to `main` and merging. The deny list refuses a command that starts
+`git merge` (not `git -C . merge` or `git pull`), and nothing stops a commit on `main` until the git
+hooks are installed (proposal 0002, item E), so don't.
 
 When the hook denies an edit, do **not** work around it with `sed -i` or a shell redirect. The hook
 does not watch Bash, but the rule applies all the same. Write a proposal
@@ -142,7 +148,7 @@ what it knows. Its limits, so you can keep to the *spirit* of this table where t
 
 - It watches `Edit`, `Write` and `MultiEdit` only. Not Bash, and not the commands on the
   `settings.json` allow-list that can write files or run code (`docker compose`, `colcon`, `xacro`,
-  `git commit`, `gh api`). Those are trusted to be used for their purpose.
+  `git commit`). Those are trusted to be used for their purpose.
 - It knows a fixed list of gain and limit keys, version-pin patterns and safety words. The safety
   check counts words; it cannot tell a real clamp from a comment that repeats the word.
 - **The gain guard reads lines, not YAML.** A quoted key (`{"p": 5}`), a `gains: |` block scalar, or
@@ -310,10 +316,10 @@ whenever you change checkout: exit 0 means the container sees your files; exit 1
 and it prints the fix; exit 2 means it could not tell (no Docker, or the container is not running).
 `up -d` is itself the switch: it points the container at the checkout you run it from and takes it
 away from a session using another one. And `ok` does not mean the build output is yours: after a
-switch, rebuild from clean (the fix prints the command) before you trust Tiers 1 and 2. It is not on
-the `settings.json` allow-list yet, so expect a prompt in the default permission mode
-([proposal 0001](docs/proposals/0001-allow-container-mount-check.md)). The full explanation is in
-[Verify a change without the robot](docs/guides/verify-in-container.md).
+switch, rebuild from clean (the fix prints the command) before you trust Tiers 1 and 2. It is on
+the `settings.json` allow-list as an exact rule, so run it in exactly those words
+([proposal 0001](docs/proposals/0001-allow-container-mount-check.md), accepted 2026-10-30). The full
+explanation is in [Verify a change without the robot](docs/guides/verify-in-container.md).
 
 `build_ros.sh` passes `-DROCKO_SKIP_WIRINGPI` (compose sets it to `ON`) and exits 1 if the build
 fails. Run it from `src/ROCKO-env/`, not `/ros2_ws/build_ros.sh`: that second copy is a single-file

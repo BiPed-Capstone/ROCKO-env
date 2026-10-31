@@ -32,9 +32,13 @@ more than `ai-forward`.
   The session transcript links each push to its permission record. The bare `git push origin
   ai-forward` ran three times, and each record reads `reasonType: rule`, `ruleSource:
   projectSettings`: the rule matched.
-- **A wrapped form does not match.** On 2026-10-28 the agent twice ran `cd ... && git push origin
-  ai-forward 2>&1 | tail -N; echo "exit=..."`. Neither record is a rule match; the `auto` classifier
-  approved both. In `default` mode that form should have prompted (not tried). The one real prompt was
+- **A wrapped form does not match.** On 2026-10-28 the agent twice ran `git push origin ai-forward
+  2>&1 | tail -N; echo "exit=..."`. (An earlier version of this entry wrote `cd ... && git push ...`; the
+  `cd` is only in the transcript's `api-request-blob` copy, which puts `cd <project folder> &&` in front
+  of every Bash call, and not in the recorded command. Corrected 2026-10-30.) Neither record is a rule
+  match; the `auto` classifier approved both. Which part broke the match (the pipe, the redirect or the
+  `echo`) is not known, and nobody tried a `cd` prefix. In `default` mode that form should have
+  prompted (not tried). The one real prompt was
   `git push -u origin main ai-forward`, which pushed `main` too and was approved by the maintainer
   before the rule existed.
 - **The asking was mostly an instruction.** Two things told the agent to wait for a go-ahead: a note
@@ -47,7 +51,7 @@ more than `ai-forward`.
 
 | File | Change |
 | --- | --- |
-| `CLAUDE.md` §2 step 8, §3 | Push without asking: no "shall I push?", no choice offered, no wait; push every `ai-forward` commit before the turn ends and report what went out. Run the push as its own command, nothing chained or piped. If it is refused, declined or fails, stop and report; no other form. The only reasons not to push are the fetch check and a third review round that is still dirty |
+| `CLAUDE.md` §2 step 8, §3 | Push without asking: no "shall I push?", no choice offered, no wait; push every `ai-forward` commit before the turn ends and report what went out. Run the push as its own command, nothing piped, redirected or appended. If it is refused, declined or fails, stop and report; no other form. The only reasons not to push are the fetch check and a third review round that is still dirty |
 | `docs/decisions/0005-ai-forward-development.md` | An *Amended 2026-10-29* note on item 6; the "not established" sentence about whether the rule or the mode let the push through now cites the transcript's records |
 | The agent's memory (outside the repo) | The "push only after the user says to" note is replaced by the standing instruction |
 

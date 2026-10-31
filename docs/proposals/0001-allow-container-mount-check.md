@@ -1,6 +1,6 @@
 # Proposal 0001 — allow `./check_container_mount.sh` without a permission prompt
 
-- **Status:** Open
+- **Status:** Accepted (applied 2026-10-30 with [proposal 0002](0002-unattended-run-settings.md), item B)
 - **Gate:** guardrail (`.claude/settings.json`)
 - **Raised:** 2026-10-29, the commit that adds this file, run journal:
   [2026-10-29-container-mount-check.md](../journal/2026-10-29-container-mount-check.md)
@@ -55,4 +55,8 @@ Not a robot step. In a new session in the default permission mode, with the cont
 
 ## Decision
 
-(Human fills in: date, who, accepted/declined, why.)
+2026-10-30, the maintainer ("Apply B–D" to proposal 0002, whose item B contains this rule):
+accepted and applied. In a live session the permission record for `./check_container_mount.sh` reads
+`reasonType: rule`, `ruleSource: projectSettings`, so the rule matched (`auto` mode; see the
+[journal](../journal/2026-10-30-apply-proposal-0002-b-d.md)). The `--help` step of the test above
+was not tried.

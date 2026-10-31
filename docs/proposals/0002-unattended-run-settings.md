@@ -1,6 +1,6 @@
 # Proposal 0002 — settings and enforcement for a run nobody is watching
 
-- **Status:** Open
+- **Status:** Partly accepted: B, C and D applied 2026-10-30; A, E and F are still open
 - **Gate:** guardrail (`.claude/settings.json`, `.claude/settings.local.json`, `.git/hooks/`, the guard hook) and a GitHub setting
 - **Raised:** 2026-10-29, the commit that adds this file, run journal:
   [2026-10-29-unattended-run-readiness.md](../journal/2026-10-29-unattended-run-readiness.md)
@@ -32,8 +32,8 @@ when counted, all accepted, 525 were accepted by a "classifier", 67 by the mode,
 on the command line, 7 from `.claude/settings.json`), 7 by a person answering a prompt (5 of them
 Claude Code's own `safetyCheck`, one the agent's own question) and 28 for another or no recorded reason. So `auto` still stops for a
 person on some calls. Nothing in this repo says what the classifier will approve, and a deny rule that
-fails to match could be approved by it and run. (The field meanings are read off their names, and no
-refusal record has been seen.) For a run nobody watches, the predictable choice is `acceptEdits`
+fails to match could be approved by it and run. (The field meanings are read off their names. A call refused by a deny rule reads `decision: reject`,
+`reasonType: subcommandResults`, `ruleSource: projectSettings`; seen on 2026-10-30.) For a run nobody watches, the predictable choice is `acceptEdits`
 together with B and D: whatever is not allowed prompts. A person who is away leaves the run waiting at
 the prompt; under `claude -p` the call is refused.
 
@@ -304,8 +304,8 @@ step 1:
    `main`: create the same ruleset there and try a force push and a branch deletion.
 
 To see why a call was accepted or refused, read its `permissionDecision` record in the session
-transcript, `~/.claude/projects/<this project's folder>/<session id>.jsonl`: `decision` (all
-`accept` so far; a refusal's record has not been seen), `source`, `reasonType` (`rule`, `classifier`,
+transcript, `~/.claude/projects/<this project's folder>/<session id>.jsonl`: `decision` (`accept`, or
+`reject` for a call a deny rule refused), `source`, `reasonType` (`rule`, `classifier`,
 `mode` ...), `ruleSource` and `reasonCode`.
 
 Record: commit SHA, permission mode, the Claude Code version that ran the session (the transcript's
@@ -334,4 +334,9 @@ These pages say what is true today and would be wrong afterwards (`CLAUDE.md` §
 
 ## Decision
 
-(Human fills in: date, who, accepted/declined per item A to F, why.)
+2026-10-30, the maintainer ("Apply B–D"): **B, C and D accepted and applied** to
+`.claude/settings.json` (commit `ea12edc`), and the `gh api *` entry removed from
+`.claude/settings.local.json`. All nine deny rules and all ten new allow rules were tried in a live
+session (`auto` mode): the nine deny rules refused, three exact allow rules show a rule match, and the
+seven `:*` ones show no rule source. See the [journal](../journal/2026-10-30-apply-proposal-0002-b-d.md).
+**A (permission mode), E (git hooks) and F (GitHub ruleset) are not decided.**
