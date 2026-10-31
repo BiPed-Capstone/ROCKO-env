@@ -128,6 +128,7 @@ ROCKO-env
 ├── check_container_mount.sh        Checks the dev container is mounting THIS checkout, so the verify scripts test your files (laptop)
 ├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware, mock on and off (container)
 ├── verify_mock.sh                  Checks the controllers load and chain on mock hardware (container)
+├── check_motor_plugin_compiles.sh  Type-checks the motor plugin off the Pi, syntax and types only (container). Stub headers in tools/compile_check/stubs/
 ├── .githooks/                      Git hooks: no commit on main, no push but a fast-forward of ai-forward to origin. Inactive until copied into .git/hooks/ (proposal 0002, item E)
 ├── docker/                         Dev container for laptops (compose files + Dockerfile)
 ├── docs/                           Architecture, guides, decisions, run journal, proposals, audits
@@ -158,7 +159,8 @@ ROCKO-env
 │       │       ├── icm20948/           IMU driver + calibration scripts
 │       │       └── quadEncoder/        Wheel encoder readers
 │       └── webserver/                  Small Flask app for live plots in a browser
-└── rocko_interfaces/                   Custom message and service definitions
+├── rocko_interfaces/                   Custom message and service definitions
+└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and a host test of the IMU fault counter (imu_fault_tracker_test.cpp)
 ```
 
 A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
@@ -215,12 +217,12 @@ ros2 launch rocko_env rocko.launch.py
 ros2 launch rocko_env rocko_tank_mode.launch.py
 
 # Just look at the robot model in RViz, no hardware needed
-ros2 launch rocko_env view_robot.launch.py description_package:=rocko_env
+ros2 launch rocko_env view_robot.launch.py
 ```
 
-That `description_package:=rocko_env` bit is annoying but currently required, because the default value is wrong ([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)).
+`description_package:=rocko_env` still works as an explicit argument, but the default is now `rocko_env` too ([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)). That change has only been built, not run: `view_robot.launch.py` needs a display, and none of the checks in [the verification ladder](docs/architecture/verification-ladder.md) has one. If it fails to start, try the explicit argument and report it.
 
-Useful launch arguments: `gui:=true` opens RViz alongside in tank mode (`rocko.launch.py` declares it but does not use it), without its saved layout for now: the layouts are never installed, finding L-4 in [the audit](docs/claude-analysis/balance-loop-findings.md)). `use_mock_hardware:=true` swaps the real motor and IMU plugins for ROS's `mock_components/GenericSystem` and skips the nodes that read real sensors. It defaults to `false`, so a plain launch on the robot gets real hardware. **The mock is not a simulation**: it has no physics, each command is just echoed back as a state, and pitch stays at 0.0. It checks that the controllers *wire up*, and tells you nothing about whether the robot balances (see [the verification ladder](docs/architecture/verification-ladder.md)). With the mock on, ROS never loads the motor driver, so nothing launched by these files can move the wheels; with it off (the default), it does.
+Useful launch arguments: `gui:=true` opens RViz alongside in tank mode (`rocko.launch.py` declares it but does not use it). The saved RViz layouts are installed now (finding L-4 in [the audit](docs/claude-analysis/balance-loop-findings.md)); that RViz actually opens with them has not been checked, because that needs a display. `use_mock_hardware:=true` swaps the real motor and IMU plugins for ROS's `mock_components/GenericSystem` and skips the nodes that read real sensors. It defaults to `false`, so a plain launch on the robot gets real hardware. **The mock is not a simulation**: it has no physics, each command is just echoed back as a state, and pitch stays at 0.0. It checks that the controllers *wire up*, and tells you nothing about whether the robot balances (see [the verification ladder](docs/architecture/verification-ladder.md)). With the mock on, ROS never loads the motor driver, so nothing launched by these files can move the wheels; with it off (the default), it does.
 
 You can also run individual nodes, which is handy when debugging one piece:
 
@@ -284,6 +286,7 @@ There is one container per laptop, and it sees one folder: the *checkout* (a fol
 **What the container can and cannot do.** The container runs on your laptop's CPU, not the Pi's, and the motor plugin needs WiringPi, which only exists on real Pi GPIO hardware — a hardware limit, not an OS one, so Docker can't route around it. So the container build:
 
 - **builds** `rocko_interfaces` and `rocko_env`, **without** `Motor12VoltQuadEncoder.cpp`. A green container build says nothing about that file; only a build on the Pi compiles it.
+- **type-checks the motor plugin** with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/check_motor_plugin_compiles.sh` (run it after the build above). It checks syntax and types only, against hand-written stand-ins for `wiringPi.h` and `softPwm.h`, so it can catch a typo or a misspelt ROS name, but not a wrong WiringPi signature, and it never links or runs anything. Exit 0 means it type-checks.
 - **can run the mock**: `verify_mock.sh` launches the controllers against `mock_components/GenericSystem` and checks they load, chain and stay active. Run it with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh` (add `tank` for tank mode). The step-by-step version, with the expected output and what to do when it fails, is [Verify a change without the robot](docs/guides/verify-in-container.md).
 - **cannot simulate the robot.** There is no physics; see [the verification ladder](docs/architecture/verification-ladder.md) and [ADR 0003](docs/decisions/0003-simulation-target.md). It also cannot drive motors or read the real IMU.
 

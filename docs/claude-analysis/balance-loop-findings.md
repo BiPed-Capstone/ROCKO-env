@@ -37,23 +37,30 @@ Severity reflects impact on the robot staying upright, not code quality.
 | ID | Severity | Finding |
 | --- | --- | --- |
 | C-1 | Critical | Unbounded blocking service calls inside the real-time loop |
-| C-2 | Critical | IMU read failure reports pitch = 0.0 ("upright") |
+| C-2 | Critical | IMU read failure reports pitch = 0.0 ("upright") — **fixed on `ai-forward`, awaiting robot** (2026-10-31); a frozen sensor is still undetected (H-9) |
 | C-3 | Critical | No teleop watchdog, and no defined comms-loss failsafe |
 | H-1 | High | Motor command is open loop; no wheel velocity feedback |
-| H-2 | High | Near-zero commands never write, latching the previous PWM value |
+| H-2 | High | Near-zero commands never write, latching the previous PWM value — **code fixed on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31; pulled forward of the planned order) |
 | H-3 | High | IMU sample is three separate I²C reads at three different instants |
 | H-4 | High | No tipover cutoff |
 | H-5 | High | No real-time scheduling or CPU isolation for `controller_manager` |
 | H-6 | High | Gyro angular rate is never read; the D term differentiates a delayed fused angle |
-| M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` |
+| H-7 | Critical (raised from Medium/High by the `realtime-auditor`; unconfirmed on hardware) | The motors may keep their last command when the cascade stops or the IMU plugin returns ERROR (found 2026-10-31) — **partly mitigated on `ai-forward`** (controller stop logic and the motor `write()` fix, none run on a robot) |
+| H-8 | High | An intermittent IMU fault that alternates good and bad reads never tripped the consecutive-only counter (found 2026-10-31) — **fixed in the tracker on `ai-forward`, awaiting robot** |
+| H-9 | High (not fixed) | A frozen or reset BNO055 that still reads valid-looking numbers is undetectable (found 2026-10-31); one variant, an all-equal Euler triple, is now rejected in the node |
+| M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
-| M-3 | Medium | PWM value is never clamped to its valid range |
+| M-3 | Medium | PWM value is never clamped to its valid range — **clamped on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31) |
 | M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi — **partly fixed on `ai-forward`** (wiring mock and off-Pi build exist; no physics) |
-| M-5 | Medium | `AddFeedforwardController` ignores the result of `set_value()`, so a failed command write is silently dropped |
+| M-5 | Medium | `AddFeedforwardController` ignores the result of `set_value()`, so a failed command write is silently dropped — **fixed on `ai-forward`, awaiting robot** (2026-10-31) |
+| M-6 | Medium | `AddFeedforwardController`'s feedforward value was uninitialised and shared between two threads without synchronisation (found 2026-10-31) — **fixed on `ai-forward`** |
 | L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances |
 | L-2 | Low | IMU class is named for a part that is no longer used; dead imports |
-| L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build |
-| L-4 | Low | The RViz configs are never installed, so three launch files cannot find them |
+| L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build — **fixed on `ai-forward`** (2026-10-31) |
+| L-4 | Low | The RViz configs are never installed, so three launch files cannot find them — **fixed on `ai-forward`** (2026-10-31); RViz opening with them not checked |
+| L-5 | Low | A D-term spike after cycles in which the IMU angle was held (found 2026-10-31, not fixed) |
+| L-6 | Low now, Critical once C-1 adds a timeout | `Motor12VoltQuadEncoder::read` and `QuadEncoder::read` return OK and keep the old position and velocity when the encoder call fails (found 2026-10-31, not fixed) |
+| L-7 | Low | `MAX_RAD_PER_SEC` is computed with integer division (found 2026-10-31, not fixed; a human confirms the change) |
 
 ---
 
@@ -63,6 +70,8 @@ Severity reflects impact on the robot staying upright, not code quality.
 - `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.cpp:72-74`
 - `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:183-185` (runs twice per cycle,
   once per motor instance)
+
+*Line numbers are at audit time (before the 2026-10-31 edits).*
 
 **What**
 
@@ -97,6 +106,11 @@ against a 10 ms budget, so there is ample headroom.
 If any service-based plugin must be kept for some reason, the minimum acceptable form is
 `spin_until_future_complete(_node, result, std::chrono::milliseconds(2))` with an explicit
 handler for the timeout branch — but the right answer is to remove the indirection entirely.
+
+**Note for whoever adds that timeout** (from review round 1 of the C-2 change, 2026-10-31; not tried):
+the timeout branch must also remove the pending request. A client keeps each request it has sent
+until a reply arrives, so abandoning a request without removing it makes that list grow every time
+the timeout fires.
 
 ---
 
@@ -154,6 +168,37 @@ Never synthesise a plausible-looking value on failure. In the C++ plugin after C
 - surface the counter as a diagnostic so a failing sensor is visible before the ceremony rather
   than during it.
 
+**Status on `ai-forward` (2026-10-31):** the fix is written and checked as far as the
+[ladder](../architecture/verification-ladder.md) allows; it has not been run on a robot. Landed
+(next-steps row 0.1): the `Icm20948Data.srv` response has a `bool success`; `ICM20948.py` answers
+`success = false` with NaN angles when a read fails; `ICM20948.cpp` counts a read as good only if the
+call worked, `success` is true, all three angles are finite, and they are plausible (`|pitch|` and
+`|roll|` at most 180 deg, `|yaw|` at most 360 deg; a garbled value counts as a failed read). Otherwise
+it holds the last good angles, counts the failure, logs a throttled error, and returns `ERROR` while
+the new `ImuFaultTracker` is tripped. The tracker trips on **either** `kMaxConsecutiveImuFailures = 5`
+failed reads in a row (50 ms at 100 Hz) **or** `kMaxWindowImuFailures = 10` failed reads among the last
+20 (200 ms), which is [H-8](#h-8--an-intermittent-imu-fault-never-tripped-the-consecutive-counter).
+Both limits are **proposed** values that a human confirms. The trip is not latched: a good read clears
+the consecutive run at once, and the windowed count falls as good reads push old failures out of the
+window. The angles start as NaN, so a failure on the first cycle cannot read as 0.0.
+
+**Added after review round 2 (2026-10-31):** `ICM20948.py` also answers `success = false` when all three
+Euler values are exactly equal. Real data has three independent angles at 1/16 deg resolution, and an
+all-zero block is a plausible bus-fault or reset output that `(0, 0, 0) + pitch_offset` would turn into
+a believable pitch. That is a guess about what a fault returns; it has not been seen on a sensor and no
+tier runs the node. It also would reject a genuine reading with three identical values.
+
+Checked: the Tier 1 build compiles it with no compiler warnings; the tracker's counting logic has a
+host unit test (`tools/imu_fault_tracker_test.cpp`, not a ladder tier) that passes and was seen to fail
+on three deliberate breaks. The mock replaces this plugin, so Tier 2 passes but cannot see it.
+Not done: the counter is not exported as a diagnostic (only the throttled log shows it); **C-1 is
+still open** (`read()` still makes a blocking service call, so a dead `icm20948` node blocks it
+forever and no failure is ever counted); **[H-9](#h-9--a-frozen-or-reset-bno055-is-undetectable)
+is open** (a frozen or reset sensor is not detected). Also open: whether `ERROR` stops the wheels,
+which is [H-7](#h-7--the-motors-keep-their-last-command-when-the-cascade-stops), and what
+`controller_manager` does after `ERROR`, which depends on the ros2_control version and has not been
+observed. Robot procedure: [journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
+
 ---
 
 ### C-3 — No teleop watchdog, and no defined comms-loss failsafe
@@ -186,6 +231,8 @@ comment, because the intuitive "safe" behaviour is the dangerous one here.
 ### H-1 — Motor command is open loop
 
 **Where** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:205-206`
+
+*Line numbers are at audit time (before the 2026-10-31 edits).* The snippet below is the audit-time code. It no longer exists: `write()` was rewritten on 2026-10-31 (see H-2 and M-3). The open-loop mapping it shows is still how a command becomes a duty cycle.
 
 ```cpp
 double radPerSec = _wheel.cmd;
@@ -222,7 +269,7 @@ Also calibrate `MAX_RAD_PER_SEC` against measured no-load speed rather than a da
 
 ### H-2 — Near-zero commands never write, latching the previous PWM value
 
-**Where** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:206, 219-220`
+**Where (line numbers at audit time, before the 2026-10-31 edit)** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:206, 219-220`
 
 **What**
 
@@ -253,11 +300,29 @@ if (std::abs(radPerSec) < kDeadbandRadPerSec) {
 }
 ```
 
+**Status on `ai-forward` (2026-10-31): code written, pulled forward; compile-checked only (type and
+syntax), awaiting robot.** The audit's order of work puts this at step 5 and the person's stage order
+put it in stage 4; review round 2 showed that the stop paths of C-2, M-5 and H-4 are meaningless while
+this guard exists, so it landed earlier. `Motor12VoltQuadEncoder::write()` now always calls
+`softPwmWrite()`. A non-finite command, or one with `|cmd|` below `kDeadbandRadPerSec = 0.05` rad/s,
+writes 0 % and leaves the direction pin untouched. Otherwise duty is
+`clamp(|cmd| / MAX_RAD_PER_SEC * 100 + kStictionDutyPercent, 0, 100)` with `kStictionDutyPercent = 2.0`,
+truncated to a whole percent. Both constants are **proposed**. One effect to know about, by arithmetic
+on the old code: the old guard dropped every command under about 1.19 rad/s, and commands from 0.05 up
+to about 1.19 rad/s now get a 2 % duty. Checked: `check_motor_plugin_compiles.sh` passes on the edited
+file (syntax and types against hand-copied stubs). Not checked: a build against real WiringPi, that it
+runs, that the wheel stops at a zero command, that the direction pin does not chatter near zero, the
+deadband and offset values. Robot procedure: the
+[journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md). The rest of the file's findings
+(C-1 for the encoders, L-1) are not touched.
+
 ---
 
 ### H-3 — IMU sample is three separate I²C reads
 
 **Where** `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.py:37-39`
+
+*Line numbers are at audit time (before the 2026-10-31 edits).*
 
 **What**
 
@@ -272,6 +337,12 @@ delayed.
 
 Read the Euler register block (0x1A–0x1F) once as a single burst and decode all three axes from
 that one sample. This falls out naturally when C-1 moves the read into C++.
+
+**Status on `ai-forward` (2026-10-31):** partly done. `ICM20948.py` now reads `self.icm.euler` once
+and decodes all three axes from that tuple, so the three angles come from one access (next-steps row
+0.1, which added this alongside C-2). It is still the Adafruit driver's own read, not a single burst
+of registers `0x1A`–`0x1F` in C++, and nobody has checked on a robot what it does to the timing. The
+rest waits for C-1.
 
 ---
 
@@ -344,20 +415,151 @@ This is likely the largest single control improvement available without changing
 
 ---
 
+### H-7 — The motors keep their last command when the cascade stops
+
+**Found** 2026-10-31, while writing the C-2 fix. **Read-only analysis; not confirmed on hardware.**
+Severity was Medium/High when found; raised to Critical in the table above after the 2026-10-31 audit. Nobody has watched it on a stand.
+
+**Where** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp` (`write()`, `_wheel.cmd`);
+`rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp` (`on_deactivate`)
+
+**What**
+
+The IMU and the motors are separate hardware components. When the IMU plugin returns
+`hardware_interface::return_type::ERROR` (C-2), or the controller chain drops out for any other
+reason, nothing deactivates the motor plugin. Its `write()` keeps writing the stale `_wheel.cmd`.
+As found, `AddFeedforwardController::on_deactivate` only reset its buffer; it did not command zero.
+With the `pwmVal > 2` guard from H-2 (a zero command is never written, so the previous duty cycle
+stays latched) the wheels may keep turning at the last command. (The mitigations since added are in
+the status paragraph below.)
+
+**Why it matters**
+
+C-2 stops the controllers being fed a believable lie. It does not, by itself, make the robot stop,
+and a robot that carries on driving with nobody commanding it is the thrashing failure that H-4
+describes. This is the other half of "what happens after the error". It has not been observed.
+
+**Fix direction**
+
+A defined, commented stop-or-hold behaviour on cascade loss: say which one (zero the output, or hold
+and flag), where it lives, and test it. It is related to H-4 (the tipover cutoff) and H-2 (the latch),
+and to the failsafe question in C-3. *Adding* a safeguard is allowed, but a choice of limits goes in a
+proposal. Best check once built: Tier 3, then a person on a stand. Queue:
+[next-steps row 1.7](../next-steps.md).
+
+**Severity raised** in review round 1 (2026-10-31): the `realtime-auditor` rates this Critical. After
+an IMU `ERROR` both motors may still be driven by the last command, and the gamepad still steers a
+robot that can no longer sense its tilt. Still read-only analysis; nobody has watched it.
+
+**Status on `ai-forward` (2026-10-31, after review round 2): partly mitigated, still unconfirmed on
+hardware, row 1.7 stays open.** In code, none of it run on a robot:
+
+1. `AddFeedforwardController`, in chained mode, sets the reference back to NaN after reading it each
+   cycle, so a dead upstream controller leaves NaN and not a repeated old value.
+2. A NaN reference repeats the last finite command for at most `kMaxStaleReferenceCycles = 3` cycles
+   (30 ms nominal at 100 Hz, **proposed**) and then writes `0.0`. The short hold stops one late
+   upstream write from producing a one-cycle zero pulse (a review round 2 finding). The cost is that the
+   wheels can keep driving for about that long after the upstream controller stops (not measured).
+3. A non-finite (inf) command is refused and written as `0.0`.
+4. `on_deactivate` writes `0.0` to every command interface.
+5. The motor plugin's `write()` now writes the speed pin every cycle (see
+   [H-2](#h-2--near-zero-commands-never-write-latching-the-previous-pwm-value)), so that `0.0` reaches
+   the PWM as 0 % duty. Review round 2's High finding was that, before this, writing `0.0` on a fault
+   path flipped the direction pin (the old code treated `0.0` as forward) while the old duty stayed
+   latched.
+
+Checked: the Tier 1 build with no compiler warnings, Tier 2 (the controller loads and activates), and
+the compile-only check of the motor plugin. Not checked: the NaN path, the hold, `on_deactivate` or the
+motor `write()` on any tier, and anything on a robot; no automated test of the controller's stop logic
+exists (a gtest was declined in round 2; the Tier 3 fault scenarios are meant to cover it, and Tier 3 is
+not built). What `controller_manager` does when a hardware component's `read()` or a controller's
+`update()` returns `ERROR` depends on the ros2_control version; what the author remembers of Jazzy 4.x
+is from memory, not from a test, so it is not recorded here as fact. The H-4 tipover cutoff is not
+written.
+
+---
+
+### H-8 — An intermittent IMU fault never tripped the consecutive counter
+
+**Found** 2026-10-31, in review round 1 of the C-2 change (the first version of the fix).
+
+**Where** `rocko_env/rocko_env/hardware/sensors/icm20948/include/rocko_env/ImuFaultTracker.hpp`;
+`ICM20948.cpp` `read()`
+
+**What**
+
+The first version of the C-2 fix counted only failed reads *in a row* and returned `ERROR` at five.
+A sensor that alternates, for example four bad reads and one good one, repeating, resets that run
+each time and never reaches five, yet is bad on 80 % of its reads. The robot would balance on an
+angle that is mostly a held old value, with no `ERROR` ever raised.
+
+**Fix**
+
+Count failures in a sliding window as well. `ImuFaultTracker` now trips on either limit:
+`kMaxWindowFailures = 10` failed reads among the last `kWindowReads = 20` (200 ms at 100 Hz), or the
+consecutive limit. The window limit is a **proposed** value that a human confirms.
+
+**Status on `ai-forward` (2026-10-31): fixed in the tracker, awaiting robot** (part of next-steps row
+0.1). Checked: `tools/imu_fault_tracker_test.cpp` feeds 4 bad plus 1 good reads ten times, asserts that
+the longest run was 4 (the consecutive limit was never reached), that the tracker still tripped, and
+that 16 of the last 20 reads were failures. It went red when the window trip was disabled, when `>=`
+was changed to `>`, and when a good read stopped clearing the run. Not checked: the plugin, the sensor
+or a robot.
+
+---
+
+### H-9 — A frozen or reset BNO055 is undetectable
+
+**Found** 2026-10-31, in review round 1. **Not fixed.**
+
+**Where** `ICM20948.py` and `ICM20948.cpp` `read()`; the whole read path.
+
+**What**
+
+The fault detector sees failed reads and out-of-range values. It cannot see a sensor that answers
+every read with a valid-looking number that is wrong. Two cases: a BNO055 that has frozen and keeps
+returning its last orientation, and one that has reset (for example in a brownout) and come back in
+configuration mode, where the output can read as a constant `pitch_offset` lean. Either looks like a
+healthy, steady robot to the code.
+
+**Why it matters**
+
+This is the C-2 failure again by another route: the controller is told something believable that is
+not true. Nobody has seen it happen on ROCKO.
+
+**Fix direction**
+
+Needs the read in C++ (C-1), so the plugin can see the BNO055's own status and calibration registers
+and can check that successive samples change at all. Queue: [next-steps row 1.8](../next-steps.md).
+
+**Partly covered, one variant (review round 2, 2026-10-31):** `ICM20948.py` now rejects a reply whose
+three Euler values are all equal, which would catch an all-zero block from a reset or a bus fault. A
+frozen sensor that keeps returning its last real orientation, and any garbage whose three values
+differ, are still not detected. Not seen on a sensor; no tier runs the node.
+
+---
+
 ### M-1 — Logging from inside the real-time loop
 
-**Where** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:223-224`
+**Where (line numbers at audit time, before the 2026-10-31 edit)** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:223-224`
 
 `RCLCPP_INFO` is called unconditionally for the right wheel on every `write()` — string formatting
 plus I/O, 100 times per second, in the hot path. Remove it, or replace it with
 `RCLCPP_INFO_THROTTLE`. For real telemetry, publish from a `realtime_tools::RealtimePublisher` or
 record with `ros2 bag`.
 
+**Status on `ai-forward` (2026-10-31): the per-cycle `RCLCPP_INFO` in `write()` is removed** (pulled
+forward with H-2). Compile-checked only (the compile-only check passes; Tier 1 leaves this file out).
+Nothing was added in its place, so there is no telemetry of the duty; read it with an oscilloscope or
+logic analyser on the speed pin.
+
 ---
 
 ### M-2 — PWM period equals the control period
 
 **Where** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:162`
+
+*Line numbers are at audit time (before the 2026-10-31 edits).*
 
 `softPwmCreate(_speedPin, 0, 100)` — WiringPi software PWM uses 100 µs ticks, so a range of 100
 gives a 10 ms period, i.e. 100 Hz, identical to the control rate. Consequences: beat frequencies
@@ -367,12 +569,22 @@ competition with the loop.
 Note that GPIO 14 (left speed pin) is not a hardware-PWM-capable pin on the Pi, so moving to
 hardware PWM requires moving a wire. GPIO 13 (right speed pin) is capable.
 
+*Correction (2026-10-31): the pin numbers in the audit are WiringPi numbers, not BCM GPIO numbers
+(`Motor12VoltQuadEncoder.cpp` calls `wiringPiSetup()`, not `wiringPiSetupGpio()`). Whether pin 13 is
+hardware-PWM capable must be re-checked against `gpio readall` on the Pi.*
+
 ---
 
 ### M-3 — PWM value is never clamped
 
 `pwmVal` can exceed 100 whenever `|radPerSec| > MAX_RAD_PER_SEC`. Clamp explicitly rather than
 relying on WiringPi's internal handling.
+
+**Status on `ai-forward` (2026-10-31): clamped in code, compile-checked only, awaiting robot.** Duty is
+`std::clamp`ed to [0, 100] percent before the cast to `int`. Not checked: on a robot, or on a scope.
+A note outside this finding: `MAX_RAD_PER_SEC = 1150 / 60 * M_PI * 2` divides two `int` literals, so it
+evaluates to 19 x 2 pi = 119.38 rad/s and not 120.43 rad/s (about 0.9 % lower; by arithmetic, not
+checked on a robot). Not fixed; now finding [L-7](#l-7--max_rad_per_sec-divides-integers).
 
 ---
 
@@ -422,6 +634,8 @@ stack — chained controllers, sign conventions, units, the watchdog, arm/disarm
 
 **Where** `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp:150`
 
+*Line numbers are at audit time (before the 2026-10-31 edits).*
+
 `command_interfaces_[i].set_value(...)` returns `bool`, and in Jazzy the method is `[[nodiscard]]`.
 The controller discards it, so if the write fails the cycle carries on as if the command went out.
 The compiler said so during the first off-Pi build:
@@ -440,11 +654,61 @@ Check the result. On `false`, return `controller_interface::return_type::ERROR` 
 good command *and* raise a fault flag something acts on) rather than continuing as if it worked.
 Count failures and report them with a throttled log, never one per cycle.
 
+**Status on `ai-forward` (2026-10-31):** fixed in code, awaiting a robot (next-steps row 0.3).
+`update_and_write_commands` checks the `bool` from `set_value()`, counts failures in
+`failed_command_writes_`, still tries every interface so one failure does not leave the other wheel's
+command stale, logs a throttled error (every 1000 ms at most), and returns `ERROR` if any write
+failed. Checked: the Tier 1 build no longer prints the `ignoring return value` warning (the build log
+was read), and Tier 2 passes. Not checked: the failure path itself, which the mock cannot provoke.
+What the robot does after that `ERROR` is the open question in H-7.
+
+**Changed after review round 1 (2026-10-31):** the controller no longer returns `ERROR` on the first
+failed write. A single transient failure would otherwise permanently stop one wheel, so it returns
+`ERROR` only after `kMaxConsecutiveWriteFailures = 5` consecutive failed cycles (a **proposed** value
+that a human confirms). Every interface is still tried each cycle, and a comment that described this
+wrongly was corrected. What `controller_manager` does after an `update()` returns `ERROR` depends on
+the ros2_control version and was not observed.
+
+**Changed after review round 2 (2026-10-31):** the controller now always writes a value on every
+interface (a NaN reference no longer means "skip"); a non-finite command is refused and written as
+`0.0`; and `on_deactivate` writes `0.0`. Details and the unchecked parts are under
+[H-7](#h-7--the-motors-keep-their-last-command-when-the-cascade-stops). The Tier 1 build has no
+compiler warnings. The failure path is still not exercised by any tier.
+
+---
+
+### M-6 — The feedforward value was uninitialised and unsynchronised
+
+**Found** 2026-10-31, by the `realtime-auditor` in review round 1 of the M-5 change.
+
+**Where** `rocko_env/rocko_env/controllers/add_feedforward/include/rocko_env/AddFeedforwardController.hpp`
+(`_feedforward`), `AddFeedforwardController.cpp` (`update_and_write_commands`)
+
+**What**
+
+`_feedforward` was a plain `double` with no initial value. The topic callback wrote it from the
+executor thread and the 100 Hz update read it, with no synchronisation. Before the first message
+arrived the update read an indeterminate value, and the two threads touched it at the same time
+afterwards. Both are undefined behaviour in C++, and the first could add garbage to every wheel
+command.
+
+**Fix**
+
+Make it `std::atomic<double>` initialised to `0.0`, with a `static_assert` that it is lock-free (the
+update thread must not take a lock a non-real-time thread also takes). A feedforward message that is
+NaN or infinite is ignored and the previous finite value stays in effect.
+
+**Status on `ai-forward` (2026-10-31): fixed.** Checked: the Tier 1 build compiles it, including the
+`static_assert`, with no compiler warnings; Tier 2 loads and activates the controller. Not checked:
+the lock-free property on a Pi (only the arm64 container was tried), and any behaviour on a robot.
+
 ---
 
 ### L-1 — `joint_name_` at namespace scope
 
 **Where** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:21, 99`
+
+*Line numbers are at audit time (before the 2026-10-31 edits).*
 
 Declared at namespace scope rather than as a class member, so both motor instances write to the
 same variable. It is currently unused beyond the assignment (`_prefix` is the member actually
@@ -470,6 +734,8 @@ accelerometer output with a filter running on the Pi.
 
 ### L-3 — Warnings from the first off-Pi build
 
+*Line numbers are at audit time (before the 2026-10-31 edits).*
+
 Seen in the container build on 2026-10-27; none affects behavior today.
 
 - `AddFeedforwardController.hpp:25` includes `realtime_tools/realtime_buffer.h`, deprecated in
@@ -478,6 +744,10 @@ Seen in the container build on 2026-10-27; none affects behavior today.
   and 39) containing `\param` tags. Python 3.12 reports each as
   `SyntaxWarning: invalid escape sequence '\p'`, and a later Python will make that an error. Make
   them raw strings (`r"""`).
+
+**Status on `ai-forward` (2026-10-31):** fixed (next-steps row 0.4). The include is now
+`realtime_buffer.hpp` and both docstrings are `r"""`. Checked: the Tier 1 build has no warnings from
+either, and `python3 -W error -m py_compile` on the host raises no `SyntaxWarning`.
 
 ---
 
@@ -500,6 +770,82 @@ Add `rocko_env/description/rviz` to the description `install(DIRECTORY ...)` blo
 the three launch files start RViz with their configs (needs a display, so a person or a GUI-capable
 container).
 
+**Status on `ai-forward` (2026-10-31):** fixed (next-steps row 0.5). `rocko_env/rocko_env/description/rviz`
+is in the description `install(DIRECTORY ...)` block. Checked: after the build, `ls
+install/rocko_env/share/rocko_env/rviz/` shows `rocko.rviz` and `rocko_view.rviz`. Not checked: that
+RViz starts with them, which needs a display. The `view_robot.launch.py` default argument
+([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)) was fixed at the same time (row 0.6):
+`description_package` now defaults to `"rocko_env"`. That launch file has not been run.
+
+---
+
+### L-5 — D-term spike after held cycles
+
+**Found** 2026-10-31, in review round 1 of the C-2 change. **Not fixed.** Read-only analysis,
+unmeasured.
+
+**Where** `ICM20948.cpp` `read()` (the hold) and the pitch PID's D term (H-6)
+
+**What**
+
+After a failed read the plugin holds the last good angle. The pitch controller differentiates that
+angle (H-6), so during the held cycles the derivative sees no change, and on the first good read the
+whole accumulated change arrives in one step, which can show up as a spike in the D term.
+
+**Why it matters**
+
+A short, large kick to the wheels just after a sensor glitch, at the moment the robot is least
+well-known. How large depends on the gains, which are not touched here.
+
+**Fix direction**
+
+Taking the D term from the gyro rate (H-6) removes the differentiation of the held angle. Until then,
+treat a glitch followed by a kick as this. Queue: [next-steps row 1.9](../next-steps.md).
+
+---
+
+### L-6 — A failed encoder read is reported as a good one
+
+**Found** 2026-10-31. **Not fixed.** Read-only analysis; nobody has watched it fail.
+
+**Where** `Motor12VoltQuadEncoder::read` (`rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp`)
+and `QuadEncoder::read` (`rocko_env/rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp`)
+
+**What**
+
+`Motor12VoltQuadEncoder::read` and `QuadEncoder::read` return OK and keep the old position and
+velocity when the encoder call fails. There is no fault flag, and the error log line is unthrottled.
+
+**Why it matters**
+
+It is hidden today because the blocking call (C-1) has no timeout: a stalled encoder node stalls the
+whole loop instead of failing. It becomes a C-2-class bug (a failure that looks like a good reading)
+the moment C-1 adds a timeout, because the timeout branch will then land in this silent path.
+
+**Fix direction**
+
+Use the same pattern as `ICM20948::read` (a fault tracker, return `ERROR`, a throttled log) in the C-1
+encoder change. Queue: [next-steps row 1.10](../next-steps.md).
+
+---
+
+### L-7 — `MAX_RAD_PER_SEC` divides integers
+
+**Found** 2026-10-31 (first noted under M-3). **Not fixed.**
+
+**Where** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp` (`MAX_RAD_PER_SEC`)
+
+**What**
+
+`1150 / 60 * M_PI * 2` divides two `int` literals, so it evaluates to 19 x 2 pi = 119.38 rad/s and
+not 120.43 rad/s. This is by arithmetic; it has not been checked on a robot.
+
+**Why it matters**
+
+Fixing it lowers every duty cycle by about 0.9 % (the full-scale speed it divides by gets larger), so
+it changes the scaling the existing tuning was done against. That is a hardware-limit change a human
+confirms, so it is a proposal and not an agent edit. Queue: [next-steps row 1.11](../next-steps.md).
+
 ---
 
 ## Recommended order of work
@@ -514,7 +860,8 @@ Ordered by risk removed per unit of effort.
 3. **H-6** — export gyro pitch rate and switch the D term onto it. Cheap, and large. Do it while the
    plugin is already open.
 4. **C-1 (encoders)** — same treatment for the encoder reads.
-5. **H-2, M-1, M-3** — fix the `write()` path. Small, mechanical, low risk.
+5. **H-2, M-1, M-3** — fix the `write()` path. Small, mechanical, low risk. (Code written ahead of
+   this position on `ai-forward`, 2026-10-31, compile-checked only; see H-2.)
 6. **M-4** — CMake guard (done on `ai-forward`) plus the `SimPlant` plugin (not done), so the rest can be developed and tested on a
    laptop.
 7. **C-3, H-4** — watchdog and tipover cutoff, developed against `SimPlant`.

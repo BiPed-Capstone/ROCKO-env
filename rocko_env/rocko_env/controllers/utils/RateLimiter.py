@@ -4,7 +4,7 @@
 import math
 
 class RateLimiter:
-    """
+    r"""
     * \brief Constructor
     *
     * \param [in] min_value Minimum value, e.g. [m/s], usually <= 0
@@ -36,7 +36,7 @@ class RateLimiter:
                         min_first_derivative_neg, max_first_derivative_pos,
                         min_first_derivative_pos, max_first_derivative_neg,
                         min_second_derivative, max_second_derivative)
-    """
+    r"""
         /**
         * \brief Set the parameters
         *

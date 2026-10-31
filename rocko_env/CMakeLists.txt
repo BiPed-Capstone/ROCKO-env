@@ -123,6 +123,7 @@ install(
 install(
   DIRECTORY rocko_env/description/launch 
             rocko_env/description/ros2_control 
+            rocko_env/description/rviz
             rocko_env/description/urdf
   DESTINATION share/rocko_env
 )

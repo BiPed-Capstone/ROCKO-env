@@ -95,6 +95,24 @@ stale-copy warning below). Two things look alarming and are not:
 **Read the warnings.** In real-time C++ they are often the finding. The first off-Pi build turned up
 a dropped `set_value()` result (finding M-5) this way.
 
+## Compile-only check of the motor plugin (not a tier)
+
+Tier 1 leaves `Motor12VoltQuadEncoder.cpp` out. After a Tier 1 build, if you touched that file (or want
+to know it still parses), run this in the container:
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/check_motor_plugin_compiles.sh
+```
+
+Exit 0 `PASS`: the file type-checks (`g++ -std=c++17 -fsyntax-only -Wall -Wextra`) against stub
+`wiringPi.h` and `softPwm.h`. Exit 1 `FAIL (compile-only)`: a compile error, printed. Exit 2: could not
+run (no ROS, no build in the workspace, no `g++`, no such file). An optional first argument names
+another `.cpp`, which is how you prove it can fail: copy the plugin to `/tmp` in the container, break
+the copy, point the script at it. It proves syntax and types only. The stubs are hand-copied, so the
+real WiringPi signatures are unchecked, and nothing is linked or run. Never report it as a build of
+the plugin. What it proves and how it was seen to fail: the
+[ladder](../../../docs/architecture/verification-ladder.md).
+
 ## Tier 0 — static checks
 
 Needs the build first: the xacro files resolve `$(find rocko_env)` through the installed package.
@@ -237,5 +255,6 @@ was not run.
 ## Reporting
 
 State which tiers you ran and the result of each, as a table in the run journal. If a tier did not
-run, write "not run" and why. If you touched the motor plugin, write that it is uncompiled here. Do
-not let silence imply it passed.
+run, write "not run" and why. If you touched the motor plugin, write that Tier 1 leaves it out, give
+the compile-only check's result, and say that it is type-checked, not built. Do not let silence imply
+it passed.

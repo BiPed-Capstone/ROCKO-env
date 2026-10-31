@@ -15,7 +15,7 @@
 | Follow-on | State |
 | --- | --- |
 | 1. `use_mock_hardware` selects a mock plugin | **Done.** Selects `mock_components/GenericSystem`. Verified by `verify_mock.sh`. |
-| 2. `rocko_env` configures and builds off-Pi | **Done**, with a deliberate cost: `-DROCKO_SKIP_WIRINGPI=ON` leaves out the motor plugin, so `Motor12VoltQuadEncoder.cpp` is **not compiled** off a Pi. The Pi default is unchanged and still requires WiringPi. |
+| 2. `rocko_env` configures and builds off-Pi | **Done**, with a deliberate cost: `-DROCKO_SKIP_WIRINGPI=ON` leaves out the motor plugin, so `Motor12VoltQuadEncoder.cpp` is **not compiled** off a Pi. The Pi default is unchanged and still requires WiringPi. Since 2026-10-31 a separate compile-only check type-checks that file against stub headers (syntax and types only; see [the ladder](../architecture/verification-ladder.md)). |
 | 3. Measured inertial properties | Not done. Needs a person with the robot. |
 | 4. `gz_ros2_control` and a world | Not done. |
 | 5. Document the sim-to-real gap | Not done. |

@@ -74,7 +74,7 @@ A review showed both are too wide. `bash -n +n -c 'cmd'` turns the no-exec flag 
 `cmd` (tried on bash 3.2 and 5.2), so the rule would allow any code. `chmod +x,a-x file` clears
 execute bits, and a guard hook without its execute bit does not run
 (`guard_protected_files.py`'s docstring). The cost is a prompt for each syntax check and each new
-script's `chmod`; row 0.2 in [next-steps](../next-steps.md) will add a script. If you want a
+script's `chmod`; row 0.2 in [next-steps](../next-steps.md) will add a script (done 2026-10-31). If you want a
 particular check, add it as an exact rule, for example `Bash(bash -n check_container_mount.sh)`.
 `.githooks/test-git-hooks.sh` (named in `CLAUDE.md` §8) is not added either: it runs only when the
 hooks change, and after E's step 1 an unattended run cannot change them without a person.

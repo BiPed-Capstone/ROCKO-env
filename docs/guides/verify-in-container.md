@@ -96,6 +96,28 @@ and the command exits 0. `2 packages had stderr output` is normal: CMake warning
 including the deliberate "building WITHOUT Motor12VoltQuadEncoder" notice. A failed build prints
 `ERROR: colcon build failed` and exits 1.
 
+If you changed `Motor12VoltQuadEncoder.cpp`, also type-check it (the build above leaves it out):
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/check_motor_plugin_compiles.sh
+```
+
+Success: exit 0. It checks syntax and types only, against hand-written stand-ins for the WiringPi
+headers, so it does not show the plugin links, runs, or builds on a Pi. It needs the build above
+first (exit 2 and a message if there is none). A compile error prints `FAIL (compile-only)` and exits
+1. [The ladder](../architecture/verification-ladder.md) says what it proves.
+
+If you changed `ImuFaultTracker.hpp`, also run its host test. It needs only a C++17 compiler (the laptop's
+or the container's), run from the repo root:
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    tools/imu_fault_tracker_test.cpp -o /tmp/imu_fault_tracker_test && /tmp/imu_fault_tracker_test
+```
+
+Success: it prints `all ImuFaultTracker tests passed` and exits 0. It is not a tier and nothing runs it
+automatically. It tests the counting logic of that one header, nothing on the sensor or the robot.
+
 Why `src/ROCKO-env/build_ros.sh` and not `./build_ros.sh`? The container also has a separate copy at
 `/ros2_ws/build_ros.sh` that goes stale if the file is replaced while the container runs; the copy
 inside `src/ROCKO-env/` is always the current one.

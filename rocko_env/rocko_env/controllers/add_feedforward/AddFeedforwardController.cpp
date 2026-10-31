@@ -16,6 +16,8 @@
 #include "controller_interface/helpers.hpp"
 #include "pluginlib/class_list_macros.hpp"
 
+#include <cmath>
+#include <limits>
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
@@ -95,6 +97,10 @@ controller_interface::CallbackReturn AddFeedforwardController::on_configure(
   // for any case make reference interfaces size of command interfaces
   reference_interfaces_.resize(
     reference_interface_names_.size(), std::numeric_limits<double>::quiet_NaN());
+  // Per-interface state for the stale-reference hold in update_and_write_commands. Sized here
+  // (not in the 100 Hz loop) so the loop never allocates.
+  last_command_.assign(command_interface_names_.size(), 0.0);
+  stale_reference_cycles_.assign(command_interface_names_.size(), 0);
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -123,9 +129,16 @@ controller_interface::CallbackReturn AddFeedforwardController::on_activate(
 
   RCLCPP_INFO(this->get_node()->get_logger(), "activate successful");
 
+  // Start with "no command yet" (NaN); update_and_write_commands turns NaN into a 0.0 stop, so the
+  // first cycles after activation command zero velocity rather than whatever was left over.
   std::fill(
     reference_interfaces_.begin(), reference_interfaces_.end(),
     std::numeric_limits<double>::quiet_NaN());
+  consecutive_write_failures_ = 0;
+  // Nothing has been commanded yet: a NaN gap right after activation holds 0.0, not old data.
+  // (Same sizes as set in on_configure, so assign() does not allocate.)
+  last_command_.assign(last_command_.size(), 0.0);
+  stale_reference_cycles_.assign(stale_reference_cycles_.size(), 0);
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -135,6 +148,22 @@ controller_interface::CallbackReturn AddFeedforwardController::on_deactivate(
 {
   // reset command buffer
   rt_buffer_ptr_ = realtime_tools::RealtimeBuffer<std::shared_ptr<DataType>>(nullptr);
+
+  // Command zero velocity on the way out (finding H-7). The motor plugin keeps writing whatever is
+  // in its command slot, so if this controller just stops, the wheel keeps its last command.
+  // Never waits on a lock: set_value() tries to store a number and gives up (returns false) if it cannot. A failure is counted and logged (throttled)
+  // but does not stop the other interfaces from being zeroed.
+  for (size_t i = 0; i < command_interfaces_.size(); ++i)
+  {
+    last_command_[i] = 0.0;
+    if (!command_interfaces_[i].set_value(0.0))
+    {
+      ++failed_command_writes_;
+      RCLCPP_ERROR_THROTTLE(
+        get_node()->get_logger(), *(get_node()->get_clock()), kLogThrottleMs,
+        "set_value(0.0) failed on deactivate; %lu failed writes since start", failed_command_writes_);
+    }
+  }
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
@@ -143,14 +172,96 @@ bool AddFeedforwardController::on_set_chained_mode(bool /*chained_mode*/) { retu
 controller_interface::return_type AddFeedforwardController::update_and_write_commands(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+  // Why this function never skips a write, and never ignores a failed one:
+  //   - Finding H-2: a skipped write leaves the PREVIOUS speed running on the motor. Before this
+  //     change a NaN reference meant "skip", so a dead upstream controller left the last command
+  //     driving the wheel. This controller now always sets a value. The motor plugin's write()
+  //     now always writes the speed pin too (a command near zero writes 0 %). Both are checked by
+  //     reading the code and building it only, not on the robot.
+  //   - Finding M-5: set_value() can return false. That must not look like success.
+  //   - Finding H-7 (mitigation): see the NaN reset below.
+  // Findings are described in docs/claude-analysis/balance-loop-findings.md.
+  const double feedforward = _feedforward.load(std::memory_order_relaxed);
+  bool all_writes_ok = true;
+
+  // There is ONE command interface per controller instance (rocko_controllers.yaml: each of
+  // left/right_add_feedforward_controller lists a single <wheel>_joint/velocity). The loop is
+  // there because `interfaces` is a parameter, not because a second wheel is protected by it.
   for (size_t i = 0; i < command_interfaces_.size(); ++i)
   {
-    if (!std::isnan(reference_interfaces_[i]))
+    const double reference = reference_interfaces_[i];  // wheel velocity command from upstream
+
+    // In chained mode the upstream pitch_pid_controller writes a fresh value every cycle. If it stops,
+    // nobody overwrites this slot and the old value would be re-sent forever (finding H-7). So
+    // consume the value: after reading it, put NaN back. Fresh data replaces the NaN next cycle;
+    // no fresh data leaves NaN, which becomes a stop below. In non-chained mode the value is
+    // refreshed from the topic buffer, and NaN means "no command received yet".
+    if (is_in_chained_mode())
     {
-      command_interfaces_[i].set_value(reference_interfaces_[i] + _feedforward);
+      reference_interfaces_[i] = std::numeric_limits<double>::quiet_NaN();
+    }
+
+    // A NaN reference (never started, or upstream stopped) is a STOP: write 0.0. Same in chained
+    // and non-chained mode, because 0.0 is the safe command in both. One exception: a short gap
+    // of up to kMaxStaleReferenceCycles cycles repeats the last finite command, so a single late
+    // upstream cycle does not make the wheel twitch to zero and back.
+    double command = 0.0;  // wheel velocity command [same unit as the reference]
+    if (std::isnan(reference))
+    {
+      if (stale_reference_cycles_[i] < kMaxStaleReferenceCycles)
+      {
+        ++stale_reference_cycles_[i];
+        command = last_command_[i];
+      }
+      // else: the gap is too long, command stays 0.0 (stop).
+    }
+    else
+    {
+      stale_reference_cycles_[i] = 0;  // fresh data (even a bad value) ends the gap
+      if (std::isfinite(reference + feedforward))
+      {
+        command = reference + feedforward;
+      }
+      else
+      {
+        // +/-inf reference, or a sum that overflowed: refuse it and stop instead.
+        ++rejected_commands_;
+        RCLCPP_WARN_THROTTLE(
+          get_node()->get_logger(), *(get_node()->get_clock()), kLogThrottleMs,
+          "Non-finite command rejected (written as 0.0); %lu rejected since start",
+          rejected_commands_);
+      }
+      last_command_[i] = command;  // 0.0 after a rejection, so a following gap holds a stop
+    }
+
+    if (!command_interfaces_[i].set_value(command))
+    {
+      all_writes_ok = false;
+      ++failed_command_writes_;
     }
   }
 
+  if (all_writes_ok)
+  {
+    consecutive_write_failures_ = 0;
+    return controller_interface::return_type::OK;
+  }
+
+  // One failed cycle is tolerated; kMaxConsecutiveWriteFailures in a row is not.
+  if (consecutive_write_failures_ < kMaxConsecutiveWriteFailures)
+  {
+    ++consecutive_write_failures_;
+  }
+  // Throttled: this runs every 10 ms and a persistent fault must not flood the log.
+  RCLCPP_ERROR_THROTTLE(
+    get_node()->get_logger(), *(get_node()->get_clock()), kLogThrottleMs,
+    "set_value() failed on a command interface: %u cycles in a row, %lu failed writes since start",
+    consecutive_write_failures_, failed_command_writes_);
+
+  if (consecutive_write_failures_ >= kMaxConsecutiveWriteFailures)
+  {
+    return controller_interface::return_type::ERROR;
+  }
   return controller_interface::return_type::OK;
 }
 
@@ -178,7 +289,7 @@ controller_interface::return_type AddFeedforwardController::update_reference_fro
     if (reference_interfaces_.size() != (*joint_commands)->data.size())
     {
       RCLCPP_ERROR_THROTTLE(
-        get_node()->get_logger(), *(get_node()->get_clock()), 1000,
+        get_node()->get_logger(), *(get_node()->get_clock()), kLogThrottleMs,
         "command size (%zu) does not match number of reference interfaces (%zu)",
         (*joint_commands)->data.size(), reference_interfaces_.size());
       return controller_interface::return_type::ERROR;

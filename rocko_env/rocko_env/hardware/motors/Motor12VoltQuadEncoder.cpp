@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -201,12 +202,22 @@ namespace rocko_env
   hardware_interface::return_type Motor12VoltQuadEncoder::write(
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
-    // Convert from rad/sec to percent of full speed
-    double radPerSec = _wheel.cmd; 
-    int pwmVal = (std::abs((radPerSec / MAX_RAD_PER_SEC)) + 0.02) * 100; // _wheel.cmd holds the speed we want to go
+    // Finding H-2: softPwmWrite() must be called on EVERY cycle. Software PWM keeps running at the
+    // last duty it was given, so skipping the write for a small command leaves the previous
+    // (possibly large) duty driving the wheel. A command near zero therefore writes 0 %.
+    // No per-cycle logging here (finding M-1): this runs at 100 Hz on the critical path.
+    const double radPerSec = _wheel.cmd;  // [rad/s] wheel speed we want; sign gives direction
+
+    // NaN / inf: stop, and leave the direction pin alone (a NaN has no sign to follow).
+    // A command inside the deadband is also a stop, with the direction pin unchanged.
+    if (!std::isfinite(radPerSec) || std::abs(radPerSec) < kDeadbandRadPerSec)
+    {
+      softPwmWrite(_speedPin, 0);
+      return hardware_interface::return_type::OK;
+    }
 
     // Set direction
-    if (_wheel.cmd >= 0)
+    if (radPerSec >= 0)
     {
       digitalWrite(_dirPin, !_invert);
     }
@@ -215,13 +226,11 @@ namespace rocko_env
       digitalWrite(_dirPin, _invert);
     }
 
-    // Set speed if above threshold
-    if (pwmVal > 2) {
-      softPwmWrite(_speedPin, pwmVal);
-    }
-
-    if (_prefix == "right_wheel_joint")
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Rad/sec: %5.2f PercentOut: %5.2f", radPerSec, pwmVal / 100.0);
+    // rad/s -> percent of full duty, plus the explicit stiction term. Clamped to [0, 100] (M-3)
+    // so a command above MAX_RAD_PER_SEC cannot ask softPwm for more than full duty.
+    const double dutyPercent = std::clamp(
+      std::abs(radPerSec) / MAX_RAD_PER_SEC * 100.0 + kStictionDutyPercent, 0.0, 100.0);
+    softPwmWrite(_speedPin, static_cast<int>(dutyPercent));  // softPwm takes whole percent
 
     return hardware_interface::return_type::OK;
   }

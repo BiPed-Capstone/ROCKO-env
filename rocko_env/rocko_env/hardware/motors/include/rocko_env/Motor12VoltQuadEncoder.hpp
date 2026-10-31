@@ -53,6 +53,14 @@ private:
 
   double MAX_RAD_PER_SEC = 1150 / 60 * M_PI * 2; // Max RPM / 60 sec * 2pi
 
+  // MOTOR OUTPUT PARAMETERS. Proposed values; a human confirms them on the robot. They are
+  // edit-and-rebuild constants, not ROS parameters.
+  // A command smaller than this is "stop": write() puts 0 % on the speed pin.
+  static constexpr double kDeadbandRadPerSec = 0.05;  // [rad/s] wheel speed, either direction
+  // Duty added on top of the scaled command so a small command still turns the motor (static
+  // friction, "stiction"). The old code hid this as "+ 0.02" inside the percent calculation.
+  static constexpr double kStictionDutyPercent = 2.0;  // [% of full duty], 0..100
+
   Wheel _wheel;
   int _speedPin;
   int _dirPin;

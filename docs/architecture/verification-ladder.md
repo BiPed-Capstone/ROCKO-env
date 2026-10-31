@@ -10,7 +10,16 @@ records the status of each tier.** Every other page links here instead of restat
 > [run journal](../journal/2026-10-27-ai-forward-bootstrap.md). On 2026-10-29, after the container
 > was recreated for the [mount check](../journal/2026-10-29-container-mount-check.md), these all
 > passed again: the hook tests, a clean `build_ros.sh`, `verify_urdf.sh`, and `verify_mock.sh` in both
-> modes. The `pid_controller` version was not read again.
+> modes. The `pid_controller` version was not read again. On 2026-10-31, on code built on `3882790` plus
+> the stage 2 commit, `build_ros.sh`, `verify_urdf.sh`, `verify_mock.sh` and
+> `verify_mock.sh tank` passed again (the hook tests were not rerun: no hook file changed), and the new
+> [compile-only check](#the-compile-only-check-for-the-motor-plugin-not-a-tier) passed. All of these
+> were run again after the fixes from that stage's first review round, and passed, together with the
+> new [host unit test](#the-host-unit-test-of-the-imu-fault-tracker-not-a-tier). After the fixes from
+> review round 2 (including a new `write()` in `Motor12VoltQuadEncoder.cpp`), `build_ros.sh` (exit 0,
+> no compiler warnings), `verify_urdf.sh`, `verify_mock.sh`, `verify_mock.sh tank` and the compile-only
+> check (on the edited file) passed, and the host unit test was run by hand and passed. Evidence:
+> [stage 2 journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
 
 ## Why a ladder
 
@@ -31,7 +40,7 @@ The exact commands, expected output and failure modes are in the
 | Tier | Name | Script | Status |
 | --- | --- | --- | --- |
 | 0 | Static | `verify_urdf.sh` (container); `.claude/hooks/test-guard-protected-files.sh`, `.githooks/test-git-hooks.sh` (laptop) | **Works.** Needs a Tier 1 build first (`verify_urdf.sh`). The git hooks it tests are not installed in this clone until [proposal 0002](../proposals/0002-unattended-run-settings.md) item E |
-| 1 | Build | `build_ros.sh` (container) | **Works** off-Pi, *without* the motor plugin; exits 1 when the build fails. **The Pi build (flag `OFF`) has not been run** since the CMake change |
+| 1 | Build | `build_ros.sh` (container) | **Works** off-Pi, *without* the motor plugin (which only the [compile-only check](#the-compile-only-check-for-the-motor-plugin-not-a-tier) looks at); exits 1 when the build fails. **The Pi build (flag `OFF`) has not been run** since the CMake change |
 | 2 | Mock | `verify_mock.sh`, `verify_mock.sh tank` (container) | **Works**; shown to fail on deliberate breaks |
 | 3 | Simulation | — | **Not built.** [ADR 0003](../decisions/0003-simulation-target.md) is still `Proposed` |
 | 4 | Robot | A person, tethered | **Human only.** Not something an agent can run or observe |
@@ -40,12 +49,48 @@ Before any tier that uses the container, `check_container_mount.sh` (run on the 
 the container is looking at your checkout. It is a precondition, not a tier: it proves one thing and
 leaves out others (see the blind spots).
 
+### The compile-only check for the motor plugin (not a tier)
+
+`check_motor_plugin_compiles.sh` (repo root, runs in the container, after a Tier 1 build because it
+needs the `rocko_interfaces` headers) runs `g++ -std=c++17 -fsyntax-only -Wall -Wextra` on
+`Motor12VoltQuadEncoder.cpp` against stub `wiringPi.h` and `softPwm.h` in `tools/compile_check/stubs/`.
+Run it from the repo root on the laptop:
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/check_motor_plugin_compiles.sh
+```
+
+Exit 0 passes, 1 is a compile error (it prints `FAIL (compile-only)`), 2 means it could not run. An
+optional first argument names another `.cpp` to check. It is **not a tier**: it sits beside Tier 1,
+checks one file Tier 1 leaves out, and never links, never runs and writes no object file. The stubs
+hold declarations only and `#error` unless `-DROCKO_COMPILE_CHECK_ONLY` is passed. See what it proves
+in the next table.
+
+### The host unit test of the IMU fault tracker (not a tier)
+
+`tools/imu_fault_tracker_test.cpp` tests `ImuFaultTracker.hpp`, the header-only counter that decides
+when the IMU plugin returns `ERROR` (finding **C-2**, next-steps row 0.1). It needs only a C++17
+compiler and the one header, no ROS, so it runs on the laptop or in the container. From the repo root:
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    tools/imu_fault_tracker_test.cpp -o /tmp/imu_fault_tracker_test && /tmp/imu_fault_tracker_test
+```
+
+Success is the line `all ImuFaultTracker tests passed` and exit status 0; a failed check aborts with
+a non-zero status. It is **not a tier**: it checks the counting rules of one class (the consecutive
+limit, the 10-of-20 window, a good read clearing the run, the total never resetting) and nothing
+about `ICM20948.cpp`, the sensor, timing or a robot. It is not run by any script here, so nothing
+makes anyone run it.
+
 ### What a pass proves, and what it cannot show
 
 | Tier | A pass proves | It cannot show |
 | --- | --- | --- |
 | 0 | The URDF expands and parses in all four modes (balancing and tank, mock off and on), and each holds the right hardware: the two real motor plugins (and the IMU, in balancing mode) when the mock is off, exactly one `MockRocko` system when it is on; no plugin of any other kind; and the mock exports exactly the same interfaces (joints, sensors and gpio; a duplicate counts as a difference) as the real hardware: 12 in balancing mode, 6 in tank mode. The guard hook blocks what it should and passes what it should. The git hooks in `.githooks/`, installed by copy in a throwaway repository, refuse and allow what they should | That anything compiles or runs. That the git hooks are installed in your clone |
-| 1 | `rocko_interfaces` and `rocko_env` compile and link; declared dependencies install | Anything about **`Motor12VoltQuadEncoder.cpp`** (left out off-Pi: it needs WiringPi). Anything at runtime |
+| host unit test (not a tier) | The counting logic of `ImuFaultTracker`: it trips at exactly the consecutive limit and not before; a good read clears the run; a sensor that alternates 4 bad and 1 good reads, which never reaches the consecutive limit, trips the 10-of-20 window; the window clears after 20 good reads; the total count is never reset; one bad read in ten never trips it; a custom window limit is honoured | That `ICM20948.cpp` calls it correctly, that the limits are right for the robot, or anything about the sensor, timing or physics |
+| compile-only (not a tier) | `Motor12VoltQuadEncoder.cpp` parses, every name resolves, every call matches a declared signature, and the ROS 2 headers it uses exist in Jazzy. First run, 2026-10-31, on the unmodified file: pass. Rerun on the edited file (the new `write()`, review round 2): pass. It was not made to fail on the new `write()` | That the real WiringPi signatures match: the stubs are copied by hand, so a stub that differs from the real header would hide a mistake. That it links, runs, behaves, is fast enough, or builds on a Pi |
+| 1 | `rocko_interfaces` and `rocko_env` compile and link; declared dependencies install | Anything about **`Motor12VoltQuadEncoder.cpp`** (left out off-Pi: it needs WiringPi; only the compile-only check above type-checks it). Anything at runtime |
 | 2 | Every controller **the launch file spawns** (the four cascade controllers in balancing mode; the diff-drive controller and joint-state broadcaster in tank mode) loads against the mock, claims interfaces the hardware layer exports, chains, activates and stays active; `Joystick.py` and `DiffDriveController.py` have not crashed. It refuses to run while another controller manager is up, so it cannot be fooled by a leftover one | **Physics.** The mock echoes each command back as a state and holds pitch at 0.0, so a controller that would drop the robot on the floor passes just the same. It does not start every controller named in the YAML, and it skips the IMU and encoder nodes |
 | 3 | *(when built)* controller behavior against modeled dynamics | Everything the model omits: backlash, PWM aliasing, battery sag, IMU latency |
 | 4 | Whether the robot actually balances | — |
@@ -65,6 +110,8 @@ fixed; see the journal.)
 | --- | --- | --- |
 | 2 | Delete the `pitch` state interface from the mock block | `FAIL`, exit 1: `state interface 'left_wheel_joint/pitch' is not exported`, all four controllers `inactive` |
 | 2 | Remove the executable bit from `Joystick.py` | `FAIL`, exit 1: `node Joystick.py crashed` |
+| compile-only | Break a copy of `Motor12VoltQuadEncoder.cpp` in the container's `/tmp` and pass it as the script's argument: put a string where an `int` is expected; delete a `;`; remove `#include <softPwm.h>`; misspell `HW_IF_VELOCITY` as `HW_IF_VELOCIT` | each `FAIL (compile-only)`, exit 1, for the right reason: `invalid conversion from const char* to int`; `expected ';' before 'return'`; `softPwmCreate was not declared`; `not a member of hardware_interface`. The unmodified file passes with exit 0 |
+| host unit test | Three deliberate breaks to `ImuFaultTracker.hpp`, one at a time: disable the windowed trip; change `>=` to `>` in a limit test; make a good read stop clearing the consecutive run | each went red on a named assertion, and the unbroken header passes with `all ImuFaultTracker tests passed` |
 | 1 | `build_ros.sh` with the flag `OFF` where there is no WiringPi | CMake `WiringPi not found`, then `ERROR: colcon build failed`, **exit 1**, no `Done!`; the next normal run recovers (its explicit `-D` overrides the cached value) |
 | 1 | Skip flag `ON` while a (fake) `libwiringPi` is present | CMake stops: `ROCKO_SKIP_WIRINGPI=ON, but WiringPi IS installed here`, exit 1 |
 | 1 | Skip flag `OFF` with a (fake) `libwiringPi` present — the Pi path | Configures with 0 CMake errors and compiles `Motor12VoltQuadEncoder.cpp`, which then fails on the missing `wiringPi.h` as it must off-Pi. This shows the Pi branch is taken; it is **not** a Pi build |
@@ -102,10 +149,22 @@ because they show what each tier is for.
 
 ## Blind spots, stated plainly
 
-- **The motor plugin is never compiled off-Pi.** A change to `Motor12VoltQuadEncoder.cpp` gets Tier 0
-  and a reviewer's eyes, nothing more, until it is built on a Pi.
+- **The motor plugin is type-checked off-Pi, not built.** A change to `Motor12VoltQuadEncoder.cpp`
+  gets Tier 0, the compile-only check (syntax and types, against hand-copied stub headers) and a
+  reviewer's eyes, until it is built on a Pi. Tier 1 still leaves it out. The 2026-10-31 `write()`
+  (findings H-2, M-1, M-3: always write the speed pin, a deadband, a clamp) is in exactly this state:
+  compile-checked only, awaiting a robot.
+- **The controller stop logic has no automated test.** `AddFeedforwardController`'s NaN-to-zero rule,
+  3-cycle hold, refusal of non-finite commands and `on_deactivate` stop (finding H-7) are built by
+  Tier 1 and loaded by Tier 2, but nothing checks what they do. A gtest was declined in review round 2;
+  the plan is that Tier 3 fault scenarios will cover it, and Tier 3 is not built.
 - **The IMU and encoder nodes are not exercised.** The mock launch skips `ICM20948.py` and
   `QuadEncoders.py` (they need I²C and GPIO), so the C++ plugins that call them are untested here.
+  `ICM20948.cpp` is compiled by Tier 1, but the mock replaces that plugin, so no tier runs its code,
+  including the C-2 failure path. Only the counting rules of `ImuFaultTracker` have a test (the
+  [host unit test](#the-host-unit-test-of-the-imu-fault-tracker-not-a-tier)); how `read()` uses it is
+  not run anywhere. A sensor that freezes or resets while still returning valid-looking numbers is not
+  detected by the code either (finding **H-9**).
 - **Timing is not measured.** Container and mock timings say nothing about the Pi's 10 ms budget.
 - **`/ros2_ws/build_ros.sh` can be a stale copy.** `docker/compose.yml` mounts that one file by itself;
   a file mounted alone is pinned when the container starts, so replacing it on the host while the
@@ -134,8 +193,8 @@ because they show what each tier is for.
   project default is `acceptEdits` since 2026-10-30 and nothing has been run in it yet. The git
   hooks in `.githooks/` are tested on a throwaway repository and are inactive in this one until that
   proposal's item E is done.
-- **The Pi build has not been run.** Nothing here compiles the motor plugin against real WiringPi or
-  checks that the `OFF` path produces a working `librocko_env.so`.
+- **The Pi build has not been run.** Nothing here compiles the motor plugin against real WiringPi (the
+  compile-only check uses stubs) or checks that the `OFF` path produces a working `librocko_env.so`.
 - **Dependency versions are not pinned.** `rosdep` installs the current Jazzy release of
   `pid_controller` and `diff_drive_controller` (4.42.1 in the container). ADR 0001 pins
   `ros2_control` ≥ 4.0.0, not these. Check what a fresh Pi actually gets.
@@ -150,7 +209,10 @@ because they show what each tier is for.
 - **`foxglove_bridge` starts but nothing checks it.**
 - **`rocko_gui.launch.py` looks stale.** It spawns `diffbot_base_controller`, which
   `rocko_controllers.yaml` does not define, and is not covered by any tier.
-- **The RViz configs are never installed** (finding **L-4**), so three launch files cannot find them.
+- **No tier opens RViz.** The RViz layouts are installed now (finding **L-4**; after a build,
+  `install/rocko_env/share/rocko_env/rviz/` holds `rocko.rviz` and `rocko_view.rviz`), but that RViz
+  starts with them needs a display, and `view_robot.launch.py` has not been run since its default
+  argument changed.
 - **Nothing here covers x86_64.**
 
 ## Keeping this page true

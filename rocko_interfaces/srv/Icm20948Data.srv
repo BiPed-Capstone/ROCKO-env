@@ -1,5 +1,11 @@
 
 ---
+# yaw, pitch and roll are in DEGREES, from the BNO055 Euler output. pitch has the Python node's
+# pitch_offset (degrees) already added. The sign convention of pitch (which way is positive) is NOT
+# established anywhere in this repo; do not assume one.
 float64 yaw
 float64 pitch
 float64 roll
+# true only if all three angles above come from one good sensor read.
+# false means the read failed: yaw/pitch/roll are NaN and must be ignored.
+bool success
