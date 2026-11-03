@@ -191,8 +191,7 @@ class DiffDriveController(Node):
         
     def robot_body_vector_updated(self, msg):
         # Store desired robot body vector
-        self.get_logger().info("Callback triggered")
-        self.get_logger().info(f"Received Twist: {msg.twist}")
+        # No per-message logging: a gamepad sends 40-200 messages/s and the INFO lines flooded the log.
         # Keep the whole TwistStamped: command_controller reads .twist.linear.x from it.
         # (This line used to store msg.twist, which has no .twist attribute, so the first
         # command would have raised AttributeError inside the timer.)

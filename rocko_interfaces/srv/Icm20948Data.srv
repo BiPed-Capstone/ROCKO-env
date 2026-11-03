@@ -10,7 +10,9 @@ float64 roll
 # for the pitch controller's D term (finding H-6). Meant to have the SAME sign as pitch: positive
 # while pitch is increasing. Which gyro axis is pitch, and its sign, are node parameters that are
 # UNVERIFIED until someone tilts the robot (ICM20948.py, pitch_rate_axis / pitch_rate_sign).
-# NaN when this cycle's gyro read failed, INDEPENDENTLY of `success`: check it on its own.
+# NaN when this cycle's gyro read failed, INDEPENDENTLY of `success`: check it on its own. Also NaN
+# on every reply while the node's read_pitch_rate parameter is false (the default): the gyro is then
+# not read at all.
 float64 pitch_rate_deg_s
 # true only if all three ANGLES above come from one good sensor read. It says nothing about
 # pitch_rate_deg_s. false means the angle read failed: yaw/pitch/roll are NaN and must be ignored.

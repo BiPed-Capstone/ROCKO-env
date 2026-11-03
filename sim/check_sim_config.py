@@ -25,6 +25,12 @@ verify_urdf.sh runs it. It fails when two files that must agree have drifted apa
   4. IMU FAULT LIMIT. SimImuOutput copies kMaxConsecutiveImuFailures from ICM20948.hpp (a private
      member of a class that needs ROS headers, so the sim cannot use it directly), and relies on the
      tracker's default window limit, as ICM20948.hpp does.
+  5. TELEOP TIMEOUT. The watchdog timeout (finding C-3) is written in three places that must be
+     equal: the launch argument command_timeout_s, DEFAULT_COMMAND_TIMEOUT_S in
+     DiffDriveController.py, and TELEOP_TIMEOUT_S in verify_sim.sh.
+  6. FEEDFORWARD AGE LIMIT. The limit (finding H-11) is written twice: kMaxFeedforwardAgeNs in
+     AddFeedforwardController.hpp (nanoseconds) and FF_AGE_S in verify_sim.sh (seconds). They must be
+     the same time, or check FF would time a different limit than the controller applies.
 
 Usage:  check_sim_config.py [--root DIR]     (DIR defaults to the repo root, above sim/)
 Exit status: 0 = all agree   1 = a difference (printed)   2 = could not run (a file could not be
@@ -58,6 +64,9 @@ HEADER = "rocko_env/rocko_env/hardware/sim/include/rocko_env/SimPlantModel.hpp"
 URDF_XACRO = "rocko_env/rocko_env/description/urdf/rocko.urdf.xacro"
 CONTROL_XACRO = "rocko_env/rocko_env/description/ros2_control/rocko.ros2_control.xacro"
 LAUNCH = "rocko_env/rocko_env/bringup/launch/rocko_sim.launch.py"
+DIFFDRIVE = "rocko_env/rocko_env/controllers/diffdrive/DiffDriveController.py"
+VERIFY_SIM = "verify_sim.sh"
+FF_HEADER = "rocko_env/rocko_env/controllers/add_feedforward/include/rocko_env/AddFeedforwardController.hpp"
 ICM_HEADER = "rocko_env/rocko_env/hardware/sensors/icm20948/include/rocko_env/ICM20948.hpp"
 
 
@@ -301,6 +310,45 @@ def check_imu_limit(root):
     return problems, "IMU fault limit equal in ICM20948.hpp and SimPlantModel.hpp"
 
 
+# ---- 5. teleop timeout ---------------------------------------------------------------------------
+def check_teleop_timeout(root):
+    launch = read(root, LAUNCH)
+    node = read(root, DIFFDRIVE)
+    script = read(root, VERIFY_SIM)
+    found = {
+        "command_timeout_s default in rocko_sim.launch.py": re.search(
+            r'"command_timeout_s",\s*default_value\s*=\s*"([0-9.eE+-]+)"', launch),
+        "DEFAULT_COMMAND_TIMEOUT_S in DiffDriveController.py": re.search(
+            r"^DEFAULT_COMMAND_TIMEOUT_S\s*=\s*([0-9.eE+-]+)", node, re.MULTILINE),
+        "TELEOP_TIMEOUT_S in verify_sim.sh": re.search(
+            r"^TELEOP_TIMEOUT_S\s*=\s*([0-9.eE+-]+)", script, re.MULTILINE),
+    }
+    problems = [f"could not find {name}" for name, m in found.items() if m is None]
+    if problems:
+        return problems, ""
+    values = {name: float(m.group(1)) for name, m in found.items()}
+    if len(set(values.values())) != 1:
+        detail = "; ".join(f"{name} = {value} s" for name, value in values.items())
+        problems.append("the teleop watchdog timeout differs between files (they must be equal): " + detail)
+    return problems, f"teleop watchdog timeout equal in all three places ({next(iter(values.values()))} s)"
+
+
+# ---- 6. feedforward age limit --------------------------------------------------------------------
+def check_feedforward_age(root):
+    header = re.search(r"kMaxFeedforwardAgeNs\s*=\s*([0-9']+)\s*;", read(root, FF_HEADER))
+    script = re.search(r"^FF_AGE_S\s*=\s*([0-9.eE+-]+)", read(root, VERIFY_SIM), re.MULTILINE)
+    if header is None:
+        return ["could not find kMaxFeedforwardAgeNs in AddFeedforwardController.hpp"], ""
+    if script is None:
+        return ["could not find FF_AGE_S in verify_sim.sh"], ""
+    header_s = int(header.group(1).replace("'", "")) / 1e9  # C++ digit separators: 200'000'000
+    script_s = float(script.group(1))
+    if not math.isclose(header_s, script_s, rel_tol=1e-9):
+        return [f"the feedforward age limit differs: kMaxFeedforwardAgeNs in AddFeedforwardController.hpp "
+                f"is {header_s} s, FF_AGE_S in verify_sim.sh is {script_s} s (they must be equal)"], ""
+    return [], f"feedforward age limit equal in AddFeedforwardController.hpp and verify_sim.sh ({script_s} s)"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."),
@@ -308,7 +356,8 @@ def main():
     args = parser.parse_args()
 
     failed = False
-    for check in (check_wiring, check_gains, check_defaults, check_imu_limit):
+    for check in (check_wiring, check_gains, check_defaults, check_imu_limit,
+                  check_teleop_timeout, check_feedforward_age):
         try:
             problems, summary = check(args.root)
         except (OSError, ValueError, KeyError, yaml.YAMLError, ET.ParseError) as error:

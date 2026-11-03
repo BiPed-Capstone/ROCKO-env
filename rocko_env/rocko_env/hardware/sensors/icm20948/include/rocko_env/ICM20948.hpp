@@ -68,6 +68,8 @@ private:
   // be a real measurement. It does NOT catch the units mistake of an Adafruit driver older than 5.0
   // (deg/s, which the node's degrees() makes 57x too large) except in motion faster than about
   // 35 deg/s; ICM20948.py says how to check the magnitude on the robot.
+  // MUST equal MAX_ABS_PITCH_RATE_DEG_S in ICM20948.py: the node applies the same limit (and logs
+  // it), so a rate out of range from the very first read is reported there.
   static constexpr double kMaxAbsPitchRateDegS = 2000.0;  // [deg/s] |pitch_rate| above this = bad
 
   // Angles in degrees as the BNO055 reports them (pitch includes the node's pitch_offset).
@@ -79,7 +81,10 @@ private:
   // axis and sign that is, is chosen in the Python node and UNVERIFIED. NaN until the first good
   // rate, then held on a bad one, like the angles; but judged on its OWN: a bad rate never counts
   // in _imu_fault_tracker and never makes read() return ERROR (the hardware YAML does not use the
-  // rate today), and a bad rate never throws away good angles.
+  // rate today), and a bad rate never throws away good angles. With the node's read_pitch_rate
+  // false (its default, finding M-7) every rate is NaN, so this stays NaN and read() does not warn:
+  // the rate warning starts only after a first good rate. A rate that is bad from the first read
+  // (a failed gyro read, or beyond +/-kMaxAbsPitchRateDegS) is logged by the node instead.
   // OPEN, and it must be closed BEFORE H-6 wires pitch_rate into the REAL controller YAML: a
   // PERSISTENT rate failure is today only held (the last good rate) and logged. Once a controller
   // consumes the rate, a stuck rate silently feeds the D term a stale number. Then the rate needs

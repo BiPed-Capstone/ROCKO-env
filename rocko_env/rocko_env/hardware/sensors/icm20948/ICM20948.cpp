@@ -115,7 +115,8 @@ hardware_interface::return_type ICM20948::read(
         _roll = res->roll;
         good_read = true;
       }
-      // The node sends NaN when its gyro read failed, whatever `success` says.
+      // The node sends NaN when its gyro read failed, whatever `success` says, and always while
+      // its read_pitch_rate parameter is false.
       good_rate =
         std::isfinite(res->pitch_rate_deg_s) &&
         std::fabs(res->pitch_rate_deg_s) <= kMaxAbsPitchRateDegS;
@@ -124,14 +125,22 @@ hardware_interface::return_type ICM20948::read(
       }
     }
 
+    // Warn about a bad rate only once a good one has been seen (_pitch_rate is no longer NaN). The
+    // node's default, read_pitch_rate false, sends NaN on every reply by design (finding M-7), and
+    // that is not a fault. A gyro that fails from the very first read with read_pitch_rate true is
+    // not reported here: the node logs it itself ("Pitch rate unavailable", throttled to one line a
+    // second), both a failed gyro read and a rate beyond +/-kMaxAbsPitchRateDegS, because it applies
+    // the same limit (MAX_ABS_PITCH_RATE_DEG_S in ICM20948.py) and sends NaN for it.
     if (good_rate) {
       _consecutive_rate_failures = 0;
     } else {
       ++_consecutive_rate_failures;
+    }
+    if (!good_rate && !std::isnan(_pitch_rate)) {
       RCLCPP_WARN_THROTTLE(
         _node->get_logger(), *_node->get_clock(), kLogThrottleMs,
-        "IMU pitch rate unusable: %lu reads in a row. Holding the last good pitch rate (NaN "
-        "before the first); anything using it (a D term) sees a stale rate.",
+        "IMU pitch rate unusable: %lu reads in a row. Holding the last good pitch rate; "
+        "anything using it (a D term) sees a stale rate.",
         _consecutive_rate_failures);
     }
 

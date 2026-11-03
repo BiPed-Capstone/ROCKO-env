@@ -246,6 +246,7 @@ controller_interface::CallbackReturn AddFeedforwardController::on_activate(
     reference_interfaces_.begin(), reference_interfaces_.end(),
     std::numeric_limits<double>::quiet_NaN());
   consecutive_write_failures_ = 0;
+  timeout_log_age_cycles_ = kTimeoutLogMinCycles;  // the first feedforward time-out is logged at once
   // Nothing has been commanded yet: a NaN gap right after activation holds 0.0, not old data.
   // (Same sizes as set in on_configure, so assign() does not allocate.)
   last_command_.assign(last_command_.size(), 0.0);
@@ -292,8 +293,36 @@ controller_interface::return_type AddFeedforwardController::update_and_write_com
   //   - Finding M-5: set_value() can return false. That must not look like success.
   //   - Finding H-7 (mitigation): see the NaN reset below.
   //   - Finding H-4: past the tipover limit the command is 0.0 until an operator re-arms.
+  //   - Finding H-11: a feedforward older than kMaxFeedforwardAgeNs is replaced by 0.0.
   // Findings are described in docs/claude-analysis/balance-loop-findings.md.
-  const double feedforward = _feedforward.load(std::memory_order_relaxed);
+
+  // Feedforward age limit (finding H-11): 0.0 instead of a feedforward whose sender has gone quiet.
+  // Only this term: the reference below still goes through, so the balance loop keeps running.
+  // A time-out is counted each time one starts, and logged with a per-instance throttle
+  // (timeout_log_age_cycles_; rclcpp's throttle is shared by both wheel instances, see the tipover
+  // comment below): the first one at once, then at most one line per kTimeoutLogMinCycles, so a
+  // feedforward that flaps between fresh and silent cannot fill the log. The count in the line
+  // shows how many were not logged.
+  const double feedforward =
+    _feedforward.update(steady_clock_.now().nanoseconds(), kMaxFeedforwardAgeNs);
+  if (timeout_log_age_cycles_ < kTimeoutLogMinCycles)
+  {
+    ++timeout_log_age_cycles_;
+  }
+  if (_feedforward.just_timed_out())
+  {
+    ++feedforward_timeouts_;
+    if (timeout_log_age_cycles_ >= kTimeoutLogMinCycles)
+    {
+      timeout_log_age_cycles_ = 0;
+      RCLCPP_WARN(
+        get_node()->get_logger(),
+        "Feedforward on '%s' is %.0f ms old (limit %.0f ms): adding 0.0 instead until a fresh "
+        "message arrives. Is DiffDriveController.py running? (%lu time-outs since start)",
+        params_.feedforward_topic_name.c_str(), _feedforward.age_ns() / 1e6,
+        kMaxFeedforwardAgeNs / 1e6, feedforward_timeouts_);
+    }
+  }
   bool all_writes_ok = true;
 
   // Tipover cutoff (finding H-4): read pitch once, let the latch decide, log only on a change.

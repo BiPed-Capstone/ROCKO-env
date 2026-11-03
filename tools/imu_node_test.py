@@ -6,9 +6,13 @@ Run from the repo root:  python3 -I tools/imu_node_test.py
 
 It loads ICM20948.py with small stand-ins for rclpy, the Adafruit/ahrs libraries and the service
 type, gives it a fake BNO055, and checks:
+  * by default (read_pitch_rate false, finding M-7) the gyro is NEVER read: one euler read per
+    reply, pitch_rate_deg_s is NaN, the angles and success are unaffected, nothing is warned;
+With read_pitch_rate true:
   * good angles + good gyro: success, pitch includes pitch_offset, rate = sign * degrees(gyro[axis]);
   * a bad gyro (None, an exception, NaN) makes ONLY pitch_rate_deg_s NaN: the good angles and
     success=True are kept;
+  * so does a rate beyond +/-2000 deg/s (the gyro's range), and it is logged by the node;
   * the gyro is read BEFORE the Euler angles, so the pitch is the freshest sample (once each);
   * a still gyro reading (0, 0, 0) is a real measurement (rate 0.0), not a failure;
   * bad angles (None, all three identical, an exception) give success=False and NaN angles,
@@ -33,8 +37,15 @@ class FakeLogger:
     def warn(self, text, **kwargs):
         self.lines.append(("warn", text))
 
+    def info(self, text, **kwargs):
+        self.lines.append(("info", text))
+
 
 class FakeNode:
+    # Parameter values to use instead of the node's defaults, as `ros2 run ... -p name:=value`
+    # would. Set by reply(); empty means every parameter keeps its default.
+    overrides = {}
+
     def __init__(self, name):
         self.logger = FakeLogger()
 
@@ -42,7 +53,7 @@ class FakeNode:
         return self.logger
 
     def declare_parameter(self, name, default):
-        return SimpleNamespace(value=default)
+        return SimpleNamespace(value=self.overrides.get(name, default))
 
     def create_service(self, srv_type, name, callback):
         return None
@@ -99,7 +110,8 @@ imu = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(imu)
 
 
-def reply(euler, gyro):
+def reply(euler, gyro, read_pitch_rate=True):
+    FakeNode.overrides = {"read_pitch_rate": read_pitch_rate}
     node = imu.ICM20948()
     node.icm.euler_value = euler
     node.icm.gyro_value = gyro
@@ -110,6 +122,21 @@ def reply(euler, gyro):
 def check(condition, what):
     if not condition:
         raise AssertionError(what)
+
+
+def test_default_does_not_read_the_gyro():
+    # The real node is started without parameters (rocko.launch.py), so this is the robot's case.
+    FakeNode.overrides = {}
+    node = imu.ICM20948()
+    check(node.read_pitch_rate is False, "read_pitch_rate must default to False")
+    response = SimpleNamespace(yaw=None, roll=None, pitch=None, pitch_rate_deg_s=None, success=False)
+    r = node.callback(None, response)
+    check(node.icm.reads == ["euler"],
+          f"with read_pitch_rate false the node must make ONE read (euler); it read {node.icm.reads}")
+    check(r.success and r.pitch == 2.0 + node.pitch_offset, "the angles must be unaffected")
+    check(math.isnan(r.pitch_rate_deg_s), "with read_pitch_rate false the rate must be NaN")
+    check(not any(kind == "warn" for kind, _ in node.logger.lines),
+          f"nothing is wrong, so nothing may be warned; logged {node.logger.lines}")
 
 
 def test_good_angles_and_gyro():
@@ -136,6 +163,21 @@ def test_bad_gyro_keeps_good_angles():
         check(math.isnan(r.pitch_rate_deg_s), f"gyro {what}: the rate must be NaN")
         check(any("Pitch rate unavailable" in text for _, text in node.logger.lines),
               f"gyro {what}: the rate failure must be logged")
+
+
+def test_out_of_range_rate_is_nan_and_logged():
+    # Beyond the gyro's +/-2000 deg/s (MAX_ABS_PITCH_RATE_DEG_S) the node sends NaN and logs it
+    # itself: the C++ plugin rejects such a rate too, but only warns after a first good one.
+    check(imu.MAX_ABS_PITCH_RATE_DEG_S == 2000.0,
+          "MAX_ABS_PITCH_RATE_DEG_S must equal kMaxAbsPitchRateDegS in ICM20948.hpp (2000 deg/s)")
+    for gyro_x_rad_s in (40.0, -40.0):  # about +/-2292 deg/s
+        r, node = reply((10.0, 1.0, 2.0), (gyro_x_rad_s, 0.0, 0.0))
+        check(r.success, f"gyro {gyro_x_rad_s} rad/s: the angles are good, so success must stay True")
+        check(math.isnan(r.pitch_rate_deg_s), f"gyro {gyro_x_rad_s} rad/s: the rate must be NaN")
+        check(any("Pitch rate unavailable" in text for _, text in node.logger.lines),
+              f"gyro {gyro_x_rad_s} rad/s: the out-of-range rate must be logged")
+    r, _ = reply((10.0, 1.0, 2.0), (34.0, 0.0, 0.0))  # about 1948 deg/s: inside the range
+    check(math.isclose(r.pitch_rate_deg_s, math.degrees(34.0)), "a rate inside the range must pass")
 
 
 def test_still_gyro_is_a_real_reading():

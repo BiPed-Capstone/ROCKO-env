@@ -18,13 +18,16 @@
 // system
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "controller_interface/chainable_controller_interface.hpp"
+#include "rclcpp/clock.hpp"
 #include "realtime_tools/realtime_buffer.hpp"
+#include "rocko_env/FeedforwardTimeout.hpp"
 #include "rocko_env/TipoverLatch.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
@@ -39,6 +42,9 @@
  *     wheel velocity command = reference (from pitch_pid_controller) + feedforward (topic)
  * to its command interface (<wheel>_joint/velocity on the motor plugin). It always writes a value:
  * a missing reference becomes a stop (findings H-2, H-7), a failed write is counted (M-5).
+ * The feedforward is used only while its last message is at most kMaxFeedforwardAgeNs old
+ * (proposed 200 ms); after that 0.0 is added, so a dead DiffDriveController.py cannot leave the
+ * wheels turning (finding H-11, FeedforwardTimeout.hpp). The reference still goes through.
  *
  * Tipover cutoff (finding H-4). It also reads the pitch state [deg] of its wheel's joint
  * (<wheel>_joint/pitch, the IMU's pitch). If |pitch| goes past tipover_pitch_deg (proposed 35 deg),
@@ -124,8 +130,20 @@ protected:
   // pitch_pid_controller (the one writing the reference): both inherit update_rate 100 today.
   // If they ran at different rates, "3 cycles" would not mean the same time for both.
   static constexpr unsigned kMaxStaleReferenceCycles = 3;  // [cycles]
+  // PROPOSED: how old the last feedforward message may be before 0.0 is added instead (review
+  // finding H-11; FeedforwardTimeout.hpp). DiffDriveController.py publishes every 10 ms, so 200 ms is
+  // about 20 missed messages; it matches that node's own command_timeout_s default (0.2 s), so a
+  // dead node and a silent gamepad stop the turn equally fast. Not measured on the robot.
+  static constexpr std::int64_t kMaxFeedforwardAgeNs = 200'000'000;  // [ns] = 200 ms
+  // Minimum cycles between two "Feedforward ... ms old" lines from one instance: 1 s at update_rate
+  // 100. The first time-out is logged at once; a feedforward that keeps flapping (fresh, silent,
+  // fresh, ...) would otherwise log every time. A per-instance counter, like refusal_log_age_cycles_
+  // and for the same reason (the THROTTLE macros are shared by both wheel instances).
+  static constexpr unsigned kTimeoutLogMinCycles = 100;  // [cycles]
 
   // Counters below are only touched in the update loop (one thread).
+  unsigned timeout_log_age_cycles_{kTimeoutLogMinCycles};  // [cycles] since the last time-out line
+  unsigned long feedforward_timeouts_{0};       // [time-outs] feedforward time-outs since start
   unsigned long failed_command_writes_{0};      // [writes] set_value() returned false, total
   unsigned consecutive_write_failures_{0};      // [cycles] cycles in a row with a failed write
   unsigned long rejected_commands_{0};          // [commands] non-finite commands refused, total
@@ -147,21 +165,26 @@ private:
   void topic_callback(const std_msgs::msg::Float64::SharedPtr msg)
   {
     // A NaN or inf feedforward would poison every wheel command (reference + NaN = NaN), so a
-    // non-finite message is ignored and the previous finite value stays in effect.
+    // non-finite message is ignored: the previous finite value stays in effect, but only until it
+    // is kMaxFeedforwardAgeNs old, because an ignored message does not refresh its arrival time.
     if (!std::isfinite(msg->data))
     {
       return;
     }
-    _feedforward.store(msg->data, std::memory_order_relaxed);
+    _feedforward.store(msg->data, steady_clock_.now().nanoseconds());
   }
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr subscription_;
 
-  // Written by the executor thread (topic_callback), read by the 100 Hz update thread, hence atomic.
-  // Added to the wheel velocity reference. 0.0 until the first message arrives.
-  std::atomic<double> _feedforward{0.0};
-  static_assert(
-    std::atomic<double>::is_always_lock_free,
-    "_feedforward is read in the real-time loop and must not take a lock");
+  // The feedforward [rad/s] and the time it arrived. Written by the executor thread
+  // (topic_callback), read by the 100 Hz update thread; lock-free atomics inside. Added to the
+  // wheel velocity reference while it is fresh; 0.0 before the first message and once it is older
+  // than kMaxFeedforwardAgeNs (finding H-11).
+  FeedforwardTimeout _feedforward;
+  // The clock for the feedforward's age, in topic_callback and in the update loop. STEADY
+  // (monotonic) on purpose, not the node's ROS clock: that is system time, which NTP can step back
+  // (a Pi has no battery clock and sets it after boot), and a backward step would keep a dead
+  // feedforward looking fresh. Reading it is a clock_gettime call: no lock, no allocation.
+  rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
 };
 }  // namespace rocko_env
 

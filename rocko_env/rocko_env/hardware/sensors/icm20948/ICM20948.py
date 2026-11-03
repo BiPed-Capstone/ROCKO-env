@@ -20,6 +20,13 @@ import adafruit_bno055
 
 from rocko_interfaces.srv import Icm20948Data
 
+# [deg/s] The BNO055 gyro's full scale in its fusion modes is +/-2000 deg/s, so a larger pitch rate
+# cannot be a real measurement and is sent as NaN. MUST equal kMaxAbsPitchRateDegS in
+# include/rocko_env/ICM20948.hpp, which applies the same limit in the C++ plugin. The node checks it
+# too so that a rate that is out of range from the very first read is logged here: the plugin only
+# warns about bad rates after it has seen a good one (finding M-7).
+MAX_ABS_PITCH_RATE_DEG_S = 2000.0
+
 # Documentation for gyro lib: https://docs.circuitpython.org/projects/icm20x/en/latest/
 class ICM20948(Node):
 
@@ -47,15 +54,27 @@ class ICM20948(Node):
         # none. The defaults are a GUESS: axis 0 (gyro X) because the BNO055 datasheet describes its
         # Euler pitch as the rotation about the sensor's X axis, and sign +1 because nothing here says
         # otherwise. Procedure: docs/claude-analysis/bno055-improvements.md, section 1.
+        #
+        # read_pitch_rate (default False, finding M-7): whether to read the gyro at all.
+        # rocko_controllers.yaml does not use pitch_rate today, and the gyro read is a second I2C
+        # transaction inside the blocking service call of every 10 ms cycle (finding C-1), so it
+        # costs loop time for nothing. While False the gyro is never read and pitch_rate_deg_s is
+        # NaN ("no rate"), which the C++ plugin holds as NaN. Turn it on together with the gated
+        # YAML change that makes pitch_pid_controller use pitch_rate (finding H-6).
+        self.read_pitch_rate = self.declare_parameter('read_pitch_rate', False).value
         self.pitch_rate_axis = self.declare_parameter('pitch_rate_axis', 0).value  # 0, 1 or 2
         self.pitch_rate_sign = self.declare_parameter('pitch_rate_sign', 1).value  # +1 or -1
         if self.pitch_rate_axis not in (0, 1, 2):
             raise ValueError("pitch_rate_axis must be 0, 1 or 2, got " + str(self.pitch_rate_axis))
         if self.pitch_rate_sign not in (1, -1):
             raise ValueError("pitch_rate_sign must be 1 or -1, got " + str(self.pitch_rate_sign))
-        self.get_logger().warn(
-            "pitch_rate = %+d * gyro[%d]: axis and sign are UNVERIFIED on the robot (finding H-6)"
-            % (self.pitch_rate_sign, self.pitch_rate_axis))
+        if self.read_pitch_rate:
+            self.get_logger().warn(
+                "pitch_rate = %+d * gyro[%d]: axis and sign are UNVERIFIED on the robot (finding H-6)"
+                % (self.pitch_rate_sign, self.pitch_rate_axis))
+        else:
+            self.get_logger().info(
+                "read_pitch_rate is false: the gyro is not read and pitch_rate_deg_s is sent as NaN")
 
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.callback)
 
@@ -73,7 +92,11 @@ class ICM20948(Node):
         # it FIRST so the euler read, whose pitch is the signal the balance loop needs most, is the
         # freshest sample in the reply. The real fix is one 12-byte burst read of registers
         # 0x14-0x1F (gyro and Euler together), which belongs to the C-1 migration.
-        pitch_rate_deg_s = self.read_pitch_rate_deg_s()
+        # With read_pitch_rate False (the default) there is no gyro read at all, only the euler one.
+        if self.read_pitch_rate:
+            pitch_rate_deg_s = self.read_pitch_rate_deg_s()
+        else:
+            pitch_rate_deg_s = float('nan')
 
         failure = None
         try:
@@ -106,8 +129,8 @@ class ICM20948(Node):
 
     def read_pitch_rate_deg_s(self):
         """The pitch rate [deg/s] from the gyro, or NaN if this cycle's gyro read failed (None, an
-        exception, or a non-finite value). A gyro fault therefore shows up as NaN in
-        pitch_rate_deg_s only; the angles and `success` are not touched.
+        exception, a non-finite value, or a rate beyond +/-MAX_ABS_PITCH_RATE_DEG_S). A gyro fault
+        therefore shows up as NaN in pitch_rate_deg_s only; the angles and `success` are not touched.
 
         There is deliberately NO "all three values identical" rule here, unlike the angles: a gyro
         that is truly still reads (0, 0, 0), and that is a real measurement.
@@ -125,12 +148,17 @@ class ICM20948(Node):
                 failure = "gyro returned no usable value (gyro = " + str(gyro) + ")"
         except Exception as e:
             failure = str(e)
+        if failure is None:
+            rate_deg_s = self.pitch_rate_sign * math.degrees(rate_rad_s)
+            if abs(rate_deg_s) > MAX_ABS_PITCH_RATE_DEG_S:
+                failure = ("rate %.0f deg/s is beyond the gyro's +/-%.0f deg/s range"
+                           % (rate_deg_s, MAX_ABS_PITCH_RATE_DEG_S))
         if failure is not None:
             self.get_logger().warn(
                 "Pitch rate unavailable this cycle (sent as NaN; the angles are unaffected): "
                 + failure, throttle_duration_sec=1.0)
             return float('nan')
-        return self.pitch_rate_sign * math.degrees(rate_rad_s)
+        return rate_deg_s
 
 def main(args=None):
     rclpy.init(args=args)

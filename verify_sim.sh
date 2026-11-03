@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Tier 3 check: do the real controllers run against the SIMULATED robot (rocko_env/SimPlant), does
 # the simulated pitch respond to the wheels, does the simulated robot fall when its motors give no
-# torque, and do the stage 4 safeguards (findings H-4, C-3, C-2, H-6) do what they say?
+# torque, and do the stage 4 safeguards (findings H-4, C-3, C-2, H-6, H-11) do what they say?
 #
 # Run inside the Docker dev container, after build_ros.sh. From the repo root on your laptop:
 #   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh
-# Or only some checks, by name (any of S1 S2a H4 C3 C2 H6, in any order):
+# Or only some checks, by name (any of S1 S2a H4 C3 C2 H6 FF, in any order):
 #   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh H4 C3
 #
 # THE SIMULATOR IS A MODEL WITH ESTIMATED, UNMEASURED PARAMETERS (docs/architecture/sim-plant.md).
@@ -56,6 +56,16 @@
 #   H6   initial_pitch_deg:=2.0. pitch_pid_controller's feedback_dot (its D term's derivative) must
 #        be finite, reach H6_MIN_RATE_DEG_S, equal the exported pitch_rate of the same cycle within
 #        H6_TOLERANCE_DEG_S, and error_dot must be -feedback_dot (rate reference 0).
+#   FF   feedforward age limit (finding H-11). A script publishes FEEDFORWARD_RAD_S on both
+#        /left_feedforward and /right_feedforward at FF_RATE_HZ for FF_PUBLISH_S, then is killed (the
+#        stand-in for DiffDriveController.py dying). Each of left_ and right_add_feedforward_controller
+#        must log 'Feedforward on ... ms old' exactly once after the kill, between FF_EARLIEST_S and
+#        FF_AGE_S + FF_MARGIN_S after it, never before the publisher started, and the controllers
+#        must stay active (only the feedforward term goes to 0.0). A time-out WHILE the publisher
+#        runs is printed as a note, not judged: it is a real delivery gap (if it came less than
+#        FF_LOG_GAP_S before the kill and no line follows the kill, FF exits 2, could not judge,
+#        because the controller rate-limits these lines). What the wheel command
+#        then is, is not judged here: the host test tools/feedforward_timeout_test.cpp checks the value.
 #
 # Exit status:  0 = PASS   1 = FAIL (what was wrong is printed)
 #               2 = could not run (no build, a controller_manager already running, an unknown
@@ -66,7 +76,7 @@
 # No `set -e`: grep and timeout are EXPECTED to "fail" while we wait for things to come up.
 set -uo pipefail
 
-ALL_CHECKS="S1 S2a H4 C3 C2 H6"
+ALL_CHECKS="S1 S2a H4 C3 C2 H6 FF"
 selected="${*:-$ALL_CHECKS}"
 for c in $selected; do
   [[ " $ALL_CHECKS " == *" $c "* ]] || { echo "ERROR: unknown check '$c' (known: $ALL_CHECKS)" >&2; exit 2; }
@@ -121,6 +131,22 @@ MIN_SAMPLES=50         # [samples] the fewest a scenario check judges from: 0.5 
 H6_MIN_RATE_DEG_S=1.0  # [deg/s] |feedback_dot| must reach this: from a 2 deg start the model's pitch
                        #   rate is tens of deg/s, while a D term that reads no rate gives exactly 0
 H6_TOLERANCE_DEG_S=1e-9  # [deg/s] pid_controller copies the state value; only float noise allowed
+FF_PUBLISH_S=4         # [s] FF publishes the feedforward this long before killing the publisher;
+                       #   `ros2 topic pub` needs a second or two to start, so >= 2 s of messages
+FF_AGE_S=0.2           # [s] kMaxFeedforwardAgeNs in AddFeedforwardController.hpp (200 ms). Keep equal
+FF_RATE_HZ=100         # [Hz] the rate DiffDriveController.py publishes at (timer_period 0.01 s). At
+                       #   20 Hz one run (2026-11-03) saw a 202 ms gap in delivery to one controller
+                       #   while the publisher was running, a false time-out; at the real node's rate
+                       #   a 200 ms gap needs 20 lost messages, not 4
+FF_EARLIEST_S=0.1      # [s] the time-out must not be logged sooner than this after the kill. The last
+                       #   message left at most one 10 ms publish period before it, so a correct
+                       #   200 ms limit logs about 0.19-0.21 s after; a limit of about 100 ms or less,
+                       #   or a time-out while messages were still arriving, logs before 0.1 s
+FF_MARGIN_S=0.3        # [s] allowed lateness after FF_AGE_S: one 10 ms cycle, plus the kill and DDS
+                       #   in the container (generous, as TELEOP_MARGIN_S)
+FF_LOG_GAP_S=1.0       # [s] kTimeoutLogMinCycles (100) at update_rate 100: after a logged time-out,
+                       #   the next one is counted but not logged for this long. A delivery gap
+                       #   this close before the kill can hide the kill's line: FF cannot judge then
 
 WS="${ROS2_WS:-$HOME/ros2_ws}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -517,6 +543,89 @@ check_pitch_rate() {
   judge "$status" "${failures[@]}"
 }
 
+# FF: the feedforward age limit (finding H-11). A publisher feeds both wheels, then dies.
+check_feedforward_age() {
+  new_run "FF-feedforward-age"
+  launch teleop:=false
+  zero_reference
+  wait_for_wiring
+  local failures=() side log="$dir/launch.log" ff_pids=() pid
+  [ ${#problems[@]} -ne 0 ] && failures+=("before the feedforward: ${problems[*]}")
+  # Stamps on the same system clock as the ROS log stamps.
+  local started killed
+  started="$(date +%s.%N)"
+  for side in left right; do
+    # Unbuffered, so its 'publishing #' lines reach the log before the SIGKILL below.
+    start_group "$dir/ff_$side.log" env PYTHONUNBUFFERED=1 ros2 topic pub -r "$FF_RATE_HZ" \
+      "/${side}_feedforward" std_msgs/msg/Float64 "{data: $FEEDFORWARD_RAD_S}"
+    ff_pids+=("$!")
+  done
+  sleep "$FF_PUBLISH_S"
+  # The kill is the stand-in for DiffDriveController.py dying: SIGKILL, so no message goes out after
+  # it. The time is taken just before.
+  killed="$(date +%s.%N)"
+  for pid in "${ff_pids[@]}"; do kill -KILL -- "-$pid" 2>/dev/null; wait "$pid" 2>/dev/null; done
+  local status=0 deadline
+  for side in left right; do
+    local pattern="\[${side}_add_feedforward_controller\]: Feedforward on .* ms old"
+    local stamps=() after=() during=0 before=0 stamp last_during=""
+    # Wait (for log flushing) until a time-out line stamped after the kill appears, or give up.
+    deadline=$((SECONDS + REARM_REPLY_WAIT_S))
+    while :; do
+      mapfile -t stamps < <(grep -E "$pattern" "$log" \
+        | sed -n 's/.*\[\(INFO\|WARN\|ERROR\)\] \[\([0-9]*\.[0-9]*\)\].*/\2/p')
+      after=()
+      for stamp in "${stamps[@]}"; do seconds_between "$killed" "$stamp" 0 && after+=("$stamp"); done
+      [ ${#after[@]} -gt 0 ] || [ $SECONDS -ge $deadline ] && break
+      sleep 0.5
+    done
+    for stamp in "${stamps[@]}"; do
+      if ! seconds_between "$started" "$stamp" 0; then
+        before=$((before + 1))
+      elif ! seconds_between "$killed" "$stamp" 0; then
+        during=$((during + 1))
+        last_during="$stamp"
+      fi
+    done
+    # Before any feedforward was sent there is nothing to age out (the "never arrived" rule).
+    [ "$before" -eq 0 ] \
+      || failures+=("${side}_add_feedforward_controller logged a time-out $before time(s) before any feedforward was sent")
+    # While the publisher ran, a time-out means a real delivery gap of more than FF_AGE_S (the
+    # publisher is a Python process sharing the container's CPUs; seen once at 20 Hz and once at
+    # 100 Hz, always on one wheel only, so not a stall of the controller's executor, which serves
+    # both). Reported, not judged: it is what the limit is for.
+    [ "$during" -gt 0 ] \
+      && echo "    note: ${side}: $during time-out(s) while the publisher was running (a delivery gap > $FF_AGE_S s)"
+    if [ ${#after[@]} -ge 1 ]; then
+      stamp="${after[0]}"
+      echo "    ${side}: time-out logged $(awk -v a="$killed" -v b="$stamp" 'BEGIN {printf "%.3f", b - a}') s after the kill (${#after[@]} line(s) after it)"
+      if ! seconds_between "$killed" "$stamp" "$FF_EARLIEST_S"; then
+        failures+=("${side}_add_feedforward_controller logged the time-out less than $FF_EARLIEST_S s after the kill (killed $killed, logged $stamp): the limit is shorter than $FF_AGE_S s")
+      elif seconds_between "$killed" "$stamp" "$(awk -v a="$FF_AGE_S" -v b="$FF_MARGIN_S" 'BEGIN {print a + b}')"; then
+        failures+=("${side}_add_feedforward_controller logged the time-out more than $FF_AGE_S + $FF_MARGIN_S s after the kill (killed $killed, logged $stamp)")
+      fi
+      [ ${#after[@]} -eq 1 ] \
+        || failures+=("${side}_add_feedforward_controller logged the time-out ${#after[@]} times after the kill, expected once")
+    elif [ -n "$last_during" ] && ! seconds_between "$last_during" "$killed" "$FF_LOG_GAP_S"; then
+      # The controller logs at most one time-out line per FF_LOG_GAP_S, so the kill's time-out may
+      # have been counted but not logged. Not the controller's fault, and not a pass either.
+      echo "    ${side}: a time-out was logged less than $FF_LOG_GAP_S s before the kill, so the kill's line may be suppressed: cannot judge"
+      status=2
+    elif grep -q "publishing #" "$dir/ff_$side.log"; then
+      failures+=("${side}_add_feedforward_controller never logged 'Feedforward on ... ms old' after its publisher was killed")
+    else
+      # Nothing was ever sent, so there was nothing to age out: not the controller's fault.
+      echo "    ${side}: the publisher never logged 'publishing #' (see $dir/ff_$side.log)"
+      status=2
+    fi
+  done
+  # Only the feedforward term goes to 0.0: nothing may be deactivated.
+  wiring_problems
+  [ ${#problems[@]} -ne 0 ] && failures+=("after the time-out: ${problems[*]}")
+  note_tipover
+  judge "$status" "${failures[@]}"
+}
+
 wants S1 && run "S1-baseline" - still "$S1_STILL_DEG"
 wants S1 && run "S1-command" "$FEEDFORWARD_RAD_S" change "$S1_CHANGE_DEG"
 wants S2a && run "S2a-no-torque" - exceed "$TIPOVER_DEG" disable_torque:=true initial_pitch_deg:=2.0
@@ -525,6 +634,7 @@ wants C3 && check_teleop
 wants C2 && check_imu_fault short "$IMU_FAULT_SHORT_S"
 wants C2 && check_imu_fault long "$IMU_FAULT_LONG_S"
 wants H6 && check_pitch_rate
+wants FF && check_feedforward_age
 
 if [ "$failed" -ne 0 ]; then
   echo "FAIL (simulation: $selected): see above."
@@ -546,6 +656,8 @@ wants C3 && echo "  C3: when the fake gamepad went silent the velocity reference
 wants C2 && echo "  C2: a $IMU_FAULT_SHORT_S s IMU outage gave no ERROR; a $IMU_FAULT_LONG_S s one made read() return ERROR and
     controller_manager deactivate the hardware; the exported pitch was never 0.0 or NaN."
 wants H6 && echo "  H6: pitch_pid_controller's D term reads the exported pitch_rate (gyro), not a differentiated angle."
+wants FF && echo "  FF: when the feedforward publisher died, both controllers timed it out once, $FF_EARLIEST_S to
+    $FF_AGE_S + $FF_MARGIN_S s later, and stayed active."
 echo "  This is a MODEL WITH ESTIMATED, UNMEASURED PARAMETERS. It does not show that the real robot"
 echo "  balances, or that any gain is good."
 exit 0
