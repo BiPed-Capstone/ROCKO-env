@@ -80,6 +80,24 @@ between the pitch loop and the hardware, adding its term to what it is passed.
 
 Feedforward is a refinement on a working cascade, not a substitute for one. Tune it last.
 
+## The last controller is also where the safeguards sit
+
+Because `AddFeedforwardController` writes the number the motor plugin sees, it is also where one
+safeguard lives: the **tipover cutoff** (finding H-4). Each wheel's instance reads the IMU's pitch and,
+if `|pitch|` goes past `tipover_pitch_deg` (35 deg, a proposed value taken from the finding's write-up, not
+from this robot), writes `0.0` every cycle until a person re-arms it. The reason is physical: past the lean
+the robot can still recover from, the wheels cannot get back under the body, so driving them does no good.
+A re-arm is one message, `ros2 topic pub --once -w 2 /tipover_rearm std_msgs/msg/Empty {}`, which both
+wheels' instances receive (`-w 2` because plain `--once` re-arms only one wheel), and it is accepted only
+while `|pitch|` is at or below `rearm_max_pitch_deg` (10 deg, also proposed). The cutoff does not stop the
+two PID loops above it, which is the open risk of finding H-10. It zeroes the wheels only **after** the
+robot has fallen, the opposite of the rule below for a lost gamepad. The other safeguard, the **teleop watchdog** (finding C-3),
+sits at the other end of the chain, in `DiffDriveController.py`: when no gamepad command has arrived
+for 0.2 s (proposed) it makes the velocity reference zero and keeps the cascade running, because for a
+robot that stands only while the wheels keep chasing its lean, stopping the motors is falling over.
+Both were checked only in the simulation model; see
+[the verification ladder](verification-ladder.md).
+
 ## How ros2_control expresses this
 
 `ros2_control` supports **chained controllers**: a controller can export *reference interfaces* that

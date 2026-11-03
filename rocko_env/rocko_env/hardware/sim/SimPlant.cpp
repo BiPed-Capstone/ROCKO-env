@@ -33,7 +33,8 @@ constexpr int kLogThrottleMs = 1000;  // [ms]
 // MockRocko block use, in the same order as the xacro lists them.
 const char * const kJointNames[] = {"left_wheel_joint", "right_wheel_joint"};
 const char * const kStateNames[] = {
-  hardware_interface::HW_IF_POSITION, hardware_interface::HW_IF_VELOCITY, "yaw", "pitch", "roll"};
+  hardware_interface::HW_IF_POSITION, hardware_interface::HW_IF_VELOCITY, "yaw", "pitch", "roll",
+  "pitch_rate"};
 
 // "true" / "false" only. hardware_interface::parse_bool reads anything else as false, which would
 // turn a typo like disable_torque=ture into a silent false.
@@ -78,7 +79,7 @@ bool check_joint_interfaces(
     if (!ok) {
       RCLCPP_FATAL(
         logger, "Joint %zu ('%s') must be '%s' with command 'velocity' and states position, "
-        "velocity, yaw, pitch, roll in that order (the real hardware's interfaces).",
+        "velocity, yaw, pitch, roll, pitch_rate in that order (the real hardware's interfaces).",
         j, joint.name.c_str(), kJointNames[j]);
       return false;
     }
@@ -218,6 +219,7 @@ std::vector<hardware_interface::StateInterface> SimPlant::export_state_interface
     states.emplace_back(kJointNames[j], "yaw", &yaw_deg_);
     states.emplace_back(kJointNames[j], "pitch", &pitch_deg_);
     states.emplace_back(kJointNames[j], "roll", &roll_deg_);
+    states.emplace_back(kJointNames[j], "pitch_rate", &pitch_rate_deg_s_);
   }
   return states;
 }
@@ -238,6 +240,7 @@ hardware_interface::CallbackReturn SimPlant::on_activate(const rclcpp_lifecycle:
   left_command_rad_s_ = kNaN;
   right_command_rad_s_ = kNaN;
   pitch_deg_ = imu_.pitch_deg();  // NaN until the first read
+  pitch_rate_deg_s_ = imu_.pitch_rate_deg_s();  // NaN until the first read
   released_ = false;
   unintegrated_s_ = 0.0;
   fallen_reported_ = false;
@@ -303,14 +306,19 @@ hardware_interface::return_type SimPlant::read(
     t >= params_.imu_fault_start_s && t < params_.imu_fault_start_s + params_.imu_fault_duration_s;
   // update() returns false once the fault tracker has tripped, i.e. read() must now return ERROR
   // (a good read always gives true). On a failed read it keeps the last good pitch, never 0.0.
-  // A NaN from the model is a failed read too (never exported as a pitch).
+  // A NaN from the model is a failed read too (never exported as a pitch). The pitch rate (finding
+  // H-6) comes from the same simulated read: both good, or the whole read failed.
   const double model_pitch_deg = model_->imu_pitch_deg();
-  const bool imu_ok = imu_.update(!imu_outage && std::isfinite(model_pitch_deg), model_pitch_deg);
+  const double model_pitch_rate_deg_s = model_->imu_pitch_rate_deg_s();
+  const bool imu_ok = imu_.update(
+    !imu_outage && std::isfinite(model_pitch_deg) && std::isfinite(model_pitch_rate_deg_s),
+    model_pitch_deg, model_pitch_rate_deg_s);
   pitch_deg_ = imu_.pitch_deg();
+  pitch_rate_deg_s_ = imu_.pitch_rate_deg_s();
   if (imu_outage) {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), kLogThrottleMs,
       "SimPlant: injected IMU read failure: %d failed in a row, %lu in total. Holding the last "
-      "good pitch.", imu_.tracker().consecutive_failures(), imu_.tracker().total_failures());
+      "good pitch and pitch rate.", imu_.tracker().consecutive_failures(), imu_.tracker().total_failures());
   }
   if (!imu_ok) {
     return hardware_interface::return_type::ERROR;

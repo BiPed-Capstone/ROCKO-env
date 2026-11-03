@@ -88,8 +88,14 @@ a video and hard to see in a plot.
 ## Before an on-robot test
 
 - Tether or hold the robot, and know where the kill path is.
-- Note that **there is currently no tipover cutoff and no comms-loss failsafe** (findings H-4 and C-3).
-  The robot will keep driving with the gamepad unplugged. Plan the test around that.
+- Know what the safeguards are, and that none has been run on a robot: a tipover cutoff (finding H-4,
+  proposed limit 35 deg of reported pitch, on by default, re-armed only by one `/tipover_rearm` topic message
+  sent while the pitch is within 10 deg of upright, `ros2 topic pub --once -w 2 /tipover_rearm
+  std_msgs/msg/Empty {}`) and a
+  comms-loss failsafe (finding C-3: after 0.2 s without a gamepad command the velocity reference becomes
+  zero while the balance loop keeps running; the laptop script must be the current one). Both were checked
+  only in the simulation model. Keep a way to cut motor power within reach, and see the stage 4 robot
+  procedures in the [run journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
 - Confirm the battery is above the range you intend to report.
 
 ## Reporting honestly

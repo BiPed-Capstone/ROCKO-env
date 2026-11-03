@@ -155,16 +155,16 @@ Success:
 ```
 ok    rocko mock=false
 ok    rocko mock=true
-ok    rocko: the mock exports the same 12 interfaces as the real hardware
+ok    rocko: the mock exports the same 14 interfaces as the real hardware
 ok    rocko_tank_mode mock=false
 ok    rocko_tank_mode mock=true
 ok    rocko_tank_mode: the mock exports the same 6 interfaces as the real hardware
 ok    rocko sim=true mock=false
-ok    rocko sim=true mock=false: the sim exports the same 12 interfaces as the real hardware
+ok    rocko sim=true mock=false: the sim exports the same 14 interfaces as the real hardware
 ok    rocko sim=true mock=true
-ok    rocko sim=true mock=true: the sim exports the same 12 interfaces as the real hardware
+ok    rocko sim=true mock=true: the sim exports the same 14 interfaces as the real hardware
 ok    rocko_tank_mode sim=true (ignored by design)
-      ok    18 wiring values equal, with their types (gains maps: next check)
+      ok    17 wiring values equal, with their types, plus 1 allowed difference(s) (INTENTIONAL_WIRING_DIFFERENCES; gains maps: next check)
       ok    each controller's `gains` keys are its dof_names in both files; every gains key except the tunable numbers is equal
       ok    29 simulator settings: header, xacro and ros2_control params agree; 10 launch-file defaults match the xacro
       ok    IMU fault limit equal in ICM20948.hpp and SimPlantModel.hpp
@@ -252,23 +252,50 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 ```
 
 What happens: it launches the same controllers against `rocko_env/SimPlant`, a physics **model** of the
-robot, three times in a row (`rocko_sim.launch.py teleop:=false`). It checks that the four cascade
-controllers and `joint_state_broadcaster` go active with all 12 interfaces, that the simulated pitch
-does not move when nothing pushes it (S1 baseline), that it does move when the wheels get a command
-(S1 command), and that with the motors producing no torque the robot passes 35 deg within 0.48 s (S2a).
-It needs step 2 first. The total time was not measured; each wait in the script is bounded.
+robot, once per check (`rocko_sim.launch.py`), one launch after another. With no arguments it runs six
+checks in 8 launches and took about 119 s in the arm64 container on 2026-11-02 (one measurement, taken
+before `H4`'s recording window grew from 8 s to 16 s, so expect a little longer; each wait in the script is
+bounded):
 
-Success: it ends with `PASS (simulation, S1 and S2a)` and exit status 0. A failure prints `FAIL` with
-the run that failed and why, and exits 1; exit 2 means it could not run or could not judge (`COULD NOT JUDGE`: the probe saw no messages or no movement; read its reason and the kept run directory) — e.g. no build yet, or a controller
-manager is already running: restart the container as in step 4). Every run must also show that the
-robot was *released* (SimPlant logs it) at least 3 s before the probe stopped, so a robot that never
-moved cannot pass the baseline. On anything but a pass the script keeps its run directory (launch
-logs, `samples.csv`, `metrics.json` per run) and prints its path inside the container; on a pass it
+| Check | What it shows, in the model |
+| --- | --- |
+| `S1` (2 launches) | The four cascade controllers and `joint_state_broadcaster` go active with all 14 interfaces; the simulated pitch does not move when nothing pushes it (baseline) and does move when the wheels get a command |
+| `S2a` | With the motors producing no torque the robot passes 35 deg within 0.48 s |
+| `H4` | The tipover cutoff (finding H-4): started 5 deg past the limit, both wheel controllers trip in their first cycle, every command written past the limit is exactly 0.0, one `/tipover_rearm` message sent while still past the limit is refused by **both** wheel controllers, and the controllers stay active |
+| `C3` | The teleop watchdog (finding C-3): when a fake gamepad goes silent, the velocity reference becomes exactly `[0, 0]` between 0.2 s and 0.3 s later and the balance loop keeps running; the log must show `teleop commands resumed` before the first `teleop command timed out` |
+| `C2` (2 launches) | An IMU outage (finding C-2): a 0.03 s one causes no `ERROR`; a 0.2 s one makes `read()` return `ERROR` and `controller_manager` deactivate the hardware; the pitch is never exported as 0.0 or NaN |
+| `H6` | The pitch PID's D term reads the exported gyro `pitch_rate` (finding H-6) |
+
+To run only some, name them, in any order (the names are `S1 S2a H4 C3 C2 H6`):
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh H4 C3
+```
+
+An unknown name exits 2 and prints the known ones. Use this while working on one safeguard; run the
+whole script before you report.
+
+It needs step 2 first (the build).
+
+Success: with no arguments it ends with `PASS (simulation: S1 S2a H4 C3 C2 H6)` and exit status 0,
+followed by one line per check (with only some checks, the names that ran are listed instead). A failure
+prints `FAIL` with the run that failed and why, and exits 1; exit 2 means it could not run or could not
+judge (`COULD NOT JUDGE`: a probe saw no messages or no movement; read its reason and the kept run
+directory) — e.g. no build yet, or a controller manager is already running: restart the container as in
+step 4). Every S1 and S2a run must also show that the robot was *released* (SimPlant logs it) at least
+3 s before the probe stopped, so a robot that never moved cannot pass the baseline. The run in
+`H4`, `C3`, `C2` and `H6` also prints its own evidence (the log lines it found and the counts it
+checked). In the `S1 command` and `S2a` runs the robot falls past 35 deg, so you will also see
+`note: the tipover cutoff tripped in this run`; that is expected. In the long `C2` run the script prints
+what `controller_manager` did after the `ERROR` (it deactivated the hardware and all five controllers);
+that is the finding, not a failure. On anything but a pass the script keeps its run directory (launch
+logs, `samples.csv` and `metrics.json` per run) and prints its path inside the container; on a pass it
 deletes it.
 
 **What a pass does not tell you.** Every physical number in the model (masses, inertia, motor
 constants, the IMU delay) is an estimate; nothing was measured on the robot. No scenario that checks
-the controllers *hold* the model upright exists yet, so a pass does not mean the cascade balances,
+the controllers *hold* the model upright exists yet (the safeguard checks above run for a few seconds
+and look at the safeguard, not at balance), so a pass does not mean the cascade balances,
 and it certainly does not mean the real robot balances or that any gain is good. The
 [verification ladder](../architecture/verification-ladder.md) says what is and is not built, and
 [the model's specification](../architecture/sim-plant.md) says what it leaves out.
@@ -283,6 +310,20 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
 
 Success: it prints `all SimPlantModel tests passed` and exits 0. It is not a tier and nothing runs it
 automatically.
+
+The stage 4 safeguards have four more host tests of the same kind (no ROS, no container needed; from
+the repo root; not tiers, and nothing runs them automatically):
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/tipover_latch_test.cpp -o /tmp/tipover_latch_test && /tmp/tipover_latch_test
+python3 -I tools/teleop_watchdog_test.py
+python3 -I tools/computer_joystick_heartbeat_test.py
+python3 -I tools/imu_node_test.py
+```
+
+Success: `all TipoverLatch tests passed` (exit 0); the three Python tests print `PASS <name>` per check and
+then `16/16 passed`, `5/5 passed` and `4/4 passed`, exit 0 (2026-11-02). What they do and do not prove is in the
+[verification ladder](../architecture/verification-ladder.md#the-host-tests-of-the-stage-4-safeguards-not-tiers).
 
 ## 6. What to do next
 

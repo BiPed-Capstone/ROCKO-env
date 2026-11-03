@@ -16,10 +16,10 @@
 namespace rocko_env
 {
 // The simulated robot, as a ros2_control hardware plugin (Tier 3, docs/architecture/sim-plant.md).
-// It stands in for BOTH motor plugins and the IMU plugin at once and exports exactly the same 12
+// It stands in for BOTH motor plugins and the IMU plugin at once and exports exactly the same 14
 // interfaces they do, so the real controllers load against it unchanged:
 //   left_wheel_joint, right_wheel_joint: command velocity [rad/s]; states position [m],
-//   velocity [m/s], yaw [deg], pitch [deg], roll [deg].
+//   velocity [m/s], yaw [deg], pitch [deg], roll [deg], pitch_rate [deg/s].
 // The physics is in SimPlantModel.hpp. Every physical number is an ESTIMATE, NOT MEASURED.
 //
 // "Released": the simulated robot is held still at its starting lean until the controllers have
@@ -68,6 +68,7 @@ private:
   double left_velocity_m_s_ = 0.0;  // [m/s]
   double right_velocity_m_s_ = 0.0;
   double pitch_deg_ = kNaN;         // [deg] both joints, as on the robot (one IMU)
+  double pitch_rate_deg_s_ = kNaN;  // [deg/s] both joints; the CURRENT rate, no IMU delay (H-6)
   double yaw_deg_ = 0.0;            // [deg] always 0: the planar model has no yaw
   double roll_deg_ = 0.0;           // [deg] always 0: the planar model has no roll
 

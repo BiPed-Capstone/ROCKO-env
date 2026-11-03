@@ -352,6 +352,13 @@ public:
     const double delayed_lean = lean_history_[(history_head_ + n - delay) % n];
     return p_.pitch_sign * rad_to_deg(delayed_lean) + p_.imu_pitch_bias_deg;
   }
+  // Pitch rate as the gyro would report it [deg/s], same sign as imu_pitch_deg() (finding H-6).
+  // The CURRENT lean rate, NOT delayed by imu_delay_ms: the gyro's rate skips the fusion filter that
+  // the delay stands in for (spec §3.7). No bias term: a constant angle error has no rate.
+  double imu_pitch_rate_deg_s() const
+  {
+    return p_.pitch_sign * rad_to_deg(state_.psi_dot);
+  }
   // Chassis-relative wheel travel [m] (what an encoder on the motor measures).
   double position_m() const
   {
@@ -443,9 +450,9 @@ private:
 };
 
 // ---- The simulated IMU read, with the finding C-2 policy of ICM20948::read() (spec §5) -----------
-// A failed read keeps the last good pitch (never 0.0; NaN only if there was never a good read) and is
-// counted; once ImuFaultTracker trips, read() must return ERROR. A good read always returns OK, as
-// in ICM20948::read().
+// A failed read keeps the last good pitch and pitch rate (never 0.0; NaN only if there was never a
+// good read) and is counted; once ImuFaultTracker trips, read() must return ERROR. A good read always
+// returns OK, as in ICM20948::read(), where one read gives both values.
 class SimImuOutput
 {
 public:
@@ -457,24 +464,28 @@ public:
   void reset()
   {
     pitch_deg_ = std::numeric_limits<double>::quiet_NaN();
+    pitch_rate_deg_s_ = std::numeric_limits<double>::quiet_NaN();
     tracker_ = ImuFaultTracker(kMaxConsecutiveFailures);
   }
 
   // Returns false when read() must return ERROR.
-  bool update(bool read_ok, double measured_pitch_deg)
+  bool update(bool read_ok, double measured_pitch_deg, double measured_pitch_rate_deg_s)
   {
     if (read_ok) {
       pitch_deg_ = measured_pitch_deg;
+      pitch_rate_deg_s_ = measured_pitch_rate_deg_s;
     }
     tracker_.record(read_ok);
     return read_ok || !tracker_.tripped();
   }
 
   double pitch_deg() const {return pitch_deg_;}
+  double pitch_rate_deg_s() const {return pitch_rate_deg_s_;}
   const ImuFaultTracker & tracker() const {return tracker_;}
 
 private:
-  double pitch_deg_ = std::numeric_limits<double>::quiet_NaN();  // [deg] exported pitch
+  double pitch_deg_ = std::numeric_limits<double>::quiet_NaN();         // [deg] exported pitch
+  double pitch_rate_deg_s_ = std::numeric_limits<double>::quiet_NaN();  // [deg/s] exported rate
   ImuFaultTracker tracker_{kMaxConsecutiveFailures};
 };
 

@@ -6,6 +6,12 @@
 float64 yaw
 float64 pitch
 float64 roll
-# true only if all three angles above come from one good sensor read.
-# false means the read failed: yaw/pitch/roll are NaN and must be ignored.
+# Pitch RATE in DEGREES PER SECOND, from the BNO055 gyroscope (not differentiated from the angle),
+# for the pitch controller's D term (finding H-6). Meant to have the SAME sign as pitch: positive
+# while pitch is increasing. Which gyro axis is pitch, and its sign, are node parameters that are
+# UNVERIFIED until someone tilts the robot (ICM20948.py, pitch_rate_axis / pitch_rate_sign).
+# NaN when this cycle's gyro read failed, INDEPENDENTLY of `success`: check it on its own.
+float64 pitch_rate_deg_s
+# true only if all three ANGLES above come from one good sensor read. It says nothing about
+# pitch_rate_deg_s. false means the angle read failed: yaw/pitch/roll are NaN and must be ignored.
 bool success

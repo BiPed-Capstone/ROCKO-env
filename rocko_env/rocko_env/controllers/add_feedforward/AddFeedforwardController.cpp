@@ -61,8 +61,19 @@ AddFeedforwardController::command_interface_configuration() const
 controller_interface::InterfaceConfiguration AddFeedforwardController::state_interface_configuration()
   const
 {
-  return controller_interface::InterfaceConfiguration{
-    controller_interface::interface_configuration_type::NONE};
+  // The only state this controller reads is pitch, for the tipover cutoff (finding H-4). With the
+  // cutoff disabled it claims nothing. Called after on_configure, which sets pitch_interface_name_.
+  // A state interface can be claimed by several controllers at once (pitch_pid_controller reads
+  // the same one), so this takes nothing away from the cascade.
+  if (!tipover_enabled_)
+  {
+    return controller_interface::InterfaceConfiguration{
+      controller_interface::interface_configuration_type::NONE};
+  }
+  controller_interface::InterfaceConfiguration state_interfaces_config;
+  state_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
+  state_interfaces_config.names = {pitch_interface_name_};
+  return state_interfaces_config;
 }
 
 controller_interface::CallbackReturn AddFeedforwardController::on_configure(
@@ -102,6 +113,86 @@ controller_interface::CallbackReturn AddFeedforwardController::on_configure(
   last_command_.assign(command_interface_names_.size(), 0.0);
   stale_reference_cycles_.assign(command_interface_names_.size(), 0);
 
+  return configure_tipover_cutoff();
+}
+
+controller_interface::CallbackReturn AddFeedforwardController::configure_tipover_cutoff()
+{
+  // --- Tipover cutoff (finding H-4) ---
+  // Why: past a certain lean the wheels can no longer get back under the body, so the robot cannot
+  // recover. Driving them then only spins them against the floor, or shoves the robot that is
+  // already lying there; zero output is the least harmful thing the motors can do (TipoverLatch.hpp
+  // says more). This ADDS a safeguard and weakens nothing: with the robot inside the limit every
+  // command is exactly what it was before.
+  // The limit is a hardware decision, so it is a parameter (tipover_pitch_deg, proposed 35 deg from
+  // the H-4 write-up in docs/claude-analysis/balance-loop-findings.md, not from this robot's
+  // physics; a tethered measurement replaces it). It is compared with the pitch the IMU plugin
+  // reports, which has ICM20948.py's +7.6 deg pitch_offset already added. Whether reported 0.0 is
+  // truly upright is unmeasured, so in true lean the cutoff may sit nearer 35 - 7.6 on one side and
+  // 35 + 7.6 on the other.
+  tipover_pitch_deg_ = params_.tipover_pitch_deg;
+  rearm_max_pitch_deg_ = params_.rearm_max_pitch_deg;
+  tipover_enabled_ = TipoverLatch::is_enabled(tipover_pitch_deg_);
+  if (!tipover_enabled_)
+  {
+    // Loud on purpose: running a balancing robot without the cutoff should never go unnoticed.
+    // (Only here, once: a repeating reminder would have to come from the 100 Hz loop.)
+    RCLCPP_WARN(
+      get_node()->get_logger(),
+      "TIPOVER CUTOFF DISABLED (tipover_pitch_deg = %f, which is <= 0). This controller "
+      "will keep driving the wheel however far the robot leans.",
+      tipover_pitch_deg_);
+    rearm_sub_.reset();  // in case an earlier configure (with the cutoff on) created it
+    return controller_interface::CallbackReturn::SUCCESS;
+  }
+
+  if (!TipoverLatch::is_valid_rearm_max(rearm_max_pitch_deg_, tipover_pitch_deg_))
+  {
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "rearm_max_pitch_deg = %f is unusable: it must be > 0 and < tipover_pitch_deg (%f), so a "
+      "re-arm needs the robot clearly back up. Refusing to configure.",
+      rearm_max_pitch_deg_, tipover_pitch_deg_);
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
+  // Default pitch interface: "<joint>/pitch", where <joint> comes from the first command
+  // interface ("left_wheel_joint/velocity" -> "left_wheel_joint/pitch"). The IMU plugin, the mock
+  // and SimPlant all export pitch under each wheel joint, so rocko_controllers.yaml needs no edit.
+  // The boring alternative, making pitch_interface a required key, was rejected because it would
+  // need a line added to rocko_controllers.yaml, a human-gated file (CLAUDE.md section 3).
+  pitch_interface_name_ = params_.pitch_interface;
+  if (pitch_interface_name_.empty())
+  {
+    const std::string & first_command = command_interface_names_.front();  // not_empty<> checked
+    const size_t slash = first_command.rfind('/');
+    if (slash == std::string::npos || slash == 0)
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "Cannot derive the pitch interface from '%s' (expected '<joint>/<interface>'); set "
+        "pitch_interface explicitly.",
+        first_command.c_str());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+    pitch_interface_name_ = first_command.substr(0, slash) + "/pitch";
+  }
+
+  // Re-arming is a deliberate operator action, never automatic. The callback runs on the
+  // executor thread and only sets an atomic flag; the 100 Hz loop decides (see update).
+  // kRearmTopic is absolute, so the left and right instances subscribe to the same topic and one
+  // publish re-arms both wheels. The logged command uses "-w 2": `ros2 topic pub --once` waits for
+  // one subscriber by default, and could publish before it has found the second wheel's.
+  rearm_sub_ = get_node()->create_subscription<std_msgs::msg::Empty>(
+    kRearmTopic, rclcpp::SystemDefaultsQoS(),
+    [this](const std_msgs::msg::Empty::SharedPtr /*msg*/) { tipover_latch_.request_rearm(); });
+
+  RCLCPP_INFO(
+    get_node()->get_logger(),
+    "Tipover cutoff ON: |%s| > %.1f deg zeroes this wheel's command and latches. Re-arm both "
+    "wheels, with |pitch| <= %.1f deg, with: ros2 topic pub --once -w 2 %s std_msgs/msg/Empty {}",
+    pitch_interface_name_.c_str(), tipover_pitch_deg_, rearm_max_pitch_deg_, kRearmTopic);
+
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
@@ -122,6 +213,26 @@ controller_interface::CallbackReturn AddFeedforwardController::on_activate(
       this->get_node()->get_logger(), "Expected %zu command interfaces, got %zu",
       command_interface_names_.size(), ordered_interfaces.size());
     return controller_interface::CallbackReturn::ERROR;
+  }
+
+  // Tipover cutoff (finding H-4): refuse to activate without the pitch input rather than run
+  // silently without the cutoff. (controller_manager normally refuses first if the interface does
+  // not exist; this makes the rule hold here too.)
+  if (tipover_enabled_)
+  {
+    if (state_interfaces_.size() != 1 || state_interfaces_[0].get_name() != pitch_interface_name_)
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "Tipover cutoff needs state interface '%s', but it is not available (%zu state interfaces "
+        "claimed). Refusing to activate. To run without the cutoff, set tipover_pitch_deg <= 0.",
+        pitch_interface_name_.c_str(), state_interfaces_.size());
+      return controller_interface::CallbackReturn::ERROR;
+    }
+    // Activation is itself a deliberate operator action, so it starts armed. If the robot is still
+    // past the limit, the first update trips again before any non-zero command is written.
+    tipover_latch_.reset();
+    refusal_log_age_cycles_ = kRefusalLogMinCycles;  // the first refusal after activation is logged
   }
 
   // reset command buffer if a command came through callback when controller was inactive
@@ -180,9 +291,65 @@ controller_interface::return_type AddFeedforwardController::update_and_write_com
   //     reading the code and building it only, not on the robot.
   //   - Finding M-5: set_value() can return false. That must not look like success.
   //   - Finding H-7 (mitigation): see the NaN reset below.
+  //   - Finding H-4: past the tipover limit the command is 0.0 until an operator re-arms.
   // Findings are described in docs/claude-analysis/balance-loop-findings.md.
   const double feedforward = _feedforward.load(std::memory_order_relaxed);
   bool all_writes_ok = true;
+
+  // Tipover cutoff (finding H-4): read pitch once, let the latch decide, log only on a change.
+  // The trip and re-arm logs are not throttled but cannot repeat every cycle: a trip is logged once
+  // (the latch then stays disarmed, so kTripped cannot come back until a re-arm), and a re-arm is
+  // logged once per operator request. "Refused" has its own per-instance throttle
+  // (refusal_log_age_cycles_), in case someone publishes /tipover_rearm in a loop. (rclcpp's
+  // throttle would be wrong for all three: its state is shared by every instance of this class, so
+  // the right wheel's line would be hidden behind the left one's.)
+  // NOTE: tipover_tripped_this_cycle() below holds a copy of this block (review finding: extract
+  // it). Replacing this block with a call to it was refused by the safety-word guard hook, which
+  // counts words and cannot tell a move from a removal; a human finishes the move.
+  bool tipover_stop = false;
+  if (tipover_enabled_)
+  {
+    if (refusal_log_age_cycles_ < kRefusalLogMinCycles)
+    {
+      ++refusal_log_age_cycles_;
+    }
+    // get_optional() gives nothing if the value could not be read this cycle; treat that as NaN
+    // ("no reading"), which neither trips the cutoff nor allows a re-arm.
+    const auto pitch_reading = state_interfaces_[0].get_optional();
+    const double pitch_deg =
+      pitch_reading.has_value() ? *pitch_reading : std::numeric_limits<double>::quiet_NaN();
+    switch (tipover_latch_.update(pitch_deg, tipover_pitch_deg_, rearm_max_pitch_deg_))
+    {
+      case TipoverLatch::Event::kTripped:
+        RCLCPP_ERROR(
+          get_node()->get_logger(),
+          "TIPOVER CUTOFF TRIPPED: |pitch| = %.1f deg > %.1f deg. Wheel command zeroed and latched "
+          "(trip %lu). Stand the robot up (|pitch| <= %.1f deg), then re-arm both wheels: "
+          "ros2 topic pub --once -w 2 %s std_msgs/msg/Empty {}",
+          std::fabs(pitch_deg), tipover_pitch_deg_, tipover_latch_.trips(), rearm_max_pitch_deg_,
+          kRearmTopic);
+        break;
+      case TipoverLatch::Event::kRearmed:
+        RCLCPP_WARN(
+          get_node()->get_logger(), "Tipover cutoff RE-ARMED by operator at pitch %.1f deg.",
+          pitch_deg);
+        break;
+      case TipoverLatch::Event::kRearmRefused:
+        if (refusal_log_age_cycles_ >= kRefusalLogMinCycles)
+        {
+          refusal_log_age_cycles_ = 0;
+          RCLCPP_WARN(
+            get_node()->get_logger(),
+            "Tipover re-arm refused: pitch %.1f deg is not within +/-%.1f deg "
+            "(rearm_max_pitch_deg), or unknown. Still disarmed.",
+            pitch_deg, rearm_max_pitch_deg_);
+        }
+        break;
+      case TipoverLatch::Event::kNone:
+        break;
+    }
+    tipover_stop = !tipover_latch_.armed();
+  }
 
   // There is ONE command interface per controller instance (rocko_controllers.yaml: each of
   // left/right_add_feedforward_controller lists a single <wheel>_joint/velocity). The loop is
@@ -234,6 +401,16 @@ controller_interface::return_type AddFeedforwardController::update_and_write_com
       last_command_[i] = command;  // 0.0 after a rejection, so a following gap holds a stop
     }
 
+    // The tipover cutoff overrides everything above (reference, feedforward and the stale hold):
+    // while disarmed the wheel is commanded 0.0 every cycle. The NaN reset of the reference above
+    // still runs, so nothing stale is waiting when it is re-armed. last_command_ is zeroed too, so
+    // a reference gap right after a re-arm holds a stop, not the command from before the fall.
+    if (tipover_stop)
+    {
+      command = 0.0;
+      last_command_[i] = 0.0;
+    }
+
     if (!command_interfaces_[i].set_value(command))
     {
       all_writes_ok = false;
@@ -263,6 +440,63 @@ controller_interface::return_type AddFeedforwardController::update_and_write_com
     return controller_interface::return_type::ERROR;
   }
   return controller_interface::return_type::OK;
+}
+
+// NOT CALLED YET: the live copy is inline in update_and_write_commands() (the guard hook refused the
+// move, see docs/proposals/0003); edit both or neither.
+bool AddFeedforwardController::tipover_tripped_this_cycle()
+{
+  if (!tipover_enabled_)
+  {
+    return false;
+  }
+  // Tipover cutoff (finding H-4): read pitch once, let the latch decide, log only on a change.
+  // The trip and re-arm logs are not throttled but cannot repeat every cycle: a trip is logged once
+  // (the latch then stays disarmed, so kTripped cannot come back until a re-arm), and a re-arm is
+  // logged once per operator request. "Refused" has its own per-instance throttle
+  // (refusal_log_age_cycles_), in case someone publishes /tipover_rearm in a loop. (rclcpp's
+  // throttle would be wrong for all three: its state is shared by every instance of this class, so
+  // the right wheel's line would be hidden behind the left one's.)
+  if (refusal_log_age_cycles_ < kRefusalLogMinCycles)
+  {
+    ++refusal_log_age_cycles_;
+  }
+  // get_optional() gives nothing if the value could not be read this cycle; treat that as NaN
+  // ("no reading"), which neither trips the cutoff nor allows a re-arm.
+  const auto pitch_reading = state_interfaces_[0].get_optional();
+  const double pitch_deg =
+    pitch_reading.has_value() ? *pitch_reading : std::numeric_limits<double>::quiet_NaN();
+  switch (tipover_latch_.update(pitch_deg, tipover_pitch_deg_, rearm_max_pitch_deg_))
+  {
+    case TipoverLatch::Event::kTripped:
+      RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "TIPOVER CUTOFF TRIPPED: |pitch| = %.1f deg > %.1f deg. Wheel command zeroed and latched "
+        "(trip %lu). Stand the robot up (|pitch| <= %.1f deg), then re-arm both wheels: "
+        "ros2 topic pub --once -w 2 %s std_msgs/msg/Empty {}",
+        std::fabs(pitch_deg), tipover_pitch_deg_, tipover_latch_.trips(), rearm_max_pitch_deg_,
+        kRearmTopic);
+      break;
+    case TipoverLatch::Event::kRearmed:
+      RCLCPP_WARN(
+        get_node()->get_logger(), "Tipover cutoff RE-ARMED by operator at pitch %.1f deg.",
+        pitch_deg);
+      break;
+    case TipoverLatch::Event::kRearmRefused:
+      if (refusal_log_age_cycles_ >= kRefusalLogMinCycles)
+      {
+        refusal_log_age_cycles_ = 0;
+        RCLCPP_WARN(
+          get_node()->get_logger(),
+          "Tipover re-arm refused: pitch %.1f deg is not within +/-%.1f deg "
+          "(rearm_max_pitch_deg), or unknown. Still disarmed.",
+          pitch_deg, rearm_max_pitch_deg_);
+      }
+      break;
+    case TipoverLatch::Event::kNone:
+      break;
+  }
+  return !tipover_latch_.armed();
 }
 
 std::vector<hardware_interface::CommandInterface>

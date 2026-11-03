@@ -17,6 +17,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp_lifecycle
   rclpy
   rocko_interfaces
+  std_msgs
   generate_parameter_library
   parameter_traits
 )

@@ -41,7 +41,9 @@ the path is fixed. Before proposing gains, check the code and the findings doc f
 - Is the loop actually running at 100 Hz, without overruns?
 - Does a failed sensor read still report "upright"? (finding C-2)
 - Is the motor command still open loop — PWM straight from commanded velocity? (finding H-1)
-- Is the D term differentiating a fused angle instead of reading gyro rate? (finding H-6)
+- Is the D term differentiating a fused angle instead of reading gyro rate? (finding H-6: the plugin now
+  exports `pitch_rate` and the sim YAML uses it, but `rocko_controllers.yaml` still has `["pitch"]` and the
+  gyro axis and sign are unverified, so for the robot the answer is still yes)
 
 If any answer is yes, say clearly that tuning is premature and point at
 [`balance-loop-findings.md`](../../../docs/claude-analysis/balance-loop-findings.md). Fixing the
@@ -123,7 +125,8 @@ habit is a real record of the search.
 
 ## Safety before any on-robot test
 
-Confirm a tipover cutoff and a comms-loss failsafe exist. Today they do not (findings C-3, H-4),
-which means the robot will happily keep driving into a wall with the gamepad unplugged. Put that in
-the proposal's Risk section in so many words. Writing those safeguards is code you may do; their
-thresholds are a hardware decision (named parameter, value in a proposal).
+Confirm what the tipover cutoff and the comms-loss failsafe are doing. Both now exist in code (findings
+H-4 and C-3: `tipover_pitch_deg`, 35 deg proposed, with its re-arm band `rearm_max_pitch_deg`, 10 deg proposed, and `command_timeout_s`, 0.2 s proposed), but neither
+has been run on a robot, and the cutoff does not stop the upstream PID integrators winding up, so a
+re-arm can lurch (finding H-10). Put the status, and that, in the proposal's Risk section in so many
+words. Their thresholds are a hardware decision (a named parameter, the value in a proposal).

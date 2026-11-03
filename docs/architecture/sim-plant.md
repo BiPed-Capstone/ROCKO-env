@@ -15,7 +15,8 @@ something that falls over.
   and always built (it needs no WiringPi).
 - `use_sim_plant:=true` in `rocko.urdf.xacro` selects it; every parameter of §4 and §5 is an xacro arg
   there. `rocko_sim.launch.py` starts it with `rocko_sim_controllers.yaml`; `verify_sim.sh` and
-  `sim/sim_probe.py` check criteria S1 and S2a against it. `sim/check_sim_config.py` (run by
+  `sim/sim_probe.py` check criteria S1 and S2a against it, and `sim/scenario_checks.py` checks the
+  stage 4 safeguards (tipover cutoff, teleop watchdog, IMU outage, pitch rate) against it. `sim/check_sim_config.py` (run by
   `verify_urdf.sh`) fails if the sim controller YAML's wiring or the defaults of the simulator
   settings drift apart.
 
@@ -39,11 +40,12 @@ since (the Python nodes, YAML and xacro); they will drift when those files chang
 > **Read this first: what this plant is, and what it is not**
 >
 > - **It is** a planar inverted pendulum on wheels (one body, one wheel pair, forward/back motion and
->   pitch only) driven by a DC-motor model. It exports **the same 12 interfaces as the real hardware**:
->   for each of `left_wheel_joint` and `right_wheel_joint`, one command (`velocity`) and five states
->   (`position`, `velocity`, `yaw`, `pitch`, `roll`). The real controllers load against it unchanged;
+>   pitch only) driven by a DC-motor model. It exports **the same 14 interfaces as the real hardware**:
+>   for each of `left_wheel_joint` and `right_wheel_joint`, one command (`velocity`) and six states
+>   (`position`, `velocity`, `yaw`, `pitch`, `roll`, `pitch_rate`). The real controllers load against it unchanged;
 >   only the hardware layer is swapped. (`rocko_sim.launch.py` loads `rocko_sim_controllers.yaml`,
->   which starts as an exact copy of `rocko_controllers.yaml`, gains included; sim gains live only there.)
+>   which starts as a copy of `rocko_controllers.yaml`, gains included, with one named wiring difference: the
+>   sim's pitch PID also reads `pitch_rate` (§2.2, finding H-6). Sim gains live only there.)
 > - **Every physical number in it is an estimate. Nothing has been measured.** Masses, centre-of-mass
 >   height, inertia, motor constants, IMU delay: all invented or inferred, and labelled so in §4.
 > - **Gains found against it are candidates, not results.** A gain set that holds the simulated robot
@@ -92,6 +94,7 @@ meaning, or it tests a different robot.
 | Direction pin | GPIO | — | `cmd >= 0` writes `!invert`, else `invert`; left unchanged for a non-finite or deadband command | `Motor12VoltQuadEncoder::write()`, the two `digitalWrite(_dirPin, ...)` calls. Left `invert=true` (`rocko.ros2_control.xacro`, `LeftDriveMotor` block), right `invert=false` (`RightDriveMotor` block) |
 | Velocity reference | `velocity_pid_controller/reference` (topic) | "m/s" by intent | Positive = stick forward, probably | `DiffDriveController.py:84-87` sends `linear.x` for both wheels; `Joystick.py:48`, `:101` scale the stick by −10, so the range is ±10 "m/s" |
 | Feedforward | `left_feedforward`, `right_feedforward` (topics) | **rad/s of the wheel** | Same sign as `linear.x` (± turning) | `DiffDriveController.py:80-81`, `:90-99`: `(linear ∓ angular) / 0.06`. `AddFeedforwardController::update_and_write_commands()` adds it to the pitch loop's output: `u = pitch_pid output + feedforward` |
+| Pitch rate state | `<wheel>_joint/pitch_rate` (the same number on both) | **deg/s**, meant to be positive while pitch increases | Depends on `pitch_rate_axis` and `pitch_rate_sign` in `ICM20948.py`, both **unverified guesses** (finding H-6) | `ICM20948.py`'s `callback()` reads `.gyro` once and answers `pitch_rate_sign * degrees(gyro[pitch_rate_axis])` as `pitch_rate_deg_s`; `ICM20948::read()` stores it in `_pitch_rate`, which `export_state_interfaces()` exports under both joints. The comment in `ICM20948.py` says the Adafruit driver returns rad/s and that versions before 5.0 returned deg/s; which one is installed was not checked, so the unit conversion is also unverified. **No controller in `rocko_controllers.yaml` reads it**; the sim's `rocko_sim_controllers.yaml` does (§2.2) |
 | Yaw, roll states | `<wheel>_joint/yaw`, `/roll` | degrees | — | Exported (`ICM20948::export_state_interfaces()`); **no controller reads them** (`rocko_controllers.yaml` uses only `pitch` and `velocity`) |
 
 ### 2.2 What each PID consumes and produces
@@ -106,6 +109,20 @@ page), each cycle it computes `error = reference − state` and
 | --- | --- | --- | --- |
 | `velocity_pid_controller` (`rocko_controllers.yaml`) | reference "m/s" − measured velocity state (m/s, U-2) | **target pitch, degrees** (it is written into `pitch_pid_controller`'s reference, compared with pitch in degrees) | p = 2.0 °/(m/s); i = 5.0 °/m; d = 0.2 °·s²/m; integral clamp ±150 °, i.e. the integrator alone may ask for 150° of lean, far past the 35° tipover angle of finding H-4 |
 | `pitch_pid_controller` (`:20-36`) | target pitch (°) − measured pitch (°) | **wheel command, rad/s** (after the feedforward is added) | p = 10.0 (rad/s)/°, i.e. 573 (rad/s)/rad; i = 0; d = 0.1 (rad/s)/(°/s) |
+
+**The D term with a rate (finding H-6, sim only).** In `rocko_sim_controllers.yaml`,
+`pitch_pid_controller` lists `reference_and_state_interfaces: ["pitch", "pitch_rate"]`;
+`rocko_controllers.yaml` still lists `["pitch"]`. This is the one wiring difference
+`sim/check_sim_config.py` allows. The integrator read `pid_controller` 4.42.1's source at that tag
+(2026-11-02; this page's author did not): the second entry is the measured derivative of the first, the
+D term becomes `d · (rate reference − measured rate)` instead of a derivative of the error, the
+names of the two entries are arbitrary, and if the measured rate is NaN the controller silently falls back
+to differentiating the angle. The rate **reference** is set only once, at activation, to the measured rate
+(`set_current_state_as_first_setpoint`, on by default), and nothing writes it afterwards: it is 0.0 in
+the sim because `SimPlant` holds the robot still until the controllers command the wheels (§3.6), but on
+the robot it would be whatever the gyro read at that instant (a constant bias `d · r0` in the D term), or
+NaN for good if there was no good IMU read yet (finding [L-8](../claude-analysis/balance-loop-findings.md#l-8--pid_controller-sets-the-rate-reference-once-at-activation)).
+Any proposal to change the real YAML has to cover that.
 
 The two loops agree with each other on units (degrees in, degrees out). The pitch loop's output and the
 feedforward agree on "rad/s" by name, but not on *which shaft* (U-4).
@@ -456,7 +473,7 @@ therefore keeps up with the sum of the controllers' `dt`. `n` is clamped to `[0,
 wants more than 50 steps (the container stalled for more than 50 ms) increments a counter and zeroes the
 remainder, so the skipped time is dropped rather than integrated in one burst; the counter is logged
 at most once a second and printed in total when the plugin deactivates; it never logs per cycle, and no
-interface exports it (the 12 interfaces are fixed). Before release, and in `on_activate`, the remainder
+interface exports it (the 14 interfaces are fixed). Before release, and in `on_activate`, the remainder
 is zero. Sim time `t` (seconds since **release**, §3.6) is
 the sum of sub-steps, not wall-clock time.
 
@@ -514,6 +531,7 @@ the ring buffer is sized in `on_init` from `imu_delay_max_ms`.
 | Interface (both joints unless noted) | Value | Unit |
 | --- | --- | --- |
 | `pitch` | `pitch_sign · degrees(ψ delayed by imu_delay_ms) + imu_pitch_bias_deg`, held on a failed read (§5) | degrees |
+| `pitch_rate` | `pitch_sign · degrees(ψ̇)`, the current rate with no IMU delay; held on a failed read (§5) | deg/s |
 | `yaw`, `roll` | **0.0, always.** The planar model has neither. No controller reads them (§2.1); if one ever does, this row must change | degrees |
 | `position` | `encoder_sign · r · (φ − ψ)` (chassis-relative travel; the real stack reports the left wheel on both joints, and the planar sim has one value) | m |
 | `velocity` (state) | see below | m/s |
@@ -540,9 +558,17 @@ p_last  = p
 `model_encoder_node = false` (for after finding C-1's encoder fix) both joints export
 `encoder_sign · r · (φ̇ − ψ̇)` with no filter. Encoder counts are not quantised in either mode (§6).
 
-**Pitch rate (only once finding H-6 lands).** If the real IMU plugin gains a pitch-rate interface,
-`SimPlant` exports `pitch_sign · degrees(ψ̇)` in deg/s **without** the fusion delay (the gyro rate
-skips the fusion filter), in the same commit, so the mock, the real hardware and the sim stay in step.
+**Pitch rate (finding H-6, built).** Both joints export `pitch_rate` = `pitch_sign · degrees(ψ̇)` in deg/s
+(`SimPlantModel::imu_pitch_rate_deg_s()`), the **current** lean rate with **no** fusion delay (the gyro
+rate skips the filter the delay stands in for) and no bias term (a constant angle error has no rate).
+It shares the pitch's fault policy (§5): a failed read holds both the last good pitch and the last good
+rate, and a non-finite rate counts as a failed read of the whole sample. **This differs from the real
+plugin**, which judges the rate on its own: there a bad rate (not finite, or beyond 2000 deg/s) is held and
+counted separately and never makes `read()` return `ERROR`, and a good pitch is kept. The sim has no
+gyro-only fault, so no sim check exercises the plugin's rule. The mock block exports it too and zero-fills it, as it
+does `pitch`. Check H6 of `verify_sim.sh` shows that `pitch_pid_controller`'s `feedback_dot` equals this
+value in the same control cycle (600 pairs, largest 46 deg/s). That shows the wiring. It does not show
+that the gyro's real rate is as clean as this one, which is exact and undelayed.
 
 ---
 
@@ -657,6 +683,9 @@ ROS types so a simulator can share it), with the same thresholds, 5 in a row and
   `hardware_interface::return_type::ERROR`.
 - On a good read: update pitch, call `record(true)`.
 - Log at most once a second, never per cycle.
+- The pitch rate (§3.7) is held and replaced together with the pitch, and a non-finite rate counts as a
+  failed read of the sample. The real plugin does not do this: it judges the rate on its own and never
+  returns `ERROR` for it. A gyro-only fault is therefore not modelled.
 
 **A difference from the robot that the sim cannot hide.** On the robot the IMU is its own hardware
 component, so an IMU `ERROR` takes down the IMU while the two motor components stay active and keep
@@ -666,6 +695,21 @@ speed pin every cycle (H-2), so by reading the code the motors should go to 0 % 
 observed. In the sim one `SystemInterface` owns everything, so an `ERROR` stops the whole plant. A
 fault scenario can check that `ERROR` is returned and that the controllers never see 0.0; it **cannot**
 show what the real motors do afterwards.
+
+**What was observed (check C2, 2026-11-02, `controller_manager` 4.48.1 in the container).** With
+`initial_pitch_deg:=2.0` (so a true pitch of exactly 0.0 cannot happen) and an outage starting 1 s
+after release:
+
+| Outage | Result |
+| --- | --- |
+| 0.03 s (3 reads, under the limit of 5 in a row) | `read()` never returned `ERROR`; the controllers and the plant stayed active; no exported pitch sample was exactly 0.0 or NaN (a held value shows as a run of 5 identical samples) |
+| 0.2 s (20 reads) | `read()` returned `ERROR`. `controller_manager` then logged `Deactivating following hardware components as their read cycle resulted in an error ... [ SimRocko ]`, deactivated **all five** controllers (`joint_state_broadcaster` too), and also logged `Not acceptable command interfaces combination` and `Error while attempting mode switch when deactivating controllers in read cycle!`. End state: controllers `inactive`, `SimRocko` `unconfigured`. Not one exported pitch sample was 0.0 or NaN |
+
+Also seen: when the failed read was made to export 0.0 on purpose, the check went red with 4 zero
+samples. The long-outage row is what the one-owner paragraph above predicted in shape (the whole plant
+stops); it is not what the robot would do. Because the IMU is a separate component there, this run
+does not tell us which controllers `controller_manager` would deactivate, or whether the motor plugin
+would keep its last duty (finding H-7). That remains a question for a Pi.
 
 ---
 
@@ -776,6 +820,21 @@ different failure was **not investigated**, and neither was whether the slow dri
 from the implementer's report of it, not from something this page can reproduce on demand. All of it is the behaviour of
 a model with estimated parameters and assumed signs; it says nothing about the real robot or about
 whether the hardware gains are good or bad.
+
+**Observed with H-6 wired in (2026-11-02, model only).** The same kind of run, with the unchanged
+hardware gains, a 2 deg start and a zero velocity reference, but the sim YAML's `pitch_pid_controller`
+reading `pitch_rate` (§2.2). The figures below are from the integrator's runs; the exact command was
+not recorded in this page.
+
+| | pitch at 1 s | at 2 s | at 8 s | at 9 s | at 10 s | first at or past 35 deg |
+| --- | --- | --- | --- | --- | --- | --- |
+| With H-6 (left / right) | 0.43 / 0.31 deg | 0.26 / 0.04 deg | 10.1 deg | 23.3 deg | – | 9.42 s / 9.34 s |
+| Without H-6 | 1.59 deg | – | 5.9 deg | – | 34.4 deg | 10.02 s |
+
+So with the rate wired in, the first two seconds settle faster, and the slow drift then tips the
+model **sooner**. Neither holds the model up. This is a slow run-away, like the one in the stage 3
+note above, and it is consistent with the outer velocity loop's sign problem of §2.4 (equation (1)), **but that has not been shown**: no run isolated it, and it is **not
+yet explained**. Stage 5 is to investigate. It is not evidence that the D term from the gyro is bad or good, and it says nothing about the real robot.
 
 ---
 

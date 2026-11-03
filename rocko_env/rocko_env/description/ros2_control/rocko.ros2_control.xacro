@@ -55,6 +55,7 @@
           <state_interface name="yaw"/>
           <state_interface name="pitch"/>
           <state_interface name="roll"/>
+          <state_interface name="pitch_rate"/>
         </joint>
         <joint name="right_wheel_joint">
           <command_interface name="velocity"/>
@@ -63,6 +64,7 @@
           <state_interface name="yaw"/>
           <state_interface name="pitch"/>
           <state_interface name="roll"/>
+          <state_interface name="pitch_rate"/>
         </joint>
       </ros2_control>
     </xacro:if>
@@ -70,7 +72,8 @@
     <xacro:if value="${use_mock_hardware and not use_sim_plant}">
       <!-- A WIRING CHECK, NOT A SIMULATION. mock_components/GenericSystem has no physics: it
            echoes each velocity command back as that joint's velocity state, and the IMU states
-           (yaw/pitch/roll) stay at 0.0. A balance controller therefore always looks "fine" here.
+           (yaw/pitch/roll/pitch_rate) stay at 0.0. A balance controller therefore always looks
+           "fine" here.
            What it does prove: every controller rocko.launch.py spawns (the four cascade
            controllers) loads, claims interfaces that exist, and chains and activates.
            It exports the same joint and interface names as the real plugins, so the real
@@ -86,6 +89,7 @@
           <state_interface name="yaw"/>
           <state_interface name="pitch"/>
           <state_interface name="roll"/>
+          <state_interface name="pitch_rate"/>
         </joint>
         <joint name="right_wheel_joint">
           <command_interface name="velocity"/>
@@ -94,12 +98,14 @@
           <state_interface name="yaw"/>
           <state_interface name="pitch"/>
           <state_interface name="roll"/>
+          <state_interface name="pitch_rate"/>
         </joint>
       </ros2_control>
     </xacro:if>
 
-    <!-- The real hardware, exactly as it was before the mock existed. Not re-indented, so the
-         diff shows that nothing inside changed. Used only when neither the mock nor the sim is. -->
+    <!-- The real hardware, as it was before the mock existed except for the IMU's pitch_rate
+         [deg/s, gyro] interfaces (finding H-6). Not re-indented, so the diff shows only that.
+         Used only when neither the mock nor the sim is. -->
     <xacro:unless value="${use_mock_hardware or use_sim_plant}">
     <ros2_control name="LeftDriveMotor" type="actuator">
       <hardware>
@@ -140,11 +146,13 @@
         <state_interface name="yaw"/>
         <state_interface name="pitch"/>
         <state_interface name="roll"/>
+        <state_interface name="pitch_rate"/>
       </joint>
       <joint name="right_wheel_joint">
         <state_interface name="yaw"/>
         <state_interface name="pitch"/>
         <state_interface name="roll"/>
+        <state_interface name="pitch_rate"/>
       </joint>
     </ros2_control>
     </xacro:unless>

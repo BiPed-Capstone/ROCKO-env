@@ -1,40 +1,81 @@
 #!/usr/bin/env bash
-# Tier 3 check, criteria S1 and S2a: do the real controllers run against the SIMULATED robot
-# (rocko_env/SimPlant), does the simulated pitch respond to the wheels, and does the simulated robot
-# fall when its motors give no torque?
+# Tier 3 check: do the real controllers run against the SIMULATED robot (rocko_env/SimPlant), does
+# the simulated pitch respond to the wheels, does the simulated robot fall when its motors give no
+# torque, and do the stage 4 safeguards (findings H-4, C-3, C-2, H-6) do what they say?
 #
 # Run inside the Docker dev container, after build_ros.sh. From the repo root on your laptop:
 #   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh
+# Or only some checks, by name (any of S1 S2a H4 C3 C2 H6, in any order):
+#   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh H4 C3
 #
 # THE SIMULATOR IS A MODEL WITH ESTIMATED, UNMEASURED PARAMETERS (docs/architecture/sim-plant.md).
 # A pass says the plumbing and the model behave as specified. It says NOTHING about whether the real
 # robot balances, and nothing about whether any gain is good.
 #
-# Three launches of rocko_sim.launch.py teleop:=false, one after another. In each, sim/sim_probe.py
-# records pitch from /dynamic_joint_states, a velocity reference of 0 is published so the whole
-# cascade is running, and the wiring is checked (the four cascade controllers and
-# joint_state_broadcaster active, the SimPlant component active, all 12 interfaces present, both
-# wheel commands claimed):
-#   S1 baseline   upright, no wheel command beyond the cascade's own: pitch must stay within
-#                 S1_STILL_DEG of its start (the model's upright equilibrium is exact). A robot that
-#                 was never released also stays still, so every run must show the robot was released
-#                 at least RELEASED_MIN_S before the probe's last sample (below).
-#   S1 command    the same, plus a feedforward of FEEDFORWARD_RAD_S on both wheels: pitch must
-#                 move at least S1_CHANGE_DEG. Pitch changes BECAUSE the wheels moved.
-#   S2a           disable_torque:=true, initial_pitch_deg:=2.0: |pitch| must pass TIPOVER_DEG within
-#                 FALL_LIMIT_S of the moment it starts to move.
+# Each check is one launch of rocko_sim.launch.py, one after another (about 15-25 s each). In every
+# run the wiring is checked (the four cascade controllers and joint_state_broadcaster active, the
+# SimPlant component active, all 14 interfaces present, both wheel commands claimed) unless the
+# check says otherwise. teleop:=false (a script publishes a velocity reference of 0, so the whole
+# cascade is running) unless the check says otherwise.
+#   S1   sim/sim_probe.py records pitch from /dynamic_joint_states.
+#        baseline: upright, no wheel command beyond the cascade's own: pitch must stay within
+#                  S1_STILL_DEG of its start (the model's upright equilibrium is exact). A robot that
+#                  was never released also stays still, so every probe run must show the robot was
+#                  released at least RELEASED_MIN_S before the probe's last sample (below).
+#        command:  the same, plus a feedforward of FEEDFORWARD_RAD_S on both wheels: pitch must move
+#                  at least S1_CHANGE_DEG. Pitch changes BECAUSE the wheels moved.
+#   S2a  disable_torque:=true, initial_pitch_deg:=2.0: |pitch| must pass TIPOVER_DEG within
+#        FALL_LIMIT_S of the moment it starts to move.
+#   (In S1 command and S2a the robot falls past TIPOVER_DEG, so the tipover cutoff trips; the run
+#   prints a note. Neither check depends on it: the fall is already under way when it trips.)
+#   H4   tipover cutoff. initial_pitch_deg:=TIPOVER_START_DEG, past the limit from the start. Both
+#        left_ and right_add_feedforward_controller must log 'TIPOVER CUTOFF TRIPPED' before the
+#        robot is released (so in the first cycle they write); every wheel command written while
+#        |pitch| > TIPOVER_DEG must be exactly 0.0 (from controller_manager's introspection topic,
+#        the value the plant receives); ONE re-arm published on the shared /tipover_rearm topic
+#        while still past the limit must be refused by BOTH controllers and leave the command at
+#        0.0; the controllers must stay active (the cutoff does not deactivate them).
+#        (The re-arm hysteresis, refusing a re-arm inside the trip limit but outside
+#        rearm_max_pitch_deg, is checked by the host test tools/tipover_latch_test.cpp, not here.)
+#   C3   teleop watchdog. teleop:=true (the real DiffDriveController.py; Joystick.py is started too
+#        but runs idle, because no gamepad connects to its TCP port: that path is covered by the host
+#        test tools/teleop_watchdog_test.py). A fake gamepad publishes TwistStamped messages
+#        straight to diffbot_base_controller/cmd_vel at 20 Hz for 2 s, then stops. command_timed_out must go False while it
+#        drives and True TELEOP_TIMEOUT_S to TELEOP_TIMEOUT_S + TELEOP_MARGIN_S after the last
+#        command; the velocity reference must be exactly [0, 0] after that; the controllers must
+#        stay active and the plant keep publishing. DiffDriveController's log must show 'teleop
+#        commands resumed' BEFORE its first 'teleop command timed out' (a time-out logged before
+#        any command arrived would not be evidence of the watchdog firing).
+#   C2   IMU fault, two runs. initial_pitch_deg:=2.0 (so a true pitch of exactly 0.0 cannot happen)
+#        and an outage IMU_FAULT_START_S after release.
+#        short: IMU_FAULT_SHORT_S, fewer failed reads than the C-2 limit (5 in a row): no ERROR, the
+#               controllers stay active, and the exported pitch is never 0.0 or NaN.
+#        long:  IMU_FAULT_LONG_S, more than the limit: SimPlant's read() returns ERROR, which
+#               controller_manager must answer by deactivating the hardware, and the exported pitch
+#               is never 0.0 or NaN up to then. The wiring is NOT required to stay up here.
+#   H6   initial_pitch_deg:=2.0. pitch_pid_controller's feedback_dot (its D term's derivative) must
+#        be finite, reach H6_MIN_RATE_DEG_S, equal the exported pitch_rate of the same cycle within
+#        H6_TOLERANCE_DEG_S, and error_dot must be -feedback_dot (rate reference 0).
 #
 # Exit status:  0 = PASS   1 = FAIL (what was wrong is printed)
-#               2 = could not run (no build, or a controller_manager is already running)
-# On anything but PASS the run directory (launch logs, probe samples.csv and metrics.json for each
-# run) is KEPT, and its path inside the container is printed: it is the evidence of the failure.
+#               2 = could not run (no build, a controller_manager already running, an unknown
+#                   check name) or could not judge
+# On anything but PASS the run directory (launch logs, probe output for each run) is KEPT, and its
+# path inside the container is printed: it is the evidence of the failure.
 #
 # No `set -e`: grep and timeout are EXPECTED to "fail" while we wait for things to come up.
 set -uo pipefail
 
+ALL_CHECKS="S1 S2a H4 C3 C2 H6"
+selected="${*:-$ALL_CHECKS}"
+for c in $selected; do
+  [[ " $ALL_CHECKS " == *" $c "* ]] || { echo "ERROR: unknown check '$c' (known: $ALL_CHECKS)" >&2; exit 2; }
+done
+wants() { [[ " $selected " == *" $1 "* ]]; }
+
 # --- Timing. Generous bounds, as in verify_mock.sh; bring-up time in the container is not measured.
 STARTUP_TIMEOUT=45   # s to wait for every controller to become active
-CALL_TIMEOUT=8       # s for one `ros2 control` call; without a timeout it can wait forever
+CALL_TIMEOUT=8       # s for one `ros2 control` / `ros2 topic` call; without a timeout it can wait forever
 GRACE=15             # s to let a launch shut down before forcing it
 PROBE_SECONDS=8      # s of /dynamic_joint_states the probe records in each run (from its first
                      #   message; the robot is released a second or two later, when the cascade
@@ -42,7 +83,7 @@ PROBE_SECONDS=8      # s of /dynamic_joint_states the probe records in each run 
 RELEASED_MIN_S=3     # s: the release must be logged at least this long before the probe's last sample, so
                      #   a pass is never a robot that stood still because it was never released
 
-# --- Thresholds. Why each number (measured values are in the 2026-10-31 stage 3 journal):
+# --- Thresholds. Why each number (measured values are in the stage 3 and stage 4 journals):
 FEEDFORWARD_RAD_S=5.0  # [rad/s] wheel command added by S1's command run: 6 % duty through the
                        #   write() copy, well clear of its 0.05 rad/s deadband, far from saturation
 S1_STILL_DEG=0.01      # [deg] the baseline must stay closer than this to its start. The model's
@@ -50,11 +91,36 @@ S1_STILL_DEG=0.01      # [deg] the baseline must stay closer than this to its st
 S1_CHANGE_DEG=0.5      # [deg] the command run must move at least this much: 50x S1_STILL_DEG, and
                        #   far below what the command produces (several degrees, measured). A plant
                        #   whose pitch ignored the wheels would give exactly 0
-TIPOVER_DEG=35         # [deg] the tipover angle of finding H-4
+TIPOVER_DEG=35         # [deg] the tipover angle of finding H-4; also tipover_pitch_deg's default
 FALL_LIMIT_S=0.48      # [s] the model falls 2 -> 35 deg in 0.4273 s with no torque (unit test #6);
                        #   the probe sees it to within one 10 ms cycle. 0.48 adds ~40 ms for timing
                        #   jitter and stays below 0.50 s, the fall time with the motors merely
                        #   braked at 0 % duty, so "torque not disabled" cannot pass
+TIPOVER_START_DEG=40   # [deg] H4's start: 5 deg past the limit, so the cutoff must trip in the first
+                       #   cycle. Released there, the model falls on to 60 deg ("lying on the floor")
+                       #   and stays past the limit, so the re-arm must be refused
+TIPOVER_RECORD_S=16    # [s] H4 records the commands this long after the controllers start writing:
+                       #   time for the wiring check and the re-arm, plus REARM_OBSERVED_S after it.
+                       #   Measured 2026-11-02: the refusal came 11.4 s after the first write (the
+                       #   wiring check, then `ros2 topic pub -w 2` waiting ~3 s for discovery to find
+                       #   BOTH subscribers), so 8 s was too short; 16 s leaves ~4 s of margin
+REARM_OBSERVED_S=1     # [s] the commands must be seen at 0.0 at least this long after the refusal
+REARM_REPLY_WAIT_S=5   # [s] wait this long for each controller's 'Tipover re-arm refused' line: the
+                       #   next 10 ms cycle answers, so this is all DDS delivery and log flushing
+TELEOP_TIMEOUT_S=0.2   # [s] DiffDriveController's command_timeout_s default (and the launch arg's)
+TELEOP_MARGIN_S=0.1    # [s] allowed lateness of the timeout: the node checks every 10 ms, plus
+                       #   Python executor and DDS delivery in the container; 0.1 s is 10 cycles
+TELEOP_SPEED_M_S=0.05  # [m/s] the fake gamepad's linear.x: small, but exactly representable as a
+                       #   reference that is visibly not 0
+IMU_FAULT_START_S=1.0  # [s after release] when the injected IMU outage starts
+IMU_FAULT_SHORT_S=0.03 # [s] 3 failed reads at 100 Hz: below the C-2 limit of 5 in a row
+IMU_FAULT_LONG_S=0.2   # [s] 20 failed reads: past the limit at the 5th, so read() returns ERROR
+IMU_RECORD_S=3         # [s after release] covers the outage and 1.8 s after it
+H6_RECORD_S=3          # [s] H6 records controller_state and the plant this long: ~300 cycles
+MIN_SAMPLES=50         # [samples] the fewest a scenario check judges from: 0.5 s at 100 Hz
+H6_MIN_RATE_DEG_S=1.0  # [deg/s] |feedback_dot| must reach this: from a 2 deg start the model's pitch
+                       #   rate is tens of deg/s, while a D term that reads no rate gives exactly 0
+H6_TOLERANCE_DEG_S=1e-9  # [deg/s] pid_controller copies the state value; only float noise allowed
 
 WS="${ROS2_WS:-$HOME/ros2_ws}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -80,7 +146,7 @@ fi
 controllers="joint_state_broadcaster left_add_feedforward_controller right_add_feedforward_controller pitch_pid_controller velocity_pid_controller"
 states=""
 for j in left_wheel_joint right_wheel_joint; do
-  for s in position velocity yaw pitch roll; do states="$states $j/$s"; done
+  for s in position velocity yaw pitch roll pitch_rate; do states="$states $j/$s"; done
 done
 commands="left_wheel_joint/velocity right_wheel_joint/velocity"
 
@@ -143,6 +209,30 @@ wiring_problems() {
   done
 }
 
+# wait_for_wiring: look until the wiring is right or STARTUP_TIMEOUT passes; `problems` holds the
+# result of the last look.
+wait_for_wiring() {
+  local deadline=$((SECONDS + STARTUP_TIMEOUT))
+  wiring_problems
+  while [ ${#problems[@]} -ne 0 ] && [ $SECONDS -lt $deadline ]; do sleep 1; wiring_problems; done
+}
+
+# log_stamp <log> <extended regex>: the [<epoch seconds>] stamp of the first matching log line
+# (ROS log lines look like "[node-1] [ERROR] [1793667068.42] [logger]: text"), or nothing.
+# Example: "[ros2_control_node-1] [WARN] [1793667068.42] [x]: hi"  ->  1793667068.42
+log_stamp() {
+  grep -m1 -E "$2" "$1" | sed -n 's/.*\[\(INFO\|WARN\|ERROR\)\] \[\([0-9]*\.[0-9]*\)\].*/\2/p'
+}
+# wait_for_log <log> <extended regex> <seconds>: true as soon as the log has a matching line.
+wait_for_log() {
+  local deadline=$((SECONDS + $3))
+  until grep -Eq "$2" "$1"; do [ $SECONDS -ge $deadline ] && return 1; sleep 0.5; done
+}
+# metric <metrics.json> <key>: one value from a probe's metrics.json, or nothing.
+metric() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2" 2>/dev/null; }
+# seconds_between <earlier stamp> <later stamp> <at least>: true if later - earlier >= at least.
+seconds_between() { awk -v a="$1" -v b="$2" -v m="$3" 'BEGIN {exit !(b - a >= m)}'; }
+
 # released_problem <launch log> <metrics.json>: prints why there is no evidence that the robot was
 # released at least RELEASED_MIN_S before the probe's LAST SAMPLE, or nothing if there is. The
 # release time is the [INFO] [<epoch seconds>] stamp of SimPlant's log line; the last sample's time
@@ -150,36 +240,93 @@ wiring_problems() {
 # the run, which would count the seconds spent in the wiring checks as released time).
 released_problem() {
   local release last
-  release="$(grep -m1 "releasing the simulated robot" "$1" \
-    | sed -n 's/.*\[INFO\] \[\([0-9]*\.[0-9]*\)\].*/\1/p')"
-  last="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["last_stamp_s"])' "$2" 2>/dev/null)"
+  release="$(log_stamp "$1" "releasing the simulated robot")"
+  last="$(metric "$2" last_stamp_s)"
   if [ -z "$release" ]; then
     echo "SimPlant never logged 'releasing the simulated robot': it was held still the whole run"
   elif [ -z "$last" ]; then
     echo "the probe's metrics.json has no last_stamp_s, so the release time cannot be compared with the last sample"
-  elif ! awk -v r="$release" -v e="$last" -v m="$RELEASED_MIN_S" 'BEGIN {exit !(e - r >= m)}'; then
+  elif ! seconds_between "$release" "$last" "$RELEASED_MIN_S"; then
     echo "SimPlant released the robot less than $RELEASED_MIN_S s before the probe's last sample (release $release, last sample $last)"
   fi
 }
 
+# --- Shared globals. Bash functions cannot return lists, so these are set by one function and read
+# by others. Each is written only where named here:
+#   out        the run directory for this whole script (mktemp, above); kept on failure
+#   groups     process groups to stop at the end of a run (start_group, stop_groups)
+#   label, dir the current run's name and its directory under $out (new_run)
+#   problems   what is wrong with the wiring, empty if nothing (wiring_problems, wait_for_wiring)
+#   ctl, ifaces, hw  the last `ros2 control` answers, for printing (wiring_problems)
+#   check_pid  pid of the scenario_checks.py started by start_check
+#   failed, could_not  set to 1 by any run that failed / could not be judged; decide the exit status
+#   passed     set to 1 only at the very end; cleanup deletes $out only then
+# Each check keeps its own findings in a local array called `failures`, passed to judge.
 failed=0
 could_not=0
-# run <label> <feedforward rad/s, or "-" for none> <probe mode> <probe threshold> <launch args...>
-run() {
-  local label="$1" ff="$2" mode="$3" threshold="$4"; shift 4
-  local dir="$out/$label"; mkdir -p "$dir"
-  echo "=== $label: rocko_sim.launch.py teleop:=false $*"
+# new_run <label>: the run's name ($label) and its directory ($dir), for everything below.
+new_run() { label="$1"; dir="$out/$label"; mkdir -p "$dir"; }
+# launch <launch args...>: announce the run and start rocko_sim.launch.py.
+launch() {
+  echo "=== $label: rocko_sim.launch.py $*"
+  start_group "$dir/launch.log" ros2 launch rocko_env rocko_sim.launch.py "$@"
+}
+# zero_reference: a velocity reference of 0, so velocity_pid_controller (and so the whole cascade)
+# computes. Published at 20 Hz, not once: a single message sent before the controller subscribes
+# is lost.
+zero_reference() {
+  start_group "$dir/reference.log" ros2 topic pub -r 20 /velocity_pid_controller/reference \
+    control_msgs/msg/MultiDOFCommand "{dof_names: [left_wheel_joint, right_wheel_joint], values: [0.0, 0.0]}"
+}
+# start_check <subcommand> <args...>: sim/scenario_checks.py in the background; its pid in $check_pid.
+start_check() {
+  start_group "$dir/check.log" python3 "$here/sim/scenario_checks.py" "$@" --out "$dir" \
+    --wait "$STARTUP_TIMEOUT" --min-samples "$MIN_SAMPLES"
+  check_pid="$!"
+}
+# judge <check status> [problem ...]: print the result of a run from the check's exit status and
+# the problems found by this script, then shut the run down.
+judge() {
+  local status="$1"; shift
+  [ -s "$dir/check.log" ] && sed 's/^/    /' "$dir/check.log"
+  if [ $# -ne 0 ]; then
+    echo "  FAIL ($label):"; printf '    - %s\n' "$@"
+    echo "  --- launch log, lines mentioning an error"
+    grep -E "ERROR|FATAL|died|[Ff]ailed|Traceback" "$dir/launch.log" | tail -20 | sed 's/^/    /'
+    failed=1
+  elif [ "$status" -eq 0 ]; then
+    echo "  ok   ($label)"
+  elif [ "$status" -eq 2 ]; then
+    echo "  COULD NOT JUDGE ($label): see the reason above"; could_not=1
+  else
+    echo "  FAIL ($label): see the reason above"; failed=1
+  fi
+  end_run
+}
+end_run() {
+  if ! stop_groups; then
+    echo "ERROR: the controller_manager from '$label' did not exit; cannot start the next run." >&2
+    exit 2
+  fi
+}
+# note_tipover: say so when the tipover cutoff tripped in a run that does not test it.
+note_tipover() {
+  grep -q "TIPOVER CUTOFF TRIPPED" "$dir/launch.log" \
+    && echo "    note: the tipover cutoff tripped in this run (the robot passed $TIPOVER_DEG deg)"
+}
 
+# run <label> <feedforward rad/s, or "-" for none> <probe mode> <probe threshold> <launch args...>
+# S1 and S2a: sim/sim_probe.py watches the pitch.
+run() {
+  new_run "$1"
+  local ff="$2" mode="$3" threshold="$4"; shift 4
   # The probe first, so it is listening before the cascade starts and the robot is released.
   start_group "$dir/probe.log" python3 "$here/sim/sim_probe.py" --duration "$PROBE_SECONDS" \
     --out "$dir" --mode "$mode" --threshold-deg "$threshold" --within "$FALL_LIMIT_S" \
     --wait "$STARTUP_TIMEOUT"
   local probe_pid="$!"
-  start_group "$dir/launch.log" ros2 launch rocko_env rocko_sim.launch.py teleop:=false "$@"
-  # A velocity reference of 0, so velocity_pid_controller (and so the whole cascade) computes.
-  # Published at 20 Hz, not once: a single message sent before the controller subscribes is lost.
-  start_group "$dir/reference.log" ros2 topic pub -r 20 /velocity_pid_controller/reference \
-    control_msgs/msg/MultiDOFCommand "{dof_names: [left_wheel_joint, right_wheel_joint], values: [0.0, 0.0]}"
+  launch teleop:=false "$@"
+  zero_reference
   if [ "$ff" != "-" ]; then
     for side in left right; do
       start_group "$dir/ff_$side.log" ros2 topic pub -r 20 "/${side}_feedforward" \
@@ -187,14 +334,12 @@ run() {
     done
   fi
 
-  local deadline=$((SECONDS + STARTUP_TIMEOUT))
-  wiring_problems
-  while [ ${#problems[@]} -ne 0 ] && [ $SECONDS -lt $deadline ]; do sleep 1; wiring_problems; done
-
+  wait_for_wiring
   wait "$probe_pid"; local probe_status=$?
   # Look at the wiring once more after the probe: it must still be up at the end of the run.
   [ ${#problems[@]} -eq 0 ] && wiring_problems
   sed 's/^/    /' "$dir/probe.log"
+  note_tipover
 
   # No metrics.json means the probe saw no message at all; it then reports "could not judge" itself.
   local not_released=""
@@ -216,29 +361,191 @@ run() {
   else
     echo "  FAIL ($label): see the probe's reason above"; failed=1
   fi
-  if ! stop_groups; then
-    echo "ERROR: the controller_manager from '$label' did not exit; cannot start the next run." >&2
-    exit 2
-  fi
+  end_run
 }
 
-run "S1-baseline" - still "$S1_STILL_DEG"
-run "S1-command" "$FEEDFORWARD_RAD_S" change "$S1_CHANGE_DEG"
-run "S2a-no-torque" - exceed "$TIPOVER_DEG" disable_torque:=true initial_pitch_deg:=2.0
+# H4: the tipover cutoff trips at once, zeroes both wheel commands, refuses a re-arm while the robot
+# is still past the limit, and leaves the controllers active.
+check_tipover() {
+  new_run "H4-tipover"
+  start_check tipover --limit-deg "$TIPOVER_DEG" --record "$TIPOVER_RECORD_S"
+  local pid="$check_pid"
+  launch teleop:=false initial_pitch_deg:="$TIPOVER_START_DEG"
+  zero_reference
+  local failures=() side log="$dir/launch.log"
+  wait_for_wiring
+  for side in left right; do
+    wait_for_log "$log" "\[${side}_add_feedforward_controller\]: TIPOVER CUTOFF TRIPPED" "$STARTUP_TIMEOUT" \
+      || failures+=("${side}_add_feedforward_controller never logged 'TIPOVER CUTOFF TRIPPED'")
+  done
+  # Tripped in the first cycle the controllers wrote: before the cycle's write() released the robot
+  # (the same process writes both lines, so their order in the log is the order they happened).
+  local trip_line release_line
+  wait_for_log "$log" "releasing the simulated robot" "$REARM_REPLY_WAIT_S"
+  trip_line="$(grep -n -m1 "TIPOVER CUTOFF TRIPPED" "$log" | cut -d: -f1)"
+  release_line="$(grep -n -m1 "releasing the simulated robot" "$log" | cut -d: -f1)"
+  if [ -z "$release_line" ]; then
+    # Without a release there is no order to compare, and a robot that was never released proves nothing.
+    failures+=("SimPlant never released the robot ('releasing the simulated robot' is not in the launch log)")
+  elif [ -n "$trip_line" ] && [ "$trip_line" -gt "$release_line" ]; then
+    failures+=("the cutoff tripped only after the robot was released, not in the first cycle")
+  fi
+  # ONE deliberate re-arm on the shared topic, while the robot is still past the limit: BOTH wheel
+  # controllers must receive it and refuse it. -w 2: publish only once both have subscribed.
+  timeout -k 2 "$CALL_TIMEOUT" ros2 topic pub --once -w 2 /tipover_rearm \
+    std_msgs/msg/Empty "{}" >"$dir/rearm.log" 2>&1
+  local publish_status=$?
+  if [ "$publish_status" -ne 0 ]; then
+    # Not the controllers' fault: the message may never have been sent, so do not wait for replies
+    # to it (that would blame the cutoff for a slow DDS discovery).
+    failures+=("publishing /tipover_rearm failed or timed out (exit $publish_status; discovery slow? see $dir/rearm.log): the re-arm was not tested")
+  else
+    for side in left right; do
+      wait_for_log "$log" "\[${side}_add_feedforward_controller\]: Tipover re-arm refused" "$REARM_REPLY_WAIT_S" \
+        || failures+=("${side}_add_feedforward_controller did not log 'Tipover re-arm refused' after the one /tipover_rearm message")
+    done
+  fi
+  wait "$pid"; local status=$?
+  # The evidence, shortened: who tripped, and the refused re-arm. The sed keeps the logger name, e.g.
+  # "[ros2_control_node-1] [ERROR] [1793.1] [left_add_feedforward_controller]: TIPOVER ..."
+  #   ->  "    log: left_add_feedforward_controller: TIPOVER ..."
+  grep -E "TIPOVER CUTOFF TRIPPED|Tipover re-arm refused|RE-ARMED" "$log" \
+    | sed 's/^.*\] \[\([a-z_]*\)\]: /    log: \1: /' | cut -c1-140
+  grep -q "RE-ARMED" "$log" && failures+=("a controller logged 'RE-ARMED' although the robot was past the limit")
+  # After the refusal the commands must have been watched (at 0.0) for REARM_OBSERVED_S more.
+  local refused last watched_after_refusal=0
+  refused="$(log_stamp "$log" "Tipover re-arm refused")"
+  last="$(metric "$dir/metrics.json" last_stamp_s)"
+  if [ -n "$refused" ] && [ -n "$last" ] && seconds_between "$refused" "$last" "$REARM_OBSERVED_S"; then
+    watched_after_refusal=1
+  fi
+  if [ -n "$refused" ] && [ "$watched_after_refusal" -eq 0 ]; then
+    failures+=("the commands were not watched for $REARM_OBSERVED_S s after the refused re-arm (refused $refused, last sample ${last:-none})")
+  fi
+  # The cutoff zeroes the command; it must not deactivate anything.
+  [ ${#problems[@]} -eq 0 ] && wiring_problems
+  [ ${#problems[@]} -ne 0 ] && failures+=("after the trip: ${problems[*]}")
+  judge "$status" "${failures[@]}"
+}
+
+# C3: the real teleop nodes; a fake gamepad drives, then goes silent.
+check_teleop() {
+  new_run "C3-watchdog"
+  launch teleop:=true
+  # No zero_reference here: DiffDriveController publishes the velocity reference.
+  wait_for_wiring
+  local failures=() log="$dir/launch.log"
+  [ ${#problems[@]} -ne 0 ] && failures+=("before the gamepad: ${problems[*]}")
+  start_check teleop --timeout-s "$TELEOP_TIMEOUT_S" --margin-s "$TELEOP_MARGIN_S" \
+    --speed-m-s "$TELEOP_SPEED_M_S"
+  wait "$check_pid"; local status=$?
+  # The time-out line counts only if it comes AFTER a command had arrived ('resumed'): a time-out
+  # logged at start-up, before anyone drove, would make this pass whatever the watchdog does.
+  local resumed_line timed_out_line
+  resumed_line="$(grep -n -m1 "teleop commands resumed" "$log" | cut -d: -f1)"
+  timed_out_line="$(grep -n -m1 "teleop command timed out: zeroing the velocity reference" "$log" | cut -d: -f1)"
+  if [ -z "$resumed_line" ]; then
+    failures+=("DiffDriveController never logged 'teleop commands resumed'")
+  elif [ -z "$timed_out_line" ]; then
+    failures+=("DiffDriveController never logged 'teleop command timed out'")
+  elif [ "$timed_out_line" -lt "$resumed_line" ]; then
+    failures+=("DiffDriveController logged 'teleop command timed out' before any command had arrived (log line $timed_out_line, 'resumed' at line $resumed_line)")
+  fi
+  # The watchdog zeroes the reference; the balance loop must keep running.
+  wiring_problems
+  [ ${#problems[@]} -ne 0 ] && failures+=("after the time-out: ${problems[*]}")
+  note_tipover
+  judge "$status" "${failures[@]}"
+}
+
+# C2: an injected IMU outage, shorter or longer than the C-2 limit.
+check_imu_fault() {
+  local kind="$1" duration="$2"
+  new_run "C2-imu-fault-$kind"
+  start_check imu-hold --record "$IMU_RECORD_S"
+  local pid="$check_pid"
+  launch teleop:=false initial_pitch_deg:=2.0 \
+    imu_fault_start_s:="$IMU_FAULT_START_S" imu_fault_duration_s:="$duration"
+  zero_reference
+  local failures=() log="$dir/launch.log"
+  wait "$pid"; local status=$?
+  grep -q "injected IMU read failure" "$log" \
+    || failures+=("SimPlant never logged an injected IMU read failure: the outage did not happen")
+  # The probe must have been listening when the outage began (and, for the short one, for a second
+  # after it ended), or "never 0.0" would be about samples from before it. Outage times count from
+  # SimPlant's release.
+  local release last need
+  release="$(log_stamp "$log" "releasing the simulated robot")"
+  last="$(metric "$dir/metrics.json" last_stamp_s)"
+  need="$IMU_FAULT_START_S"
+  [ "$kind" = short ] && need="$(awk -v a="$IMU_FAULT_START_S" -v b="$duration" 'BEGIN {print a + b + 1}')"
+  if [ -z "$release" ] || [ -z "$last" ] || ! seconds_between "$release" "$last" "$need"; then
+    failures+=("the probe's last sample (${last:-none}) is not $need s after the release (${release:-none})")
+  fi
+  local deactivated="Deactivating following hardware components as their read cycle resulted in an error"
+  if [ "$kind" = short ]; then
+    grep -q "$deactivated" "$log" && failures+=("controller_manager deactivated the hardware: read() returned ERROR")
+    wiring_problems
+    [ ${#problems[@]} -ne 0 ] && failures+=("after the outage: ${problems[*]}")
+  else
+    grep -q "$deactivated.*SimRocko" "$log" \
+      || failures+=("controller_manager did not log '$deactivated ... SimRocko': no ERROR from read()")
+    # What controller_manager did about it, for the record (not judged).
+    echo "    after the ERROR, controller_manager logged:"
+    grep -E "Deactivating following|mode switch|Not acceptable" "$log" | sed 's/^.*\]: /      /'
+    echo "    controller states:"
+    timeout -k 2 "$CALL_TIMEOUT" ros2 control list_controllers 2>/dev/null | sed 's/^/      /'
+    echo "    hardware component state:"
+    timeout -k 2 "$CALL_TIMEOUT" ros2 control list_hardware_components 2>/dev/null \
+      | grep -E "name:|state:" | sed 's/^[[:space:]]*/      /'
+  fi
+  judge "$status" "${failures[@]}"
+}
+
+# H6: the pitch PID's D term reads the exported pitch_rate.
+check_pitch_rate() {
+  new_run "H6-pitch-rate"
+  start_check pitch-rate --record "$H6_RECORD_S" --min-rate-deg-s "$H6_MIN_RATE_DEG_S" \
+    --tolerance-deg-s "$H6_TOLERANCE_DEG_S"
+  local pid="$check_pid"
+  launch teleop:=false initial_pitch_deg:=2.0
+  zero_reference
+  wait_for_wiring
+  local failures=()
+  [ ${#problems[@]} -ne 0 ] && failures+=("${problems[*]}")
+  wait "$pid"; local status=$?
+  judge "$status" "${failures[@]}"
+}
+
+wants S1 && run "S1-baseline" - still "$S1_STILL_DEG"
+wants S1 && run "S1-command" "$FEEDFORWARD_RAD_S" change "$S1_CHANGE_DEG"
+wants S2a && run "S2a-no-torque" - exceed "$TIPOVER_DEG" disable_torque:=true initial_pitch_deg:=2.0
+wants H4 && check_tipover
+wants C3 && check_teleop
+wants C2 && check_imu_fault short "$IMU_FAULT_SHORT_S"
+wants C2 && check_imu_fault long "$IMU_FAULT_LONG_S"
+wants H6 && check_pitch_rate
 
 if [ "$failed" -ne 0 ]; then
-  echo "FAIL (simulation): see above."
+  echo "FAIL (simulation: $selected): see above."
   exit 1
 fi
 if [ "$could_not" -ne 0 ]; then
-  echo "COULD NOT JUDGE (simulation): see above."
+  echo "COULD NOT JUDGE (simulation: $selected): see above."
   exit 2
 fi
 passed=1
-echo "PASS (simulation, S1 and S2a): the four cascade controllers and joint_state_broadcaster are"
-echo "  active against rocko_env/SimPlant with all 12 interfaces; pitch stayed within $S1_STILL_DEG deg"
-echo "  without a wheel command and moved >= $S1_CHANGE_DEG deg with a $FEEDFORWARD_RAD_S rad/s one; with no"
-echo "  motor torque the robot passed $TIPOVER_DEG deg within $FALL_LIMIT_S s."
+echo "PASS (simulation: $selected). Each check that ran held, as printed above. In brief:"
+wants S1 && echo "  S1: the cascade and joint_state_broadcaster are active against SimPlant with all 14 interfaces;
+    pitch stayed within $S1_STILL_DEG deg with no wheel command and moved >= $S1_CHANGE_DEG deg with $FEEDFORWARD_RAD_S rad/s."
+wants S2a && echo "  S2a: with no motor torque the robot passed $TIPOVER_DEG deg within $FALL_LIMIT_S s."
+wants H4 && echo "  H4: past $TIPOVER_DEG deg both controllers tripped in the first cycle and wrote exactly 0.0, one
+    /tipover_rearm message past the limit was refused by both, and the controllers stayed active."
+wants C3 && echo "  C3: when the fake gamepad went silent the velocity reference went to exactly [0, 0] within
+    $TELEOP_TIMEOUT_S + $TELEOP_MARGIN_S s, and the balance loop kept running."
+wants C2 && echo "  C2: a $IMU_FAULT_SHORT_S s IMU outage gave no ERROR; a $IMU_FAULT_LONG_S s one made read() return ERROR and
+    controller_manager deactivate the hardware; the exported pitch was never 0.0 or NaN."
+wants H6 && echo "  H6: pitch_pid_controller's D term reads the exported pitch_rate (gyro), not a differentiated angle."
 echo "  This is a MODEL WITH ESTIMATED, UNMEASURED PARAMETERS. It does not show that the real robot"
 echo "  balances, or that any gain is good."
 exit 0

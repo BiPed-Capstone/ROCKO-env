@@ -14,3 +14,41 @@ add_feedforward_controller:
     default_value: "feedforward",
     description: "Topic name that the user uses to give the feedforward value to be added to the output of the controller",
   }
+
+  # Tipover cutoff (finding H-4, docs/claude-analysis/balance-loop-findings.md).
+  # SAFETY PARAMETER: 35.0 is a PROPOSED value taken from the H-4 write-up, not measured on this
+  # robot; a human replaces it with the angle measured in a tethered test.
+  # Measured on the pitch the IMU plugin reports, which already has the +7.6 deg pitch_offset of
+  # ICM20948.py added; whether that reported 0.0 is truly upright is unmeasured.
+  # read_only: the controller reads it once, at configure; changing it on a running controller
+  # would do nothing, so ROS refuses the change instead of pretending.
+  # lt_eq 90: past 90 deg the robot is lying on its side, so a larger limit is a typo (and one of
+  # 180 or more could never trip at all). The validator also refuses NaN. A value <= 0 still
+  # DISABLES the cutoff (the controller logs a loud WARN at configure).
+  tipover_pitch_deg: {
+    type: double,
+    default_value: 35.0,
+    read_only: true,
+    description: "[deg] If |pitch| exceeds this, the command is zeroed and stays zeroed until re-armed on /tipover_rearm (std_msgs/msg/Empty). Proposed value, a human confirms. A value <= 0 DISABLES the cutoff.",
+    validation: {
+      lt_eq<>: [90.0],
+    }
+  }
+
+  # SAFETY PARAMETER: 10.0 is a PROPOSED value; a human confirms it on the robot.
+  # Hysteresis for the re-arm: well inside tipover_pitch_deg, so a re-armed robot is one a person
+  # has stood up, not one still past the point of recovery. Checked at configure (it must be > 0 and
+  # < tipover_pitch_deg when the cutoff is enabled; otherwise configure fails).
+  rearm_max_pitch_deg: {
+    type: double,
+    default_value: 10.0,
+    read_only: true,
+    description: "[deg] A re-arm on /tipover_rearm is accepted only while |pitch| <= this. Must be > 0 and < tipover_pitch_deg when the cutoff is enabled. Proposed value, a human confirms.",
+  }
+
+  pitch_interface: {
+    type: string,
+    default_value: "",
+    read_only: true,
+    description: "State interface holding pitch [deg] for the tipover cutoff. Empty (the default) means '<joint of interfaces[0]>/pitch', e.g. left_wheel_joint/pitch for left_wheel_joint/velocity.",
+  }

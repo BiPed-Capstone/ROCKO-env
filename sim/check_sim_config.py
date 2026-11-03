@@ -6,7 +6,9 @@ verify_urdf.sh runs it. It fails when two files that must agree have drifted apa
   1. WIRING. rocko_sim_controllers.yaml must equal rocko_controllers.yaml in everything except the
      `gains` maps (controller names, types, dof_names, command and state interfaces, update_rate).
      Sim gains may differ; the wiring may not, or the sim would test a different cascade than the
-     robot runs. Values are compared with their type: 100 and 100.0 differ.
+     robot runs. Values are compared with their type: 100 and 100.0 differ. The only exceptions are
+     the entries of INTENTIONAL_WIRING_DIFFERENCES, each allowed only with exactly the two values
+     it names; an entry whose values no longer match either file fails, so it cannot go stale.
   2. GAINS STRUCTURE. A `gains` map also holds wiring and behaviour switches, so in each file the
      keys of a controller's `gains` must be exactly its `dof_names` (a joint with no entry silently
      gets p = i = d = 0), and every key under `gains` except the tunable numbers (TUNABLE_GAINS) must
@@ -99,11 +101,37 @@ def differences(hardware, sim, what):
     return problems
 
 
+# Wiring the sim may have on purpose and the robot does not (yet), as
+# {flattened key: (value in rocko_controllers.yaml, value in rocko_sim_controllers.yaml)}.
+# Keep this list as short as possible: every entry means the sim tests a cascade the robot does not run.
+INTENTIONAL_WIRING_DIFFERENCES = {
+    # H-6, sim only; real YAML change is proposal-gated. The pitch PID takes its D term from the
+    # gyro's pitch_rate state instead of differentiating the delayed pitch angle.
+    "/pitch_pid_controller/ros__parameters/reference_and_state_interfaces":
+        (["pitch"], ["pitch", "pitch_rate"]),
+}
+
+
 def check_wiring(root):
     hardware = flatten(without_gains(load_controllers(root, "rocko_controllers.yaml")))
     sim = flatten(without_gains(load_controllers(root, "rocko_sim_controllers.yaml")))
-    return (differences(hardware, sim, "wiring"),
-            f"{len(hardware)} wiring values equal, with their types (gains maps: next check)")
+    problems = []
+    for key, (hardware_value, sim_value) in INTENTIONAL_WIRING_DIFFERENCES.items():
+        found = (hardware.get(key, "<absent>"), sim.get(key, "<absent>"))
+        if repr(found) == repr((hardware_value, sim_value)):
+            del hardware[key], sim[key]  # exactly the allowed difference: do not compare it
+        else:
+            problems.append(
+                f"allowed wiring difference at {key} no longer matches: expected "
+                f"rocko_controllers.yaml {hardware_value!r} and rocko_sim_controllers.yaml "
+                f"{sim_value!r}, found {found[0]!r} and {found[1]!r}. If the change was made on "
+                "purpose (e.g. the proposal was applied), update or remove the entry in "
+                "INTENTIONAL_WIRING_DIFFERENCES")
+    problems += differences(hardware, sim, "wiring")
+    return (problems,
+            f"{len(hardware)} wiring values equal, with their types, plus "
+            f"{len(INTENTIONAL_WIRING_DIFFERENCES)} allowed difference(s) "
+            f"(INTENTIONAL_WIRING_DIFFERENCES; gains maps: next check)")
 
 
 # ---- 2. gains structure --------------------------------------------------------------------------

@@ -125,8 +125,8 @@ hardware PWM (M-2).
   below.
 - The `.srv` gained a field, so build the node and the plugin from the same commit.
 - The new code may need a newer Jazzy `ros2_control` 4.x than the `find_package(controller_manager
-  4.0.0)` minimum in `CMakeLists.txt` promises (`set_value()` returning `bool`; the `realtime_tools`
-  `.hpp` headers). **Plausible, unproven**: raised by the `ros2-control-reviewer`, not tested against
+  4.0.0)` minimum in `CMakeLists.txt` promises (`set_value()` returning `bool`; `get_optional()`; the
+  `realtime_tools` `.hpp` headers). **Plausible, unproven**: raised by the `ros2-control-reviewer`, not tested against
   an older release. Raising the minimum would be a version-pin change, which is a human's decision
   ([ADR 0001](../decisions/0001-version-lock.md)); no proposal has been written yet. Until someone
   decides, record the installed versions with the result (step 1 of the procedures below).
@@ -356,7 +356,7 @@ Status words as in the queue's [*Reading the table*](../next-steps.md#reading-th
 | File | Change |
 | --- | --- |
 | `rocko_env/rocko_env/hardware/sim/include/rocko_env/SimPlantModel.hpp` (new, 484 lines on 2026-11-02) | The physics, plain C++17 with no ROS types. One parameter block (`SimPlantParams`) marked `ESTIMATE, NOT MEASURED`; a planar inverted pendulum on wheels integrated with RK4 at `kSubStepS` = 1 ms; a DC-motor model (`motor_output_torque`); the IMU delay as a ring buffer of the lean angle, sized once in the constructor; a copy of the **new** `Motor12VoltQuadEncoder::write()` duty map (`write_path_duty`) that keeps the integer-division `MAX_RAD_PER_SEC` (`kWriteMaxRadPerSec` = 119.381 rad/s) on purpose so the sim sees what the motor sees (finding [L-7](../claude-analysis/balance-loop-findings.md#l-7--max_rad_per_sec-divides-integers)); a switch `model_encoder_node` that copies the encoder node's speed halving; the C-2 rule through `ImuFaultTracker` (`ImuFaultTracker.hpp`) |
-| `rocko_env/rocko_env/hardware/sim/SimPlant.cpp`, `.../include/rocko_env/SimPlant.hpp` (new) | The `rocko_env/SimPlant` `SystemInterface` that wraps the model and exports the same 12 interfaces as the real hardware. **Release hold:** `released_` (a member of `SimPlant`, set in `SimPlant::write()`) keeps the plant still until both wheel commands are finite, which happens when the cascade activates, because the hardware component activates seconds before the controllers are spawned. Sim time and every scenario time count from release. `read()` carries the sub-step remainder (`unintegrated_s_`) from one cycle to the next (round 2) |
+| `rocko_env/rocko_env/hardware/sim/SimPlant.cpp`, `.../include/rocko_env/SimPlant.hpp` (new) | The `rocko_env/SimPlant` `SystemInterface` that wraps the model and exports the same 12 interfaces as the real hardware (14 since stage 4, which added `pitch_rate`). **Release hold:** `released_` (a member of `SimPlant`, set in `SimPlant::write()`) keeps the plant still until both wheel commands are finite, which happens when the cascade activates, because the hardware component activates seconds before the controllers are spawned. Sim time and every scenario time count from release. `read()` carries the sub-step remainder (`unintegrated_s_`) from one cycle to the next (round 2) |
 | `rocko_env/rocko_env_hardware.xml`, `rocko_env/CMakeLists.txt` | Registers the plugin and always builds it (it needs no WiringPi), adds its include folder |
 | `rocko_env/rocko_env/description/urdf/rocko.urdf.xacro`, `.../ros2_control/rocko.ros2_control.xacro` | `use_sim_plant` (default `false`) and 29 sim parameters as xacro args. The new `SimRocko` block is the first `xacro:if` in the ros2_control xacro. The real `<ros2_control>` block is **unchanged inside**; only its condition is widened to `unless use_mock_hardware or use_sim_plant`, so with the sim on neither the real plugins nor the mock load |
 | `rocko_env/rocko_env/bringup/config/rocko_sim_controllers.yaml` (new) | A copy of the hardware controller wiring and gains. **Sim gains live only here.** `rocko_controllers.yaml` and `rocko.launch.py` are untouched, and nothing sets `use_sim_plant` except `rocko_sim.launch.py` |
@@ -486,6 +486,353 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
 Battery voltage and surface do not apply (nothing ran on a robot). `verify_sim.sh` prints its results
 to the terminal; the probe writes `samples.csv` and `metrics.json` to a folder inside the container.
 
+### Stage 4 — safeguards against the sim: H-4, C-3, C-2 downstream, H-6
+
+Built on `85bdc31` (the stage 3 commit); the code and these docs were uncommitted when this subsection
+was last revised (2026-11-02, a second docs pass after code fixes made following the first one: one
+shared re-arm topic with a re-arm band, separate treatment of the gyro rate, the watchdog's start-up
+behaviour, input checks in `Joystick.py`, and changes to checks `H4` and `C3`). Review round 1 is done
+and its fixes are in; round 2 is pending (see the *Review rounds* table). Status words as in the queue's
+[*Reading the table*](../next-steps.md#reading-the-table). The verification below was run on
+2026-11-02 in the container by the integrator, on the code as fixed, not by the author of this entry,
+except where a row says otherwise; the author of this entry read the code and the diff and re-ran the
+host tests on the laptop.
+
+**Where each success criterion stands**
+
+| Criterion | State | Evidence |
+| --- | --- | --- |
+| S4, H-4: the tipover cutoff trips and disarms in sim | **Met, in the model.** Row 2.6 is *done, awaiting robot* | Check `H4`, below |
+| S4, C-3: the watchdog trips in sim when commands stop | **Met, in the model.** Row 2.5 is *done, awaiting robot* | Check `C3`, below |
+| S4, C-2 downstream: an injected IMU fault makes the hardware interface return `ERROR` and the controllers never see pitch 0.0 | **Met, in the model** (and `controller_manager`'s reaction is now observed, for one component) | Check `C2`, below |
+| S4, H-6: the D term comes from the gyro rate | **Partly met.** The plugin exports the rate and the sim wires the D term to it (check `H6`). Changing the **real** `rocko_controllers.yaml` is gated (a proposal, not written by this entry). Row 1.2 is *partly done* | Check `H6`, below |
+| S2b, S3 (upright, impulse, velocity-step scenarios, the sweep) | **Not done.** Stage 5 | |
+| S5: Tier 3 marked built only after S1 and S2 | Tier 3 is **not** marked built (S2b is missing) | [ladder](../architecture/verification-ladder.md) |
+
+**What changed** (by symbol, not line number)
+
+| File | Change |
+| --- | --- |
+| `rocko_env/rocko_env/controllers/add_feedforward/include/rocko_env/TipoverLatch.hpp` (new) | The decision of the H-4 cutoff with no ROS types. `TipoverLatch::update()` trips when `\|pitch\|` is above the limit and never on NaN. Once tripped it stays tripped until a re-arm request arrives **and** `\|pitch\|` is at or below `rearm_max_pitch_deg` (10 deg, **proposed**); a NaN pitch refuses the re-arm, and a request is used up by the next `update()` whether it was accepted or not. The band exists because a robot re-armed at 34 deg would start driving while it still cannot recover. `request_rearm()` is the only call from another thread (an atomic flag). `is_enabled()` is false for a limit of 0 or less, or NaN. `is_valid_rearm_max()` is true only for a value above 0 and below the limit (false for NaN) |
+| `.../add_feedforward/AddFeedforwardController.cpp`, `.../include/rocko_env/AddFeedforwardController.hpp` | `state_interface_configuration()` now claims `<joint>/pitch` (a state interface may be claimed by several controllers, so `pitch_pid_controller` keeps its own). `on_configure()` reads the three new parameters and derives the pitch interface name from the first command interface. With the cutoff on, it **fails to configure** unless `rearm_max_pitch_deg` is above 0 and below `tipover_pitch_deg`. It creates **one** subscription, to the absolute topic `/tipover_rearm` (`std_msgs/msg/Empty`), which the left and the right instance both subscribe to, so one message re-arms both wheels. It logs `Tipover cutoff ON ...`, with the exact re-arm command, or, when the cutoff is disabled, the WARN `TIPOVER CUTOFF DISABLED`. `on_activate()` fails if the pitch interface is missing, and re-arms (activation is itself an operator action, and it does not ask for the `rearm_max_pitch_deg` check). `update_and_write_commands()` reads pitch, asks the latch, logs `TIPOVER CUTOFF TRIPPED` / `RE-ARMED` / `Tipover re-arm refused: pitch X deg is not within +/-10.0 deg (rearm_max_pitch_deg), or unknown. Still disarmed.` (the refusal at most once per 100 control cycles per instance), and while disarmed writes exactly `0.0` every cycle and zeroes `last_command_`. It does **not** deactivate the controller. Each wheel's instance latches on its own. **Known limit: this file holds the tipover block twice; see *Known limits of the tipover code* below** |
+| `.../add_feedforward/add_feedforward_controller_parameters.yaml` | Three new parameters, all **read_only** (read once at configure; ROS refuses a change at run time, which would otherwise do nothing): `tipover_pitch_deg` (default **35.0** deg, **proposed**; validated `<= 90`, and NaN is refused; 0 or less still **disables** the cutoff, with a WARN at configure), `rearm_max_pitch_deg` (default **10.0** deg, **proposed**; the rule is in the `TipoverLatch.hpp` row) and `pitch_interface` (default empty, meaning `<joint>/pitch`). Because the defaults sit in this file, **anyone who builds this code gets the cutoff switched on**, without editing `rocko_controllers.yaml` |
+| `rocko_env/rocko_env/controllers/diffdrive/DiffDriveController.py` | `CommandWatchdog` (new class: age measured from a command's **arrival** with `time.monotonic`; "no command yet" and a NaN timeout both count as expired). `DiffDriveController.__init__` declares `command_timeout_s` (default **0.2 s**, **proposed**: `DEFAULT_COMMAND_TIMEOUT_S`, which is 20 control cycles of 10 ms and 4 x the laptop's `HEARTBEAT_PERIOD_S`; a value that is not a positive number is refused with an error log and the default is used) and the `Bool` topic `~/command_timed_out` (`transient_local`). `command_controller()` zeroes `linear_vel` and `angular_vel` (so the velocity reference **and** the feedforwards go to zero) when expired and **keeps publishing**; `update_timed_out_state()` logs and publishes only on a change. At start-up, before any command has arrived, it logs the INFO line `no teleop command yet: the velocity reference is zero` and publishes `True`; the WARN `teleop command timed out: zeroing the velocity reference, balance loop keeps running` is logged only after a command had been received (so a check that looks for the WARN cannot pass at every start-up), and `teleop commands resumed` when the next one arrives. The comment there explains why: stopping the motors is the dangerous failsafe for an inverted pendulum. The callback also stores the whole `TwistStamped` now: it used to store `msg.twist`, and `command_controller()` then read `.twist.linear.x` from it, which would have raised `AttributeError` at the first command |
+| `rocko_env/rocko_env/controllers/joystick/Joystick.py` | `receive_joystick_data()` publishes only when a real gamepad packet arrived (it used to re-publish the last packet every 10 ms, which made an old command look fresh, defeating the watchdog). `accept_new_client()` / `close_client()` / `read_newest_message()`: non-blocking accept so a gamepad can reconnect, a clean disconnect (an empty `recv`) no longer crashes the node, and the newest complete 40-byte message wins. `message_problem()` rejects a message with an axis that is not finite or lies outside [-1, 1] (a tolerance of 0.01 for float rounding), or a button that is not 0 or 1: it logs `Rejected a gamepad message (...); dropping the connection.` and closes the connection, because a garbled message would become a velocity command and, once the byte stream is out of step, every later message is garbage too. Nothing is published until a sender connects again, so the watchdog zeroes the reference meanwhile |
+| `joystick/computer_joystick.py` (the **laptop** sender) | `send_loop()` resends the same packet every `HEARTBEAT_PERIOD_S` (0.05 s) when nothing changed. Before, it sent only on a change, so a stick held steady looked like a dead link and would trip the 0.2 s watchdog. `pack()` pads the gamepad's axes and buttons with zeros, or cuts them, to exactly 6 axes and 16 buttons (`NUM_AXES`, `NUM_BUTTONS`), so every message is 40 bytes whatever the gamepad has; `Joystick.py` reads exactly that many. The packet format is unchanged. `pygame` is imported inside `__main__` so the test can import `send_loop` without it. The script has no reconnect code: its connect loop runs once, before `send_loop` |
+| `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.py`, `rocko_interfaces/srv/Icm20948Data.srv` | The response gains `pitch_rate_deg_s`. `callback()` answers the angles as before, then `read_pitch_rate_deg_s()` reads `.gyro` once and returns `pitch_rate_sign * degrees(gyro[pitch_rate_axis])`. **`success` covers the angles only.** A gyro that is `None`, raises or gives a non-finite value makes only `pitch_rate_deg_s` NaN (with a throttled warning); it never discards a good pitch. There is **no** 'all values identical' rule for the gyro: a gyro that is truly still reads (0, 0, 0), which is a real measurement. (That rule stays for the Euler angles only.) `pitch_rate_axis` (0) and `pitch_rate_sign` (+1) are **named node parameters and unverified guesses**, with a warning logged at startup. **Units:** the BNO055 counts 1 LSB = 1/16 deg/s, and the Adafruit driver is documented to return rad/s; versions older than 5.0 returned deg/s, which `degrees()` would turn into a rate 57 times too large. The robot procedure must check the magnitude. The rate is a second sensor read a few milliseconds after the angles, not one snapshot with them; one 12-byte burst read (registers 0x14 to 0x1F) would fix that and is a note for the C-1 IMU migration (stage 6), not implemented |
+| `.../icm20948/ICM20948.cpp`, `.../include/rocko_env/ICM20948.hpp` | `export_state_interfaces()` exports `pitch_rate` under both joints. `read()` judges the **angles and the rate separately**: only the angles feed `ImuFaultTracker` and can make `read()` return `ERROR`. A rate that is not finite, or beyond `kMaxAbsPitchRateDegS` (2000 deg/s, **proposed**), is not stored: the plugin holds the last good rate (NaN before the first), counts the bad reads in its own counter (`_consecutive_rate_failures`, used for the throttled log only) and **never returns `ERROR` for it**, because the rate only feeds a D term and `rocko_controllers.yaml` does not use it today. A bad rate never throws away a good pitch. 2000 deg/s is the BNO055 gyro's full scale; it catches the older driver's 57x units mistake only in motion faster than about 35 deg/s |
+| `.../description/ros2_control/rocko.ros2_control.xacro` | A `pitch_rate` state interface on each wheel joint in the real, mock and sim blocks (14 interfaces in balancing mode, was 12). The mock zero-fills it |
+| `.../hardware/sim/SimPlant.cpp`, `.../include/rocko_env/SimPlant.hpp`, `.../include/rocko_env/SimPlantModel.hpp` | `SimPlant` exports `pitch_rate` (`kStateNames`, `export_state_interfaces()`); `SimPlantModel::imu_pitch_rate_deg_s()` is `pitch_sign * degrees(psi_dot)` with **no** IMU delay; `SimImuOutput::update()` holds the rate together with the pitch on a failed read. **Unlike the real plugin, the sim ties the two together:** a non-finite rate counts as a failed read of the whole sample, and the sim has no gyro-only fault, so the plugin's separate treatment of the rate is not exercised by any sim check |
+| `.../bringup/config/rocko_sim_controllers.yaml` | **Sim file only.** `pitch_pid_controller.reference_and_state_interfaces` is `["pitch", "pitch_rate"]`. `rocko_controllers.yaml` is **untouched** and still says `["pitch"]`; no gain, limit or `update_rate` changed anywhere |
+| `.../bringup/launch/rocko_sim.launch.py` | A `command_timeout_s` argument (default 0.2, equal to the node's own default) passed to `DiffDriveController.py`, so check `C3` can be shown to fail |
+| `sim/check_sim_config.py` | `INTENTIONAL_WIRING_DIFFERENCES`: the one wiring difference above is allowed, only with exactly those two values; the output now reads `17 wiring values equal ... plus 1 allowed difference(s)` |
+| `sim/scenario_checks.py` (new), `verify_sim.sh` | The four new checks (`tipover`, `teleop`, `imu-hold`, `pitch-rate` in the Python file; `H4`, `C3`, `C2`, `H6` in the script, which can now run a chosen subset, e.g. `verify_sim.sh H4 C3`). 8 launches; about 119 s when last timed, before `H4`'s recording window `TIPOVER_RECORD_S` grew from 8 s to 16 s (not re-timed since). `H4` publishes **one** message, `ros2 topic pub --once -w 2 /tipover_rearm std_msgs/msg/Empty {}`, while the robot is past the limit, and requires **both** controllers to log `Tipover re-arm refused` (each within `REARM_REPLY_WAIT_S` = 5 s) and neither to log `RE-ARMED`. `TIPOVER_RECORD_S` is 16 s because the refusal came 11.4 s after the first command write in a slow container, mostly the wiring check and the roughly 3 s `-w 2` waits for discovery to find both subscribers. `C3` requires `teleop commands resumed` in `DiffDriveController`'s log before its first `teleop command timed out`. New constants: `H6_RECORD_S` (3 s) and `MIN_SAMPLES` (50 samples, 0.5 s at 100 Hz). The re-arm band (a re-arm refused between `rearm_max_pitch_deg` and the trip limit) is **not** exercised in the sim; only the host latch test covers it |
+| `tools/tipover_latch_test.cpp`, `tools/teleop_watchdog_test.py`, `tools/computer_joystick_heartbeat_test.py`, `tools/imu_node_test.py` (new); `tools/sim_plant_model_test.cpp` | Host tests (not tiers). The latch test has 12 test functions (including the re-arm band and `is_valid_rearm_max`); the watchdog test prints `16/16`, the heartbeat test `5/5`, and the new IMU node test `4/4` (it loads `ICM20948.py` with stand-ins for `rclpy` and the sensor library, and checks: good angles and gyro; a bad gyro makes only the rate NaN while the angles and `success` stay good; a still gyro (0, 0, 0) is a real reading, rate 0.0; bad angles fail whatever the gyro says). The plant test grew from 70 to 80 `ok` lines |
+
+**Known limits of the tipover code (not clean, and not hidden)**
+
+- **The tipover block is in `AddFeedforwardController.cpp` twice.** Review asked for the inline block in
+  `update_and_write_commands()` to move into a helper, `tipover_tripped_this_cycle()`. The guard hook denied
+  the edit that replaced the inline block with a call, because it counts safety words and cannot tell a
+  move from a removal. So the file now holds the inline block (about lines 299 to 352, from the comment
+  above `bool tipover_stop = false;` to `tipover_stop = !tipover_latch_.armed();`), which is the code that
+  **runs**, and, at about line 445, the helper, an **unused duplicate** of it (nothing calls it; a comment
+  at the inline block says so). A human removes the duplicate (the helper and its declaration in the
+  `.hpp`) or finishes the move; a proposal is to be written by the integrator. Until then a change to one
+  copy that misses the other changes nothing at run time and misleads the next reader. This is not clean
+  code, and it stays so until a human acts.
+- **The limits live only as code defaults, in a file the hook does not watch.** `tipover_pitch_deg`,
+  `rearm_max_pitch_deg` and `pitch_interface` are set only in
+  `add_feedforward_controller_parameters.yaml`. `rocko_controllers.yaml` is untouched and does not mention
+  them. The guard hook's gain-and-limit check applies to `bringup/config/*.yaml` and knows only the keys on
+  its list, so an edit that changed the 35 would not be stopped. A proposal (to be written by the
+  integrator) asks to add the three keys to the hook's key list and to set them explicitly in the real YAML.
+- **C-1 blocks the cutoff entirely.** Pitch reaches the cutoff only through `ICM20948::read()`, which makes
+  a blocking service call with no timeout (finding C-1, open). If the IMU node stops answering, `read()`
+  never returns and the cutoff cannot trip.
+
+**Risks**
+
+- **Critical path.** `AddFeedforwardController.cpp`, `ICM20948.cpp` and `rocko_sim_controllers.yaml`
+  (in `bringup/config/`) are on the `CLAUDE.md` §6 list, so `realtime-auditor` is mandatory for this
+  stage. No gain or `update_rate` changed.
+- **The cutoff is on by default on the robot (35 deg), and that value is a proposal.** The reason for a
+  cutoff is physical: past the lean the robot can still recover from, the wheels cannot get back under the
+  body, so driving them only spins them or shoves a robot that is already down. The 35 deg is not from
+  this robot's physics or a measurement; it comes from the write-up of finding H-4. The limit is
+  compared with the **reported** pitch, which includes the IMU node's `pitch_offset = 7.6` deg whose
+  origin is undocumented; true lean at the trip is therefore not known to better than that. The cutoff
+  zeroes the wheels only **after** the robot has fallen. That is the opposite of C-3's rule on purpose:
+  while the robot is upright, losing the gamepad zeroes only the velocity **reference**, and the balance
+  loop keeps driving the wheels.
+- **A re-arm has two ways in, and only one of them checks the pitch.** The topic message is accepted only
+  while `|pitch| <= rearm_max_pitch_deg` (10 deg, **proposed**). Activating an
+  `*_add_feedforward_controller` also re-arms it (`on_activate()`), without that check; the first
+  `update()` trips again at once if the robot is past 35 deg, but a robot between 10 and 35 deg would be
+  re-armed. The re-arm band has only been run in the host latch test.
+- **The cutoff zeroes the wheel command but nothing upstream.** `velocity_pid_controller` and
+  `pitch_pid_controller` keep running while it is latched, so their integrators keep winding and a
+  re-arm could produce a large first command (finding H-10, open). The documented procedure for a re-arm
+  therefore asks for the stick centred and for the cascade to be deactivated and reactivated (step 9 of
+  the H-4 procedure below). The integrator reported reactivation as the safer route; **that was not
+  tested**, and the exact commands are not written.
+- **A frozen IMU (H-9).** A sensor frozen at a safe-looking value never trips the cutoff.
+- **A pitch-interface mismatch fails safe, not silently:** `on_activate()` refuses to activate without the
+  pitch interface. On a Pi that runs an **old** IMU plugin build with the **new** xacro (or the reverse) the
+  interface lists would disagree; rebuild both.
+- **C-3's response is untried on a robot and steps to zero.** The reference goes from its last value to
+  exactly 0 in one cycle; the `RateLimiter` is not used there. What that does to a leaning robot was not
+  measured.
+- **H-6 depends on guesses.** If `pitch_rate_axis` or `pitch_rate_sign` is wrong, the rate is wrong or
+  inverted, and an inverted D term is worse than none. The unit is a guess too: a driver older than 5.0
+  returns deg/s, and the rate would be 57 times too large (the 2000 deg/s limit catches that only in
+  motion faster than about 35 deg/s). It only reaches the controller after a human changes the real
+  YAML, which this entry does not do.
+- **`Joystick.py` behaviour changed** for the gamepad link (no more re-publishing the last packet). A
+  laptop still running the old `computer_joystick.py` would trip the watchdog on every held stick:
+  update the laptop's copy with the Pi's. `Joystick.py` now also drops the connection on a message with a
+  non-finite or out-of-range value, and the laptop script cannot reconnect by itself: restart it.
+
+**Verification (stage 4).** Run 2026-11-02 in the container by the integrator, on the code as fixed, unless
+a row says otherwise.
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| pre | `./check_container_mount.sh` | the result was not passed to the author of this entry; **the integrator should confirm it printed `ok`** before these container rows are tied to this checkout |
+| 1 build | `docker compose -f docker/compose.yml exec -T ros2 bash -c 'cd /ros2_ws && src/ROCKO-env/build_ros.sh'` | a clean build: exit 0, 0 compiler warnings. `Motor12VoltQuadEncoder.cpp` is still left out |
+| 0 static | `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_urdf.sh` | `PASS`; the mock and the sim export the same **14** interfaces as the real hardware; the config check reports 17 wiring values equal plus 1 allowed difference. (`python3 sim/check_sim_config.py`, re-run on the laptop by the author of this entry for the first docs pass, printed the same 17 plus 1 line and three more `ok` lines) |
+| 2 mock | `verify_mock.sh`; `verify_mock.sh tank` | PASS; PASS. The mock holds pitch at 0.0, so the cutoff never trips there; this shows only that `AddFeedforwardController` still loads and activates while claiming the pitch state interface |
+| compile-only (not a tier) | `check_motor_plugin_compiles.sh` | PASS (the motor plugin file was not edited in stage 4) |
+| 3 sim (partly built) | `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh` | `PASS (simulation: S1 S2a H4 C3 C2 H6)`, 8 launches. The run time after the fixes was not passed to the author of this entry (119 s was measured before `H4`'s window grew from 8 s to 16 s). `verify_sim.sh H4 C3` runs just those two |
+| 0 host | `.claude/hooks/test-guard-protected-files.sh` | 81 cases ok (re-run on the laptop by the author of this entry, 2026-11-02) |
+| host (not a tier) | `tools/sim_plant_model_test.cpp` (command in stage 3) | 80 `ok` lines, `all SimPlantModel tests passed`; the author of this entry re-ran it on the laptop |
+| host (not a tier) | `tools/tipover_latch_test.cpp` (command in the [ladder](../architecture/verification-ladder.md#the-host-tests-of-the-stage-4-safeguards-not-tiers)) | `all TipoverLatch tests passed` (12 test functions). Passed in the container run and re-run on the laptop by the author of this entry |
+| host (not a tier) | `python3 -I tools/teleop_watchdog_test.py`; `python3 -I tools/computer_joystick_heartbeat_test.py`; `python3 -I tools/imu_node_test.py` | `16/16 passed`; `5/5 passed`; `4/4 passed` (the third is new). All three re-run on the laptop by the author of this entry: same counts |
+| host (not a tier) | `tools/imu_fault_tracker_test.cpp` (command in stage 2) | passes; `all ImuFaultTracker tests passed` on the laptop |
+| 4 robot | | not run, and not possible for an agent |
+
+**Evidence per safeguard, from `verify_sim.sh` (all in the model; none says anything about the robot)**
+
+The counts and times below are from the **first** full run (2026-11-02, before the second docs pass's
+code fixes). The run after the fixes passed, but its numbers were not passed to the author of this entry,
+so they are not refreshed here. Two checks changed in between: `H4` now sends one message on
+`/tipover_rearm` and requires both controllers to refuse it, and `C3` now requires `resumed` before the
+first `timed out`.
+
+| Check | What was seen |
+| --- | --- |
+| `H4` (start at 40 deg) | Both `left_` and `right_add_feedforward_controller` logged `TIPOVER CUTOFF TRIPPED` in the first cycle they wrote. Of the commands written while `\|pitch\| > 35 deg`, 801 of 801 were exactly `0.0` (read from `controller_manager`'s `/controller_manager/introspection_data/full`, best-effort QoS). A re-arm sent at pitch 60.1 deg was refused (the first version of the check; see above for what it requires now). The controllers stayed active |
+| `C3` (fake gamepad: `TwistStamped` at 20 Hz for 2 s, then silence) | `command_timed_out` was `False` 0.014 s after the first command and `True` 0.207 s after the last (the window is 0.2 to 0.3 s). The velocity reference was `[0.05, 0.05]` in 195 of 195 messages while driven and exactly `[0, 0]` in 170 of 170 afterwards. The controllers stayed active; 170 plant samples arrived after the timeout |
+| `C2` short (start 2 deg; 0.03 s outage = 3 reads) | No `ERROR`; no exported pitch sample of 0.0 or NaN (a held value is a run of 5 identical samples) |
+| `C2` long (0.2 s outage) | `SimPlant`'s `read()` returned `ERROR`. `controller_manager` 4.48.1 then logged `Deactivating following hardware components ... [ SimRocko ]`, deactivated all five controllers (`joint_state_broadcaster` included), and logged `Not acceptable command interfaces combination` and `Error while attempting mode switch when deactivating controllers in read cycle!`. End state: controllers `inactive`, `SimRocko` `unconfigured`. 0 samples of 0.0 or NaN |
+| `H6` (start 2 deg) | 600 pairs from the same control cycle: `feedback_dot` equalled the exported `pitch_rate` exactly (largest 46 deg/s), and `error_dot` was `-feedback_dot` |
+
+**Finding from `C2` long, for H-7.** In the sim the IMU and the motors are one component, so this
+does not show what the motors do on the robot, where the IMU is its own component. H-7 stays *partly
+mitigated, unconfirmed on hardware*. What it does answer: `controller_manager` 4.48.1 reacted to an
+`ERROR` in `read()` by deactivating the hardware component *and* every controller; a controller does not
+keep running with a dead plant. (The version on the Pi may differ; record it.)
+
+**Deliberate breaks (each watched going red, then restored)**
+
+| Break | Result |
+| --- | --- |
+| `H4` with the cutoff off (`tipover_pitch_deg` 0) | The commands past the limit were -400 rad/s (548 of 548 non-zero) and no controller logged a trip: red |
+| `C3` with `command_timeout_s=1000` | red |
+| `C2` with a failed IMU read made to export 0.0 | red, with 4 samples of exactly 0.0 |
+| `H6` with the sim's `reference_and_state_interfaces` back at `["pitch"]` | red |
+| `tipover_latch_test.cpp`, two deliberate breaks to `TipoverLatch.hpp` | red on both |
+| `teleop_watchdog_test.py`, four deliberate breaks | red on all four |
+
+The failure text of the `C3`, `H6`, `tipover_latch_test` and `teleop_watchdog_test` breaks, and which
+breaks they were, were not passed to the author of this entry. **These breaks were made on the first
+versions.** Whether the later changes were made to fail was not passed to the author of this entry, so
+treat them as **not shown to fail** until the integrator says: the latch test's re-arm band cases (12
+functions now, 10 then), the watchdog test's extra checks (16 now, 13 then), the heartbeat test's extra
+check (5 now, 4 then), `imu_node_test.py` (new), `H4`'s rule that both controllers refuse the one
+message, and `C3`'s rule that `resumed` comes before `timed out`.
+
+**Observation: H-6 in the model with the unchanged hardware gains (not an explanation, not a robot claim).**
+2 deg start, zero reference, the sim's gains equal to the hardware's. With H-6 wired in the first 2 s
+settle faster (pitch 0.43 / 0.31 deg at 1 s, 0.26 / 0.04 deg at 2 s, left / right) but the slow drift then
+tips the model **sooner**: 10.1 deg at 8 s, 23.3 deg at 9 s, first at or past 35 deg at 9.42 s / 9.34 s.
+Without H-6: 1.59 deg at 1 s, 5.9 deg at 8 s, 34.4 deg at 10 s, first at or past 35 deg at 10.02 s.
+Neither holds. This is a slow run-away, **consistent with** the outer velocity loop's sign problem that
+[sim-plant.md §2.4](../architecture/sim-plant.md) flags, but that has **not been shown** and the cause is
+**not yet explained**; stage 5 is to investigate. No gain was changed. [sim-plant.md §7.2](../architecture/sim-plant.md#72-model-predictions-with-the-hardware-gains-not-robot-claims)
+holds the same numbers.
+
+**New findings** (in the [findings](../claude-analysis/balance-loop-findings.md)): **H-10**, upstream PID
+integrators wind up while the tipover cutoff is latched, so a re-arm can produce a large command; **L-8**,
+`pid_controller` sets the rate reference once, at activation.
+
+**Proposed values added in stage 4.** None was measured or chosen by a human. The first three are ROS
+parameters (change them in the YAML or at launch, no rebuild; `tipover_pitch_deg` and `rearm_max_pitch_deg`
+are read-only, so `ros2 param set` is refused on them); the others are constants or defaults.
+
+| Name | Value | Where | Meaning |
+| --- | --- | --- | --- |
+| `tipover_pitch_deg` | 35.0 deg | `add_feedforward_controller_parameters.yaml` (a parameter of each `*_add_feedforward_controller`) | `\|pitch\|` above this latches the wheel command to 0.0. 0 or less disables it; above 90 is refused; NaN is refused. From finding H-4's write-up, not from this robot |
+| `rearm_max_pitch_deg` | 10.0 deg | the same file | A re-arm on `/tipover_rearm` is accepted only while `\|pitch\|` is at or below this. With the cutoff on, `on_configure()` fails unless 0 < it < `tipover_pitch_deg` |
+| `command_timeout_s` | 0.2 s | `DiffDriveController.py` (a parameter) | Age of the newest gamepad command after which the velocity reference is zeroed. 0.2 s is 20 control cycles and 4 x `HEARTBEAT_PERIOD_S` |
+| `HEARTBEAT_PERIOD_S` | 0.05 s | `joystick/computer_joystick.py` | How often the laptop resends an unchanged packet (4 inside one timeout) |
+| `kMaxAbsPitchRateDegS` | 2000 deg/s | `ICM20948.hpp` | A pitch rate above this is held and counted as a bad rate (never an `ERROR`) |
+| `pitch_rate_axis`, `pitch_rate_sign` | 0, +1 | `ICM20948.py` (node parameters) | **Guesses** for which gyro axis and sign is pitch rate |
+
+**Robot procedure for H-4, the tipover cutoff (a person, on the Pi; tethered, wheels off the ground)**
+
+1. Machine, build and versions: step 1 of the C-2 procedure in stage 2 (Pi, `source` lines, build with
+   the motor plugin, record the commit SHA and the `hardware_interface` / `realtime_tools` versions).
+2. Put the robot on a stand so both wheels are free. Have a way to cut motor power within reach.
+   **Abort by cutting motor power** if a wheel keeps turning after the `TIPOVER CUTOFF TRIPPED` log
+   line, if no trip line appears by the time the reported pitch is 5 deg past the limit, or at the
+   first wheel motion you did not expect.
+3. Launch balancing: `ros2 launch rocko_env rocko.launch.py`. In a second terminal (run both `source`
+   lines there too): `ros2 control list_controllers` (all `active`) and
+   `ros2 topic echo /pitch_pid_controller/controller_state` to read the pitch the controllers see. Success:
+   both `*_add_feedforward_controller` logged `Tipover cutoff ON: |left_wheel_joint/pitch| > 35.0 deg zeroes
+   this wheel's command and latches. Re-arm both wheels, with |pitch| <= 10.0 deg, with: ros2 topic pub
+   --once -w 2 /tipover_rearm std_msgs/msg/Empty {}`. Both wheels print this line, with their own
+   `left_wheel_joint` or `right_wheel_joint` in the first part.
+4. Hold the robot near upright (reported pitch near 0). No trip line must appear.
+5. Lean the robot by hand, slowly, until the **reported** pitch passes 35 deg either way. Expect a
+   `TIPOVER CUTOFF TRIPPED` line from each of the left and the right controller, and both wheels to stop.
+   Write down the reported pitch at the trip (it includes `pitch_offset`, so this is not the true lean),
+   and roughly how long the wheels took to stop.
+6. Bring the robot back to about 20 deg, which is inside the trip limit but outside the re-arm band. The
+   wheels must **stay stopped** (no automatic re-arm).
+7. While it is held at about 20 deg, publish the re-arm once:
+   `ros2 topic pub --once -w 2 /tipover_rearm std_msgs/msg/Empty {}`. The `-w 2` makes the command wait for
+   two subscribers: plain `--once` publishes as soon as it has found one and re-arms only one wheel,
+   because discovery of the second takes about 3 s (seen in the container). Expect `Tipover re-arm
+   refused: pitch ... is not within +/-10.0 deg (rearm_max_pitch_deg), or unknown. Still disarmed.` from
+   **both** controllers and the wheels to stay stopped. (This band is checked only by the host latch test,
+   not by the sim.)
+8. Lean past 35 deg again and publish the same message. Expect the same refusal from both. (This is what
+   check `H4` does in the model.)
+9. Re-arm for real: stand the robot within 10 deg of upright, with the stick **centred** (no
+   velocity command). Because the upstream integrators kept running while the cutoff was latched
+   (finding H-10), deactivate and reactivate the cascade before the message, as the integrator reported
+   to be the safer route. **That has not been tested and its exact commands are not written**: note that
+   activating an `*_add_feedforward_controller` re-arms it by itself without the 10 deg check, so work
+   out the order on the stand and write down what you did. Then publish the message from step 7. Expect
+   a `Tipover cutoff RE-ARMED by operator at pitch ...` line from BOTH `left_` and `right_add_feedforward_controller`
+   (publish again if only one appears; that is harmless to a wheel that is already armed) and the wheels
+   to be driven by the loop again. **Keep hands clear of the wheels and be ready to cut power**: the first command may be
+   large. Write down what the wheels did.
+10. Record with the result: the commit SHA, battery voltage, the surface (or "on a stand"), and where the
+    log went ([Reproducing results](../guides/reproducing-results.md)). Do not write that balance
+    improved: this procedure does not balance anything. If the limit looks wrong, say what value you would
+    want; it is a proposal, not a measurement.
+
+**Robot procedure for C-3, the teleop watchdog (a person, on the Pi and the laptop; tethered, wheels off the ground)**
+
+1. Machines: the Pi (build as above) and the laptop that runs the gamepad. **Copy the new
+   `joystick/computer_joystick.py` to the laptop**: the old one sends only on a change and would trip
+   the watchdog while a stick is held. Set `ROCKO_IP` in it to the Pi's address.
+2. Stand, power cut within reach. Abort by cutting motor power at the first wheel motion you did not
+   expect, or if the wheels go quiet after the timeout while you tilt the robot: the design is that the
+   balance loop keeps driving them, and stopping them would be the dangerous failure.
+3. On the Pi: `ros2 launch rocko_env rocko.launch.py`. Second terminal: `ros2 topic echo
+   /diff_drive_controller/command_timed_out` and, in a third, `ros2 topic echo
+   /velocity_pid_controller/reference`. Before the laptop connects, expect the INFO line `no teleop command
+   yet: the velocity reference is zero` from `DiffDriveController`, `command_timed_out` reading `true`, and
+   **no** `teleop command timed out` warning (that warning means a command had arrived and then stopped).
+   On the laptop: `python3 joystick/computer_joystick.py`. Expect `Joystick connected!` in the Pi's log.
+4. Hold a stick at a steady deflection for 10 s. Expect `command_timed_out` to read `false` and the
+   reference to stay non-zero the whole time (this is the heartbeat; a `true` here is a failure).
+5. Stop the laptop script with Ctrl-C (a clean disconnect; `Joystick disconnected` appears), then repeat
+   step 4 and this time pull the laptop's network cable or Wi-Fi instead (an unclean drop). In both
+   cases expect, within about 0.2 to 0.3 s: the log line `teleop command timed out: zeroing the velocity
+   reference, balance loop keeps running`, `command_timed_out` becoming `true`, the reference becoming
+   `[0.0, 0.0]`, `ros2 control list_controllers` still showing everything `active`, and the wheels still
+   being driven by the balance loop (on a stand, in response to how you tilt the robot).
+6. Restart the laptop script (it has no reconnect code: its connect loop runs once, before `send_loop`).
+   Expect `Joystick connected!`, `teleop commands resumed` and the reference following the stick again. If
+   the Pi's log instead shows `Rejected a gamepad message (...); dropping the connection.`, the sender
+   sent a non-finite or out-of-range value or the wrong message size: write down the text.
+7. Write down the time from the last command to the log line, what the wheels did when the reference
+   stepped to zero (there is no ramp; this has not been measured), and whether 0.2 s felt right.
+8. Record the SHA, battery voltage, surface and log location, as above.
+
+**Robot procedure for H-6, the gyro pitch rate (a person, on the Pi; the motor plugin is not launched)**
+
+1. Machine: the Pi, with `source /opt/ros/jazzy/setup.bash` and the workspace overlay. Build with the
+   new `rocko_interfaces` (the `.srv` changed). Record the SHA, and `pip3 show adafruit-circuitpython-bno055`
+   (the BNO055 library version; the package name is the author's guess from the `adafruit_bno055` import), because gyro units differ between versions: a driver older than 5.0 returns deg/s, a newer one rad/s.
+2. Wheels cannot move: **launch only the IMU node**, not the motor plugin. `ros2 run rocko_env ICM20948.py`.
+   Expect a warning that axis and sign are unverified.
+3. In a second terminal (sourced the same way), call the service repeatedly while you tilt the robot:
+   `while true; do ros2 service call /icm20948_data rocko_interfaces/srv/Icm20948Data "{}"; sleep 0.1; done`.
+   Read `pitch` and `pitch_rate_deg_s`.
+4. Hold the robot still: the rate should be near zero. Then tilt it forward by about 30 deg over about 1
+   s: `pitch` should change by about 30 deg and `pitch_rate_deg_s` should be about 30 deg/s while
+   moving, **the same sign as the change in pitch**, and near zero again when you stop.
+5. If the rate is near zero while pitch changes, or large when you tilt sideways or turn the robot,
+   the axis is wrong: stop the node and run it with `--ros-args -p pitch_rate_axis:=1`, then `:=2`, and
+   repeat step 4. If the rate has the opposite sign to the change in pitch, use
+   `-p pitch_rate_sign:=-1`. Then repeat with the opposite sign once to see the inversion for yourself.
+6. Magnitude: tilt the robot about 90 deg in about 1 s. Expect `pitch_rate_deg_s` around 90 deg/s while
+   it moves, not around 5000 (57 times too large is what an old driver's deg/s gives after `degrees()`). If
+   it is about 57 times too large or too small, the library is returning the other unit (rad/s vs deg/s):
+   write down which. The plugin's 2000 deg/s limit does not catch this unless the motion is faster than
+   about 35 deg/s.
+7. With the robot still on the stand, read the rate for a minute. Near zero is expected, and exactly 0.0 is
+   a real reading (there is no 'identical values' rule for the gyro). Count the node's `Pitch rate
+   unavailable this cycle (sent as NaN; the angles are unaffected)` warnings: each is one NaN rate, and
+   `success` must stay true on those replies.
+8. **Do not change `rocko_controllers.yaml`.** Wiring the rate into the real pitch PID is a gated change
+   (a proposal, not written by this entry), and it has to cover the rate-reference problem of finding L-8.
+9. Record the SHA, library version, the axis and sign you chose, and where the log went. Abort: no motors
+   are launched, so only stop if anything unexpected moves.
+
+**C-2 downstream on the robot.** The C-2 procedure in stage 2 is unchanged. What `C2` long adds to it is
+a thing to write down: after the `ERROR`, run `ros2 control list_controllers` and
+`ros2 control list_hardware_components` and compare with the sim's end state (controllers `inactive`,
+the plant `unconfigured`), and record whether the **motor** component stays active.
+
+**Not done / not verified (stage 4)**
+
+- **Anything on a Pi or a robot.** The cutoff, the watchdog over a real TCP link, the gyro read and the
+  C++ `read()` path for the rate were not run. `ICM20948.cpp` is compiled by Tier 1 but no tier runs its
+  code (the mock replaces it); the Python node was not run at all.
+- **The proposed values** (table above) and **the sign and axis of the gyro**.
+- **The real YAML for H-6.** Not changed; the proposal is not written.
+- **H-10 and L-8** are findings, not fixes. Nothing resets the PID integrators on a trip or a re-arm; the
+  documented mitigation (stick centred, deactivate and reactivate the cascade) is untested and its commands
+  are not written.
+- **Whether a re-arm that is accepted works in the sim.** Only the refused case is checked, and the re-arm
+  band (10 to 35 deg) is covered by the host latch test only.
+- **C-1 blocks the cutoff entirely** (see *Known limits of the tipover code*), and a frozen IMU (H-9)
+  never trips it.
+- **The duplicated tipover block** in `AddFeedforwardController.cpp`, and the three tipover keys missing
+  from the hook's list and from the real YAML: a human acts; the proposal is to be written by the
+  integrator.
+- **The gyro units and the rate's axis and sign** on a real sensor; the rate is not read in the same
+  snapshot as the angles (the burst read is for C-1, stage 6).
+- **The TCP path in a launch.** `C3` publishes `TwistStamped` directly; `Joystick.py`'s socket code and the
+  laptop heartbeat are covered by host tests with stand-ins only.
+- **The cause of the slow drift in the model** (stage 5).
+- **Review of stage 4:** round 1 is done (fixed above) and round 2 is pending: see the *Review rounds* table.
+
+**Reproduce (stage 4).** After the commands in *Reproduce* below (through the Tier 1 build), from the
+repo root. Commit: built on `85bdc31` plus the uncommitted stage 4 changes; the commit that adds this
+text is the one to read from `git log`.
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_urdf.sh       # Tier 0; PASS, 14 interfaces
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh        # Tier 3, partly built; PASS, exit 0 (119 s before H4's window grew; not re-timed)
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh H4 C3  # only two checks
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include \
+    tools/tipover_latch_test.cpp -o /tmp/tipover_latch_test && /tmp/tipover_latch_test         # host, not a tier
+python3 -I tools/teleop_watchdog_test.py                                                       # host, not a tier; 22/22
+python3 -I tools/computer_joystick_heartbeat_test.py                                           # host, not a tier; 5/5
+python3 -I tools/imu_node_test.py                                                              # host, not a tier; 5/5
+```
+
+Battery voltage and surface do not apply (nothing ran on a robot). `verify_sim.sh` prints its results to
+the terminal and keeps its run directory (launch logs, `samples.csv`, `metrics.json`) only on a failure.
+
 ## Verification
 
 | Tier | Command | Result |
@@ -522,6 +869,7 @@ stage log above.
 | stage 3, 1 | `ros2-control-reviewer`, `explainability-reviewer` | Drift of the sim YAML and of the three copies of the defaults; a vacuous S1 baseline; failed-run evidence deleted; the missing sim+mock expansion; partial integer parse; explainability items M1-M7 | Fixed (see *Stage 3, review round 1* above), except the `static_assert` tie to `ICM20948.hpp` (the constant is private; a script compares the numbers instead) |
 | stage 3, 2 | `ros2-control-reviewer` (opus), `realtime-auditor` (opus), `explainability-reviewer` (sonnet), `docs-reviewer` (sonnet) | ros2: the drift checker ignored the whole `gains` map, never tied a `<param>` to its xacro arg, was type-blind, could still pass the S1 baseline without a release, and tank mode ignored `use_sim_plant` silently. Realtime: only Lows (sub-step remainder not carried, `invalid_reason()` gaps, a non-finite IMU sample counted as good, no upper bound on the IMU delay). Explainability: CLEAN, Lows. Docs: stale counts, a stale blind-spot bullet, wrong line citations, a false 'reconciled' sentence | All fixed (checker rewritten and shown red on each mutation; remainder carry; stronger `invalid_reason()` with unit test #17; the `last_stamp_s` release check; a seventh `verify_urdf.sh` expansion). The first attempt at this round hit the account's usage limit and was rerun |
 | stage 3, 3 | `ros2-control-reviewer` (opus), `realtime-auditor` (opus), `docs-reviewer` (sonnet) | ros2: **CLEAN**. Six Lows: the checker still misses a duplicated `<xacro:arg>` (xacro keeps the first, the checker the last), overrides typed into `rocko_sim.launch.py`, struct members not written as `type name = value;`, odd or duplicate `<param>` tags, a crash mislabelled as drift, and a mis-pointed row in `read_parameters()`. Realtime: **CLEAN**; a negative period would become owed time; the C-2 fault branch of the sim has never been run end to end. Docs: one Medium (a stale expansion count in the ladder's Tier 0 row) and Lows | Fixed: the stale counts and wording, a negative period now counts as zero. **Declined for this round (cap of three), recorded as known limits in the ladder's blind spots:** the six checker gaps. The C-2 fault scenario is stage 4's first job. `CLAUDE.md` line 177 still says 'all four modes' (a human-reviewed file; flagged for the maintainer) |
+| stage 4, 1 | the reviewers named in `CLAUDE.md` §2 step 5 (`realtime-auditor` is mandatory: `AddFeedforwardController.cpp`, `ICM20948.cpp` and a `bringup/config` YAML changed) | round 1 done (fixed above); round 2 pending | The reviewers' names and findings were not passed to the author of this entry. To be filled in by the person |
 
 **An honest note about the guard hook.** While making the round 1 fixes, the guard hook denied a first
 `Write` of `ImuFaultTracker.hpp` because the new file contained fewer safety words (`fault`) than the
@@ -532,7 +880,7 @@ intact. What does check the logic is the host unit test above (the counting rule
 
 ## Not verified — needs a human
 
-Stage 2 only; stage 3's list (and its reproduce commands) is in its own subsection of the stage log. The robot procedures are in the stage log above.
+Stage 2 only; stage 3's and stage 4's lists (and their reproduce commands) are in their own subsections of the stage log. The robot procedures (stage 2: C-2, the motor `write()`; stage 4: H-4, C-3, H-6) are in the stage log above.
 
 - **Anything on a Pi or a robot.** The motor plugin build with real WiringPi, the IMU node against a
   real BNO055, and every failure path (the IMU fault, a failed `set_value()`) have not run.
@@ -602,9 +950,56 @@ Expected: the results in the *Verification* table. Not recorded for these runs: 
 surface (no robot was involved) and a log location (output was read from the terminal; the build log
 is `log/latest_build/rocko_env/stderr.log` in the container workspace).
 
-## Where the run stands
+## Where the run stands (handoff written 2026-11-02, for the next session)
 
-Stages 1 to 3 are done, reviewed in three rounds each, committed and pushed. Stage 3 is **not**
-'Tier 3 built': S1 and S2a hold, S2b and the three scenarios do not exist. The first attempt at stage
-3's second review round was cut off by the account's usage limit and was rerun; nothing in the code was
-affected. See the stage 4 and later entries (if any) below for what came next.
+**Committed and pushed:** stages 1, 2 and 3 (`1318f95`, `85bdc31`). **Committed locally, NOT pushed:** stage 4
+(its commit message says round 3 review pending). Push only after the third review round of stage 4
+is clean (CLAUDE.md §2 steps 5 to 8), starting with `git fetch origin` and
+`git log --oneline HEAD..origin/ai-forward` (must print nothing).
+
+**What every tier said on 2026-11-02 for the stage 4 tree (container, clean build):** `build_ros.sh` 0
+compiler warnings; `verify_urdf.sh` PASS (7 expansions, 14 interfaces, config drift check); `verify_mock.sh`
+both modes PASS; `check_motor_plugin_compiles.sh` PASS; full `verify_sim.sh` PASS (8 launches, ~150 s);
+host tests PASS (sim plant model, tipover latch, IMU fault tracker, teleop watchdog 22/22, heartbeat 5/5,
+IMU node 5/5); hook tests 81 cases.
+
+**Stage 4 review state:** round 1 and round 2 done and fixed (realtime-auditor, ros2-control-reviewer,
+explainability-reviewer; docs written). **Round 3 not run.** Run `realtime-auditor` (mandatory:
+`AddFeedforwardController.cpp`, `ICM20948.*`), `ros2-control-reviewer`, `docs-reviewer` on the stage 4
+commit, fix, and then push.
+
+**Known open items inside stage 4:**
+- `AddFeedforwardController.cpp` holds the tipover block twice (inline = runs; the helper
+  `tipover_tripped_this_cycle()` = unused). The guard hook refused the refactor. A human makes the edit:
+  [proposal 0003](../proposals/0003-finish-tipover-refactor-and-guard-new-keys.md).
+- Proposals written: 0003 (above, plus guard keys), 0004 (all proposed safety thresholds), 0005 (amend ADR
+  0003). **Not yet written:** `docs/guides/measure-inertia.md` and its proposal (stage 5), the candidate
+  gains proposal with a tethered procedure (stage 5), the CMake `controller_manager` minimum-version
+  question, and the README entry for any of them. `docs/architecture/sim-to-real-gap.md` does not exist yet:
+  proposal 0005 links to it, so a link check will fail until it is written.
+
+**Not started:** stage 5 and stage 6.
+1. Stage 5 (balance in the sim): write the three scenarios (hold upright 10 s, recover from an impulse,
+   follow a velocity step) with thresholds committed BEFORE tuning; then S2b (a sign-flipped copy of the
+   upright scenario must fail); then tune in `rocko_sim_controllers.yaml` only (inner pitch loop first,
+   from the linearisation in `sim-plant.md` §3.4, as a script not a conversation; max 8 tuning iterations
+   per scenario, each a journal row); then the +/-30 % sweep (mass, centre-of-mass height, motor gain, IMU
+   delay), reporting which corners fail without widening thresholds; then `sim-to-real-gap.md`;
+   then the proposals. Only then call Tier 3 built in the ladder (it says "Partly built").
+2. **The structural question to start with:** with the unchanged hardware gains the model drifts and
+   falls at about 9 to 10 s even with the gyro D term. `sim-plant.md` §2.4 argues the outer velocity loop
+   may be positive feedback under the repo's apparent intent (a sign problem, not a tuning problem). This
+   is a finding to journal and fix at its cause (CLAUDE.md §3 and the person's instructions), not to tune
+   around. Sign assumptions in the model: `pitch_sign = -1`, `encoder_sign = +1`; both are parameters.
+3. Stage 6 (only if 1 to 5 are done and review-clean): C-1 (IMU over UART and the encoders into C++;
+   includes the 12-byte burst read 0x14..0x1F), then the remaining parts of H-2/M-1/M-3 are already in;
+   anything the compile-only check cannot cover becomes a proposal.
+
+**Rules that bit this session (read before starting):**
+- One container, one controller manager: only one agent runs container commands at a time.
+- The guard hook counts safety words per file; it refused a refactor that moved code. Do not pad
+  comments to beat it; write a proposal (see 0003).
+- Hardware gains, thresholds and `bringup/config/rocko_controllers.yaml` are untouched on purpose.
+- Say "balances in simulation under an estimated model", never "balances" or "tuned".
+- An account usage limit stopped this run once (2026-10-31); subagents die with it. Check
+  `git status` for half-finished work before trusting a report.

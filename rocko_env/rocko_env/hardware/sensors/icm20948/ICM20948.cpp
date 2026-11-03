@@ -57,6 +57,9 @@ std::vector<hardware_interface::StateInterface> ICM20948::export_state_interface
     "left_wheel_joint", ROLL_KEY, &_roll));
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
+    "left_wheel_joint", PITCH_RATE_KEY, &_pitch_rate));
+
+  state_interfaces.emplace_back(hardware_interface::StateInterface(
     "right_wheel_joint", YAW_KEY, &_yaw));
 
   state_interfaces.emplace_back(hardware_interface::StateInterface(
@@ -65,16 +68,26 @@ std::vector<hardware_interface::StateInterface> ICM20948::export_state_interface
   state_interfaces.emplace_back(hardware_interface::StateInterface(
     "right_wheel_joint", ROLL_KEY, &_roll));
 
+  state_interfaces.emplace_back(hardware_interface::StateInterface(
+    "right_wheel_joint", PITCH_RATE_KEY, &_pitch_rate));
+
   return state_interfaces;
 }
 
-// Reads yaw, pitch and roll [deg] from the Python node and stores them for the controllers.
+// Reads yaw, pitch and roll [deg] and pitch rate [deg/s] from the Python node and stores them for
+// the controllers.
 //
-// On a failed read the last good angles are kept: never 0.0 (NaN before the first good read),
+// On a failed read the last good values are kept: never 0.0 (NaN before the first good read),
 // because pitch 0.0 is the balanced setpoint and a failure that looked like 0.0 would tell the
 // pitch controller "level" while the robot is blind (finding C-2, see
 // docs/claude-analysis/balance-loop-findings.md). Failures are counted; read() returns ERROR once
 // _imu_fault_tracker trips. A single dropped sample returns OK on purpose.
+//
+// The ANGLES and the pitch RATE are judged separately. Only the angles feed _imu_fault_tracker and
+// can make read() return ERROR: the balance loop cannot run blind on pitch. A bad rate is held on
+// its own (counted in _consecutive_rate_failures, logged throttled) and NEVER returns ERROR: the
+// rate only feeds a D term, and rocko_controllers.yaml does not even use it today (only the sim
+// config does, finding H-6). A bad gyro value must not throw away a good pitch.
 hardware_interface::return_type ICM20948::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
@@ -83,12 +96,13 @@ hardware_interface::return_type ICM20948::read(
 
     // Blocks until the Python node replies; that can take longer than the 10 ms cycle
     // (finding C-1, not fixed here).
-    bool good_read = false;
+    bool good_read = false;   // the angles
+    bool good_rate = false;   // the pitch rate
     if ((rclcpp::spin_until_future_complete(_node, result) ==
       rclcpp::FutureReturnCode::SUCCESS) && result.valid())
     {
       auto res = result.get();
-      // The node sets success=false (and NaN angles) when the sensor read failed. Check the angles
+      // The node sets success=false (and NaN angles) when the angle read failed. Check the angles
       // too, so a bad or garbled sample is never stored even if `success` were wrong.
       const bool angles_ok =
         std::isfinite(res->yaw) && std::isfinite(res->pitch) && std::isfinite(res->roll) &&
@@ -101,6 +115,24 @@ hardware_interface::return_type ICM20948::read(
         _roll = res->roll;
         good_read = true;
       }
+      // The node sends NaN when its gyro read failed, whatever `success` says.
+      good_rate =
+        std::isfinite(res->pitch_rate_deg_s) &&
+        std::fabs(res->pitch_rate_deg_s) <= kMaxAbsPitchRateDegS;
+      if (good_rate) {
+        _pitch_rate = res->pitch_rate_deg_s;
+      }
+    }
+
+    if (good_rate) {
+      _consecutive_rate_failures = 0;
+    } else {
+      ++_consecutive_rate_failures;
+      RCLCPP_WARN_THROTTLE(
+        _node->get_logger(), *_node->get_clock(), kLogThrottleMs,
+        "IMU pitch rate unusable: %lu reads in a row. Holding the last good pitch rate (NaN "
+        "before the first); anything using it (a D term) sees a stale rate.",
+        _consecutive_rate_failures);
     }
 
     _imu_fault_tracker.record(good_read);

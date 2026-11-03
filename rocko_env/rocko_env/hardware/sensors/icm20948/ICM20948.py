@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import math
 import os
 
 import rclpy
@@ -33,6 +34,29 @@ class ICM20948(Node):
         # (for example: the measured angle at which the robot balances).
         self.pitch_offset = 7.6
 
+        # Finding H-6: the pitch controller's D term should use the gyro's measured rate, not a
+        # derivative of the (delayed) fused angle. self.icm.gyro is (x, y, z) in RADIANS PER SECOND
+        # in the SENSOR's frame (Adafruit driver docstring). The BNO055 itself counts 1 LSB = 1/16
+        # deg/s; the driver converts. UNITS CAVEAT: Adafruit driver versions before 5.0 returned
+        # deg/s, and with one of those degrees() below makes the rate 57x too large. Check the
+        # installed version, and the robot procedure must check the magnitude (tilt the robot about
+        # 90 deg in about 1 s: expect tens of deg/s, not thousands).
+        # We export one axis of it as pitch_rate_deg_s:
+        #     pitch_rate_deg_s = pitch_rate_sign * degrees(gyro[pitch_rate_axis])
+        # UNVERIFIED: establish both on the robot by tilting it; an inverted D term is worse than
+        # none. The defaults are a GUESS: axis 0 (gyro X) because the BNO055 datasheet describes its
+        # Euler pitch as the rotation about the sensor's X axis, and sign +1 because nothing here says
+        # otherwise. Procedure: docs/claude-analysis/bno055-improvements.md, section 1.
+        self.pitch_rate_axis = self.declare_parameter('pitch_rate_axis', 0).value  # 0, 1 or 2
+        self.pitch_rate_sign = self.declare_parameter('pitch_rate_sign', 1).value  # +1 or -1
+        if self.pitch_rate_axis not in (0, 1, 2):
+            raise ValueError("pitch_rate_axis must be 0, 1 or 2, got " + str(self.pitch_rate_axis))
+        if self.pitch_rate_sign not in (1, -1):
+            raise ValueError("pitch_rate_sign must be 1 or -1, got " + str(self.pitch_rate_sign))
+        self.get_logger().warn(
+            "pitch_rate = %+d * gyro[%d]: axis and sign are UNVERIFIED on the robot (finding H-6)"
+            % (self.pitch_rate_sign, self.pitch_rate_axis))
+
         self.srv = self.create_service(Icm20948Data, 'icm20948_data', self.callback)
 
     def callback(self, request, response):
@@ -41,6 +65,16 @@ class ICM20948(Node):
         # a client that forgets to check `success` still cannot read a believable number.
         # Finding H-3: read self.icm.euler ONCE. Every access is a fresh I2C read, so three
         # accesses gave yaw, roll and pitch from three different instants.
+        # `success` is about the ANGLES only. The pitch rate is judged on its own (see
+        # read_pitch_rate_deg_s): a bad gyro value makes the rate NaN, but never throws away a good
+        # pitch, which the balance loop needs far more than the D term's rate.
+        # ORDER MATTERS (section 6: every extra I2C transaction ages the pitch). The gyro read costs
+        # one more transaction plus Python overhead, and it happens before the reply goes out. Read
+        # it FIRST so the euler read, whose pitch is the signal the balance loop needs most, is the
+        # freshest sample in the reply. The real fix is one 12-byte burst read of registers
+        # 0x14-0x1F (gyro and Euler together), which belongs to the C-1 migration.
+        pitch_rate_deg_s = self.read_pitch_rate_deg_s()
+
         failure = None
         try:
             euler = self.icm.euler  # (yaw, roll, pitch) in degrees; entries can be None
@@ -67,7 +101,36 @@ class ICM20948(Node):
             self.get_logger().warn(
                 "Unable to read gyro data this cycle: " + failure, throttle_duration_sec=1.0)
 
+        response.pitch_rate_deg_s = pitch_rate_deg_s
         return response
+
+    def read_pitch_rate_deg_s(self):
+        """The pitch rate [deg/s] from the gyro, or NaN if this cycle's gyro read failed (None, an
+        exception, or a non-finite value). A gyro fault therefore shows up as NaN in
+        pitch_rate_deg_s only; the angles and `success` are not touched.
+
+        There is deliberately NO "all three values identical" rule here, unlike the angles: a gyro
+        that is truly still reads (0, 0, 0), and that is a real measurement.
+
+        This is a second sensor read, a few milliseconds before the angles (callback() reads it
+        first, so the pitch is the fresher of the two), so the rate and the angles are not one
+        snapshot. Reading Euler angles and gyro in one 12-byte I2C burst would
+        fix that, but needs the hardware to test; it belongs to the C-1 IMU migration (stage 6).
+        """
+        failure = None
+        try:
+            gyro = self.icm.gyro  # (x, y, z) in rad/s, sensor frame; entries can be None
+            rate_rad_s = None if gyro is None else gyro[self.pitch_rate_axis]
+            if rate_rad_s is None or not math.isfinite(rate_rad_s):
+                failure = "gyro returned no usable value (gyro = " + str(gyro) + ")"
+        except Exception as e:
+            failure = str(e)
+        if failure is not None:
+            self.get_logger().warn(
+                "Pitch rate unavailable this cycle (sent as NaN; the angles are unaffected): "
+                + failure, throttle_duration_sec=1.0)
+            return float('nan')
+        return self.pitch_rate_sign * math.degrees(rate_rad_s)
 
 def main(args=None):
     rclpy.init(args=args)

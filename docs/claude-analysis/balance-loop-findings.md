@@ -37,17 +37,18 @@ Severity reflects impact on the robot staying upright, not code quality.
 | ID | Severity | Finding |
 | --- | --- | --- |
 | C-1 | Critical | Unbounded blocking service calls inside the real-time loop |
-| C-2 | Critical | IMU read failure reports pitch = 0.0 ("upright") — **fixed on `ai-forward`, awaiting robot** (2026-10-31); a frozen sensor is still undetected (H-9) |
-| C-3 | Critical | No teleop watchdog, and no defined comms-loss failsafe |
+| C-2 | Critical | IMU read failure reports pitch = 0.0 ("upright") — **fixed on `ai-forward`, awaiting robot** (2026-10-31); a frozen sensor is still undetected (H-9); the sim's copy of the rule is run end to end by check C2 (2026-11-02) |
+| C-3 | Critical | No teleop watchdog, and no defined comms-loss failsafe — **fixed on `ai-forward`, awaiting robot** (2026-11-02; checked in the sim; the 0.2 s timeout is proposed); the response is a step to zero velocity, never a motor stop |
 | H-1 | High | Motor command is open loop; no wheel velocity feedback |
 | H-2 | High | Near-zero commands never write, latching the previous PWM value — **code fixed on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31; pulled forward of the planned order) |
 | H-3 | High | IMU sample is three separate I²C reads at three different instants |
-| H-4 | High | No tipover cutoff |
+| H-4 | High | No tipover cutoff — **written on `ai-forward`, awaiting robot** (2026-11-02; checked in the sim; the 35 deg limit and the 10 deg re-arm band are proposed); see H-10, C-1 and the known item under H-4 |
 | H-5 | High | No real-time scheduling or CPU isolation for `controller_manager` |
-| H-6 | High | Gyro angular rate is never read; the D term differentiates a delayed fused angle |
-| H-7 | Critical (raised from Medium/High by the `realtime-auditor`; unconfirmed on hardware) | The motors may keep their last command when the cascade stops or the IMU plugin returns ERROR (found 2026-10-31) — **partly mitigated on `ai-forward`** (controller stop logic and the motor `write()` fix, none run on a robot) |
+| H-6 | High | Gyro angular rate is never read; the D term differentiates a delayed fused angle — **partly fixed on `ai-forward`** (2026-11-02): the rate is exported and wired in the sim only; the real YAML change is gated; axis and sign unverified |
+| H-7 | Critical (raised from Medium/High by the `realtime-auditor`; unconfirmed on hardware) | The motors may keep their last command when the cascade stops or the IMU plugin returns ERROR (found 2026-10-31) — **partly mitigated on `ai-forward`** (controller stop logic and the motor `write()` fix, none run on a robot); the sim showed what `controller_manager` does after an `ERROR`, for one component (2026-11-02) |
 | H-8 | High | An intermittent IMU fault that alternates good and bad reads never tripped the consecutive-only counter (found 2026-10-31) — **fixed in the tracker on `ai-forward`, awaiting robot** |
 | H-9 | High (not fixed) | A frozen or reset BNO055 that still reads valid-looking numbers is undetectable (found 2026-10-31); one variant, an all-equal Euler triple, is now rejected in the node |
+| H-10 | High (not fixed; unmeasured) | Upstream PID integrators keep winding while the tipover cutoff is latched, so a re-arm can produce a large command (found 2026-11-02) |
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
 | M-3 | Medium | PWM value is never clamped to its valid range — **clamped on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31) |
@@ -61,6 +62,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | L-5 | Low | A D-term spike after cycles in which the IMU angle was held (found 2026-10-31, not fixed) |
 | L-6 | Low now, Critical once C-1 adds a timeout | `Motor12VoltQuadEncoder::read` and `QuadEncoder::read` return OK and keep the old position and velocity when the encoder call fails (found 2026-10-31, not fixed) |
 | L-7 | Low | `MAX_RAD_PER_SEC` is computed with integer division (found 2026-10-31, not fixed; a human confirms the change) |
+| L-8 | Low (matters when H-6 reaches the real YAML) | `pid_controller` sets the rate reference once, at activation, and never again (found 2026-11-02, not fixed) |
 
 ---
 
@@ -186,7 +188,9 @@ window. The angles start as NaN, so a failure on the first cycle cannot read as 
 Euler values are exactly equal. Real data has three independent angles at 1/16 deg resolution, and an
 all-zero block is a plausible bus-fault or reset output that `(0, 0, 0) + pitch_offset` would turn into
 a believable pitch. That is a guess about what a fault returns; it has not been seen on a sensor and no
-tier runs the node. It also would reject a genuine reading with three identical values.
+tier runs the node. It also would reject a genuine reading with three identical values. (This rule is for
+the Euler angles only: the gyro rate added for H-6 has no such rule, because a gyro that is truly still
+reads (0, 0, 0), which is a real measurement.)
 
 Checked: the Tier 1 build compiles it with no compiler warnings; the tracker's counting logic has a
 host unit test (`tools/imu_fault_tracker_test.cpp`, not a ladder tier) that passes and was seen to fail
@@ -198,6 +202,20 @@ is open** (a frozen or reset sensor is not detected). Also open: whether `ERROR`
 which is [H-7](#h-7--the-motors-keep-their-last-command-when-the-cascade-stops), and what
 `controller_manager` does after `ERROR`, which depends on the ros2_control version and has not been
 observed. Robot procedure: [journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
+
+**Downstream, in the sim (check C2, 2026-11-02, `SimPlant`, `controller_manager` 4.48.1).** `SimPlant`
+applies the same counting rule to a simulated IMU (a copy of the decision, not `ICM20948.cpp`). Starting
+at 2 deg, so a true pitch of exactly 0.0 is impossible: a 0.03 s outage (3 reads) gave no `ERROR`, and no
+exported pitch sample was 0.0 or NaN (a held value is a run of 5 identical samples); a 0.2 s outage
+(20 reads) made `read()` return `ERROR`, and `controller_manager` logged `Deactivating following
+hardware components as their read cycle resulted in an error ... [ SimRocko ]`, deactivated all five
+controllers (`joint_state_broadcaster` included), and logged `Not acceptable command interfaces
+combination` and `Error while attempting mode switch when deactivating controllers in read cycle!`.
+End state: controllers `inactive`, `SimRocko` `unconfigured`; 0 samples of 0.0 or NaN. The check went
+red (4 zero samples) when the failed read was made to export 0.0. **This does not show what the robot's
+motors do**: there the IMU is its own component (see [H-7](#h-7--the-motors-keep-their-last-command-when-the-cascade-stops)),
+so which controllers `controller_manager` deactivates after an IMU `ERROR`, and whether the motor
+plugin keeps driving, remains unobserved.
 
 ---
 
@@ -225,6 +243,37 @@ Timestamp every incoming command. If the newest command is older than ~200 ms:
 
 Do not deactivate controllers, and do not zero the motor output. Make this explicit in code with a
 comment, because the intuitive "safe" behaviour is the dangerous one here.
+
+**Status on `ai-forward` (2026-11-02): fixed in code, checked in the sim, awaiting robot.** Next-steps row
+2.5. `DiffDriveController.py` owns the age check: `CommandWatchdog` measures from the moment a command
+**arrives**, on `time.monotonic`. Past `command_timeout_s` (**0.2 s, proposed; a human sets it**; 20 control cycles of 10 ms, which is 4 x the
+laptop's `HEARTBEAT_PERIOD_S` of 0.05 s) it zeroes the velocity reference and the feedforwards, **keeps publishing**, and the balance loop keeps running;
+nothing is deactivated and no motor output is zeroed. It publishes a `Bool` on
+`/diff_drive_controller/command_timed_out` (`transient_local`) and logs `teleop command timed out: zeroing the
+velocity reference, balance loop keeps running` (only after a command had been received; at start-up it logs
+`no teleop command yet: the velocity reference is zero` instead) and `teleop commands resumed`. Two upstream changes were
+needed for the age to mean anything. `Joystick.py` used to re-publish the last packet every 10 ms, which
+made an old command look fresh; it now publishes only on a real packet, and survives a clean disconnect
+(it used to crash) and a reconnect. And the laptop sender `joystick/computer_joystick.py` sent only on a
+change, so a stick held steady would have looked like a dead link; it now resends every 0.05 s and pads or
+cuts the gamepad's data to 6 axes and 16 buttons (the 40-byte packet is unchanged for a gamepad of that
+size). **The laptop's copy must be updated**; it has no reconnect code, so restart it after a drop.
+`Joystick.py` also rejects a message with a non-finite or out-of-range axis (beyond 1 by more than 0.01) or a
+button that is not 0 or 1, and drops the connection, so a garbled stream becomes silence and the watchdog
+zeroes the reference. `DiffDriveController`'s callback also stored
+`msg.twist`, which has no `.twist`, so its first command would have raised `AttributeError`; fixed.
+
+Checked, in the model: check `C3` of `verify_sim.sh` (a fake gamepad at 20 Hz for 2 s, then silence):
+`command_timed_out` went `False` 0.014 s after the first command and `True` 0.207 s after the last, inside
+the 0.2 to 0.3 s window; the reference was `[0.05, 0.05]` in 195 of 195 messages while driven and exactly
+`[0, 0]` in 170 of 170 afterwards; the controllers stayed active; 170 plant samples arrived after it.
+It went red with `command_timeout_s=1000`. The check also requires `teleop commands resumed` before the first
+`teleop command timed out` in the log. Host tests `tools/teleop_watchdog_test.py` (16/16; red on 4
+deliberate breaks when it had 13 checks) and `tools/computer_joystick_heartbeat_test.py` (5/5); whether the
+later checks were made to fail was not recorded. Not checked: the TCP path in a
+launch, anything on a robot, and what the step to zero does to a leaning robot (the reference goes to 0 in
+one cycle with no ramp; `RateLimiter` is unused). Procedure: the
+[stage 4 journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
 
 ---
 
@@ -342,7 +391,9 @@ that one sample. This falls out naturally when C-1 moves the read into C++.
 and decodes all three axes from that tuple, so the three angles come from one access (next-steps row
 0.1, which added this alongside C-2). It is still the Adafruit driver's own read, not a single burst
 of registers `0x1A`–`0x1F` in C++, and nobody has checked on a robot what it does to the timing. The
-rest waits for C-1.
+rest waits for C-1. The gyro rate added for H-6 is a second read after the angles, not part of that
+snapshot; one 12-byte burst of registers `0x14`–`0x1F` (gyro and Euler) would give both in one sample and
+is a note for the C-1 IMU migration (stage 6), not implemented.
 
 ---
 
@@ -362,6 +413,49 @@ malfunctioned." At a wedding, that distinction is most of the outcome.
 
 If `|pitch|` exceeds ~35°, zero the motor output and latch a disarmed state until explicitly
 re-armed. Re-arming should be a deliberate operator action, not automatic.
+
+**Status on `ai-forward` (2026-11-02): written, checked in the sim, awaiting robot.** Next-steps row 2.6.
+**Why a cutoff:** the reason is physical. Past the lean from which the robot can still recover, the wheels
+cannot get back under the body, so driving them only spins them or shoves a robot that is already down. The
+35 deg comes from this finding's write-up above, not from this robot's physics or a measurement. The cutoff
+is the **opposite** of C-3's rule on purpose: it zeroes the wheels only **after** the robot has fallen; while
+it is upright, losing the gamepad zeroes only the velocity **reference** ([C-3](#c-3--no-teleop-watchdog-and-no-defined-comms-loss-failsafe)).
+Each of `left_` and `right_add_feedforward_controller` now claims `<joint>/pitch` and trips when
+`|pitch| > tipover_pitch_deg` (**35.0 deg, proposed; a human confirms**; 0 or less disables it with a
+WARN; above 90 and NaN are refused; read-only). Past the limit it writes `0.0` every cycle and **does not
+deactivate** anything; it never trips on NaN (pitch starts as NaN). It re-arms only by **one** message,
+`ros2 topic pub --once -w 2 /tipover_rearm std_msgs/msg/Empty {}`, which both wheels subscribe to (`-w 2`
+because plain `--once` re-arms only one wheel: discovery of the second subscriber takes about 3 s), **and**
+only while `|pitch|` is at or below `rearm_max_pitch_deg` (**10 deg, proposed**, read-only; hysteresis, so
+a robot is re-armed only after a person has stood it up; configure fails unless 0 < it < the trip limit).
+Activating the controller also re-arms it, without the 10 deg check. Each wheel's instance latches on its
+own; activation fails if the pitch interface is missing. The decision is in `TipoverLatch.hpp`. The limit
+applies to the **reported** pitch, which includes the IMU node's `pitch_offset = 7.6` deg (origin
+undocumented), so the true lean at the trip is not known to better than that.
+
+Checked, in the model: check `H4` (start at 40 deg): both controllers logged `TIPOVER CUTOFF TRIPPED` in the
+first cycle they wrote; all 801 of 801 commands written while `|pitch| > 35` were exactly `0.0` (read from
+`controller_manager`'s `/controller_manager/introspection_data/full`, best-effort QoS); the controllers stayed
+active (numbers from the first run). The check now sends one `/tipover_rearm` message while the robot is still
+past the limit and requires both controllers to refuse it and neither to log `RE-ARMED`; it passed that way
+(counts not recorded). Red with the cutoff off (`tipover_pitch_deg` 0): -400 rad/s,
+548 of 548 commands non-zero, no trip. Host test `tools/tipover_latch_test.cpp`: 12 test functions, red on 2
+deliberate breaks when it had 10 (the re-arm band cases were not shown to fail). **Risks, not fixed:**
+[H-10](#h-10--upstream-pid-integrators-wind-up-while-the-cutoff-is-latched);
+a frozen IMU ([H-9](#h-9--a-frozen-or-reset-bno055-is-undetectable)) cannot trip it; and
+[C-1](#c-1--unbounded-blocking-service-calls-inside-the-real-time-loop) blocks the cutoff entirely, because pitch
+reaches it only through the blocking `read()`. Not checked: anything on a Pi; an accepted re-arm in the sim;
+the 10 to 35 deg re-arm band in the sim (host test only). Procedure (tethered, wheels off the ground, lean
+past 35 deg by hand, then try the re-arm inside and outside the band): the
+[stage 4 journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
+
+**Known item (2026-11-02): the tipover block is in `AddFeedforwardController.cpp` twice.** The inline block
+(about lines 299 to 352) is what runs; an unused duplicate, the helper `tipover_tripped_this_cycle()` (about
+line 445), exists because the guard hook denied the edit that would have replaced the block with a call (the
+hook counts safety words and cannot tell a move from a removal). A human removes the duplicate; a proposal is
+to be written. Separately, the three tipover keys are only code defaults in
+`add_feedforward_controller_parameters.yaml`, which the hook does not watch, and `rocko_controllers.yaml` is
+untouched; the same proposal asks to add them to the hook's key list and to the real YAML. Next-steps row 1.14.
 
 ---
 
@@ -412,6 +506,46 @@ axis corresponds to robot pitch, and verify the sign — an inverted D term is w
 
 This is likely the largest single control improvement available without changing any hardware. See
 [`bno055-improvements.md`](bno055-improvements.md) § 1.
+
+**Status on `ai-forward` (2026-11-02): partly fixed.** Next-steps row 1.2. *Done in code:*
+`Icm20948Data.srv` has `pitch_rate_deg_s`; `ICM20948.py` reads `.gyro` once and exports
+`pitch_rate_sign * degrees(gyro[pitch_rate_axis])`, with `pitch_rate_axis` (0) and `pitch_rate_sign` (+1) as named
+parameters that are **unverified guesses**. The unit is a guess too: the BNO055 counts 1 LSB = 1/16 deg/s, the
+Adafruit driver is documented to return rad/s, and versions older than 5.0 returned deg/s, which would make
+the rate 57 times too large; the robot procedure must check the magnitude. `success` covers the angles
+only: a gyro-only failure makes `pitch_rate_deg_s` NaN and never discards a good pitch, and there is no
+'identical values' rule for the gyro (all zero is a real reading; that rule stays for the Euler angles).
+The plugin exports `pitch_rate` [deg/s] on both joints and judges the rate **on its own**: a rate that is not
+finite or beyond 2000 deg/s (**proposed**) is held (the last good one, NaN before the first) and counted in a
+separate counter, and never makes `read()` return `ERROR`; only the angles feed the fault tracker. The
+sim's copy differs: it ties the rate to the pitch, so a bad rate is a failed read of the whole sample there,
+and no sim check exercises the plugin's separate rule. The rate is a second sensor read after the angles,
+not one snapshot; one 12-byte burst read (registers `0x14`–`0x1F`) belongs to the C-1 IMU migration (stage
+6) and is not implemented. Host test `tools/imu_node_test.py` (5/5) covers the node's reply with a stand-in
+sensor; the real, mock and sim `<ros2_control>` blocks all export it (14
+interfaces now); `SimPlant` exports `pitch_sign * degrees(psi_dot)` with no IMU delay; and the **sim**
+YAML (only) sets `pitch_pid_controller`'s `reference_and_state_interfaces` to `["pitch", "pitch_rate"]`. That
+is the one wiring difference `sim/check_sim_config.py` allows. *Not done:* the real `rocko_controllers.yaml`
+still says `["pitch"]`, so the robot's D term still differentiates the angle; changing it is a gated
+decision (a proposal, not yet written) and has to cover [L-8](#l-8--pid_controller-sets-the-rate-reference-once-at-activation).
+It must also cover a **persistent** rate failure: today a bad rate is only held and logged, so once the real
+YAML consumes the rate the plugin needs its own consecutive-failure tracker that makes `read()` return `ERROR`,
+switched by a hardware parameter such as `pitch_rate_required` (see the comment in `ICM20948.hpp`).
+
+How `pid_controller` 4.42.1 uses a second interface (read from its source at that tag by the integrator,
+2026-11-02): it is the measured derivative of the first; the D term is `d * (rate reference - measured
+rate)`; the names are arbitrary; and a NaN rate makes it fall back, silently, to differentiating the angle.
+
+Checked, in the model: check `H6`: over 600 pairs from the same cycle `feedback_dot` equalled the exported
+`pitch_rate` exactly (largest 46 deg/s) and `error_dot` was `-feedback_dot`; red with `["pitch"]`. That shows
+the wiring, not a benefit: the sim's rate has no delay and an assumed sign. **Observation, model only,
+unchanged hardware gains, 2 deg start, zero reference:** with H-6 the first 2 s settle faster (pitch 0.43 /
+0.31 deg at 1 s, 0.26 / 0.04 deg at 2 s) but the slow drift tips the model sooner (10.1 deg at 8 s, 23.3 deg at
+9 s, first at or past 35 deg at 9.42 / 9.34 s) than without it (1.59 deg at 1 s, 5.9 deg at 8 s, 34.4 deg at
+10 s, first at or past 35 deg at 10.02 s). Neither holds. It is a slow run-away, consistent with the outer
+velocity loop's sign problem flagged in [`sim-plant.md` §2.4](../architecture/sim-plant.md), but **not
+shown and not yet explained** (stage 5). It is not evidence that the gyro D term is good or bad. Robot
+procedure for the axis and sign: the [stage 4 journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
 
 ---
 
@@ -477,6 +611,18 @@ exist yet: Tier 3 is only partly built). What `controller_manager` does when a h
 is from memory, not from a test, so it is not recorded here as fact. The H-4 tipover cutoff is not
 written.
 
+**Update 2026-11-02 (stage 4).** The H-4 tipover cutoff is now written (it is a separate thing: it
+zeroes the wheel command on a lean). And the sim answered one half of "what does `controller_manager` do
+after an `ERROR`", for one component: in `SimPlant`, where the IMU and the motors are one component, an
+`ERROR` from `read()` made `controller_manager` 4.48.1 deactivate that component and all five controllers
+(check C2 long; details under [C-2](#c-2--imu-read-failure-reports-pitch--00)). It does **not** show
+what the robot's separate motor component does, so H-7 stays *partly mitigated, unconfirmed on hardware*.
+
+On the robot an IMU `read()` `ERROR` should also deactivate both feedforward controllers, because they claim
+`<wheel>/pitch` and `controller_manager` deactivates the controllers that use a deactivated component's
+interfaces. **Unverified**, and it differs from the sim, where the plant is one component that owns the wheel
+commands as well.
+
 ---
 
 ### H-8 — An intermittent IMU fault never tripped the consecutive counter
@@ -533,9 +679,45 @@ Needs the read in C++ (C-1), so the plugin can see the BNO055's own status and c
 and can check that successive samples change at all. Queue: [next-steps row 1.8](../next-steps.md).
 
 **Partly covered, one variant (review round 2, 2026-10-31):** `ICM20948.py` now rejects a reply whose
-three Euler values are all equal, which would catch an all-zero block from a reset or a bus fault. A
+three Euler values are all equal, which would catch an all-zero block from a reset or a bus fault (this rule is for the Euler angles, not the gyro rate). A
 frozen sensor that keeps returning its last real orientation, and any garbage whose three values
 differ, are still not detected. Not seen on a sensor; no tier runs the node.
+
+**Related (2026-11-02):** the H-4 tipover cutoff cannot see a frozen sensor that holds a safe-looking pitch.
+
+---
+
+### H-10 — Upstream PID integrators wind up while the cutoff is latched
+
+**Found** 2026-11-02, while writing the H-4 cutoff. **Not fixed. Not measured**: this is from reading the
+cascade, and the sim check `H4` exercises only a refused re-arm.
+
+**Where** `AddFeedforwardController.cpp` (`update_and_write_commands()`, the tipover branch) and the two PIDs
+upstream of it in `rocko_controllers.yaml` (`pitch_pid_controller`, `velocity_pid_controller`).
+
+**What**
+
+When the cutoff trips, the last controller in the chain writes `0.0`. Nothing upstream is told:
+`pitch_pid_controller` and `velocity_pid_controller` stay active and keep computing, and while the robot
+lies on the floor (or in someone's hands) nothing makes their error shrink, so an integral term can keep growing
+until it reaches its clamp (`i_clamp_max` / `i_clamp_min`). (The integral gains are currently 5.0 for the
+velocity loop and 0.0 for the pitch loop in `rocko_controllers.yaml`, so the wind-up is today the velocity
+loop's, and its clamp is +/-150, in degrees of target pitch, past the cutoff angle itself.)
+
+**Why it matters**
+
+A re-arm puts the wheel command back under the loops' control at once. The first command after it can
+be whatever the wound-up integrators say, which could be a large lurch at the moment a person has just
+set the robot upright. The integrators are not reset by a trip or a re-arm.
+
+**Fix direction**
+
+Reset or hold the upstream integrators on a trip (or on a re-arm), for example by re-activating the
+chain before the re-arm message (reported safer by the integrator; not tested), or by conditional
+integration while disarmed. Until it is fixed the robot procedure for a re-arm asks for the stick centred and
+for the cascade to be deactivated and reactivated (stage 4 journal, H-4 procedure step 9; the exact commands
+are not written, and activating an `*_add_feedforward_controller` itself re-arms it without the 10 deg check). Either changes control behaviour, so it needs the sim scenarios of
+next-steps row 2.3 to check and a person to check on a stand. Queue: [next-steps row 1.12](../next-steps.md).
 
 ---
 
@@ -626,7 +808,7 @@ stack — chained controllers, sign conventions, units, the watchdog, arm/disarm
   nothing about balance. Verified by `verify_mock.sh`.
 - Item 3 (`SimPlant`) was the missing piece. **Update 2026-10-31 (stage 3): the plugin now exists as a
   model, and it is not a finished Tier 3.** `rocko_env/SimPlant` integrates planar inverted-pendulum
-  dynamics with a DC-motor model and exports the same 12 interfaces as the real hardware; the real
+  dynamics with a DC-motor model and exports the same 14 interfaces as the real hardware (12 until stage 4 added `pitch_rate`); the real
   cascade loads against it unchanged (`rocko_sim.launch.py`, `rocko_sim_controllers.yaml`), and
   `verify_sim.sh` checks that pitch responds to the wheels and that the robot falls with no torque.
   The recommendation above said "on the order of 150–200 lines"; the model header alone is 484 lines
@@ -814,6 +996,8 @@ well-known. How large depends on the gains, which are not touched here.
 Taking the D term from the gyro rate (H-6) removes the differentiation of the held angle. Until then,
 treat a glitch followed by a kick as this. Queue: [next-steps row 1.9](../next-steps.md).
 
+**Update 2026-11-02:** the plugin now exports the gyro rate, and the sim YAML uses it; the real YAML does not yet (H-6), so this is still open on the robot.
+
 ---
 
 ### L-6 — A failed encoder read is reported as a good one
@@ -857,6 +1041,32 @@ not 120.43 rad/s. This is by arithmetic; it has not been checked on a robot.
 Fixing it lowers every duty cycle by about 0.9 % (the full-scale speed it divides by gets larger), so
 it changes the scaling the existing tuning was done against. That is a hardware-limit change a human
 confirms, so it is a proposal and not an agent edit. Queue: [next-steps row 1.11](../next-steps.md).
+
+---
+
+### L-8 — `pid_controller` sets the rate reference once, at activation
+
+**Found** 2026-11-02, reading `pid_controller` 4.42.1 (upstream source at that tag, read by the integrator) for
+the H-6 change. **Not fixed.** It is invisible in the sim and unobserved on a robot.
+
+**Where** `pitch_pid_controller` in `rocko_sim_controllers.yaml` (and in `rocko_controllers.yaml`, once H-6 is
+wired there).
+
+**What**
+
+With `reference_and_state_interfaces: ["pitch", "pitch_rate"]`, the D term is `d * (rate reference - measured
+rate)`. The rate **reference** is set only once, when the controller activates, to the measured rate
+(`set_current_state_as_first_setpoint`, on by default), and nothing writes it afterwards. In the sim that
+value is exactly 0.0, because `SimPlant` holds the robot still until the controllers command the wheels.
+On the robot it would be whatever the gyro read at activation: a constant bias of `d * r0` in the D term for the
+rest of the run; and if there was no good IMU read yet, NaN, and then `pid_controller` silently falls back
+to differentiating the angle, which is the behaviour H-6 exists to remove.
+
+**Why it matters**
+
+A proposal that wires `pitch_rate` into the real YAML has to say how the reference is set (to zero on
+activation, or kept written by something), and show that the first IMU read is good before the controller
+activates. Queue: [next-steps row 1.13](../next-steps.md).
 
 ---
 

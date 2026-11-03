@@ -10,7 +10,9 @@
 # Starting point: a copy of rocko_controllers.yaml with the same controller names, types, wiring and,
 # for now, the same gain values as the hardware file on 2026-10-31. The WIRING must stay identical:
 # sim/check_sim_config.py (run by verify_urdf.sh) fails if anything except the `gains` maps differs
-# from rocko_controllers.yaml. The gains may differ once someone tunes against the simulator.
+# from rocko_controllers.yaml, apart from the one difference it lists by name
+# (INTENTIONAL_WIRING_DIFFERENCES: pitch_pid_controller's D term from the gyro rate, finding H-6).
+# The gains may differ once someone tunes against the simulator.
 # ==================================================================================================
 controller_manager:
   ros__parameters:
@@ -41,13 +43,23 @@ pitch_pid_controller:
 
     command_interface: velocity
 
-    reference_and_state_interfaces: ["pitch"]
+    # Finding H-6, SIM ONLY (rocko_controllers.yaml still has ["pitch"]; changing it is a human
+    # decision, in a proposal). With a second entry, pid_controller reads `pitch_rate` [deg/s] as the
+    # measured derivative of `pitch`: the D term becomes d * (pitch_rate reference - pitch_rate),
+    # from the gyro's rate, instead of d * (change in pitch error) / dt from the delayed angle.
+    # The pitch_rate reference is set once, to the measured pitch_rate, when this controller
+    # activates (set_current_state_as_first_setpoint, default true), and nothing writes it after
+    # that. In the sim that is exactly 0.0, because SimPlant holds the robot still until the
+    # controllers command the wheels. If it were NaN, pid_controller would silently fall back to
+    # differentiating the angle. sim/check_sim_config.py allows exactly this one wiring difference.
+    reference_and_state_interfaces: ["pitch", "pitch_rate"]
     reference_and_state_dof_names:
       - left_wheel_joint
       - right_wheel_joint
 
     # Units: the error is in degrees of pitch and the output is a wheel velocity in rad/s, so
-    # p is [(rad/s) per deg of pitch error] and i_clamp_min/max are limits in rad/s.
+    # p is [(rad/s) per deg of pitch error] and i_clamp_min/max are limits in rad/s. d is
+    # [(rad/s) per deg/s of pitch rate], the same unit as before H-6.
     gains:
       left_add_feedforward_controller/left_wheel_joint:   {p: 10.0, i: 0.0, d: 0.1, i_clamp_max: 150.0, i_clamp_min: -150.0}
       right_add_feedforward_controller/right_wheel_joint:   {p: 10.0, i: 0.0, d: 0.1, i_clamp_max: 150.0, i_clamp_min: -150.0}

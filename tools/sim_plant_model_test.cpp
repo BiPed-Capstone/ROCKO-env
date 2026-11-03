@@ -351,20 +351,59 @@ int main()
     SimImuOutput imu;
     imu.reset();
     check("#16 pitch is NaN before any good read", std::isnan(imu.pitch_deg()));
-    check("#16 good read returns OK", imu.update(true, 3.5));
+    check("#16 pitch rate is NaN before any good read", std::isnan(imu.pitch_rate_deg_s()));
+    check("#16 good read returns OK", imu.update(true, 3.5, -12.25));
     bool ok_1_to_4 = true, held = true;
     for (int i = 1; i <= 4; ++i) {
-      ok_1_to_4 = ok_1_to_4 && imu.update(false, 0.0);
-      held = held && imu.pitch_deg() == 3.5;
+      ok_1_to_4 = ok_1_to_4 && imu.update(false, 0.0, 0.0);
+      held = held && imu.pitch_deg() == 3.5 && imu.pitch_rate_deg_s() == -12.25;
     }
     check("#16 failed reads 1-4 return OK", ok_1_to_4);
-    check("#16 failed reads hold the last good pitch (never 0.0)", held);
-    check("#16 failed read 5 returns ERROR", !imu.update(false, 0.0));
+    check("#16 failed reads hold the last good pitch and pitch rate (never 0.0)", held);
+    check("#16 failed read 5 returns ERROR", !imu.update(false, 0.0, 0.0));
     check("#16 pitch still held after the trip", imu.pitch_deg() == 3.5);
     SimImuOutput blind;
     blind.reset();
-    blind.update(false, 0.0);
+    blind.update(false, 0.0, 0.0);
     check("#16 a failure before any good read leaves NaN, not 0.0", std::isnan(blind.pitch_deg()));
+    check("#16 ... and leaves the pitch rate NaN, not 0.0", std::isnan(blind.pitch_rate_deg_s()));
+  }
+
+  // #18 Pitch rate (finding H-6, spec §3.7): imu_pitch_rate_deg_s() = pitch_sign * degrees(psi_dot),
+  // the CURRENT rate, with NO imu_delay_ms. It must have the same sign as the exported pitch.
+  {
+    // No delay: with the default 20 ms IMU delay, torque off from +2 deg. After 10 ms the exported
+    // pitch has not moved yet (it shows the lean of 20 ms ago), but the rate already shows the fall.
+    SimPlantModel m(start_at(torque_off(nominal), 2.0));
+    check("#18 setup: the default IMU delay is 20 ms", nominal.imu_delay_ms == 20);
+    near("#18 pitch rate at rest is 0 [deg/s]", m.imu_pitch_rate_deg_s(), 0.0, 0.0);
+    for (int i = 0; i < 10; ++i) {m.step();}
+    near("#18 after 10 ms the exported (delayed) pitch has not moved [deg]", m.imu_pitch_deg(), 2.0,
+      0.0);
+    near("#18 after 10 ms the rate is the CURRENT one, pitch_sign * deg(psi_dot) [deg/s]",
+      m.imu_pitch_rate_deg_s(), nominal.pitch_sign * rad_to_deg(m.state().psi_dot), 1e-12);
+    check("#18 after 10 ms the rate is already non-zero (no delay)", m.imu_pitch_rate_deg_s() != 0.0);
+
+    // Same sign as the exported pitch: falling from +2 deg, pitch grows, so the rate is positive.
+    check("#18 falling from +2 deg (pitch_sign -1): rate > 0", m.imu_pitch_rate_deg_s() > 0.0);
+    SimPlantParams plus = start_at(torque_off(nominal), 2.0);
+    plus.pitch_sign = +1.0;
+    SimPlantModel mp(plus);
+    for (int i = 0; i < 10; ++i) {mp.step();}
+    check("#18 falling from +2 deg (pitch_sign +1): rate > 0", mp.imu_pitch_rate_deg_s() > 0.0);
+
+    // The rate is the derivative of the exported pitch: with the delay set to 0, the change of
+    // pitch over one 1 ms sub-step equals the mean of the rates at its two ends (trapezoid rule).
+    SimPlantParams no_delay = start_at(torque_off(nominal), 2.0);
+    no_delay.imu_delay_ms = 0;
+    SimPlantModel d(no_delay);
+    for (int i = 0; i < 200; ++i) {d.step();}
+    const double pitch_before = d.imu_pitch_deg();
+    const double rate_before = d.imu_pitch_rate_deg_s();
+    d.step();
+    near("#18 with no delay, d(pitch)/dt = rate over one sub-step [deg/s]",
+      (d.imu_pitch_deg() - pitch_before) / kSubStepS, (rate_before + d.imu_pitch_rate_deg_s()) / 2,
+      1e-3 * std::abs(rate_before));
   }
 
   // #17 Parameter validation: invalid_reason() accepts the defaults and refuses what would make the

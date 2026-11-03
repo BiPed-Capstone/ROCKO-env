@@ -74,4 +74,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-10-29 | [Stop asking before every push to `ai-forward`](2026-10-29-push-without-asking.md) |
 | 2026-10-30 | [Apply items B, C and D of proposal 0002 to the settings](2026-10-30-apply-proposal-0002-b-d.md) |
 | 2026-10-30 | [Make `acceptEdits` the project's default permission mode](2026-10-30-default-mode-accept-edits.md) |
-| 2026-10-31 | [Fix C-1/C-2/C-3 (+M-5, H-4, H-6) and build Tier 3: a `SimPlant` physics simulation](2026-10-31-sim-plant-and-critical-fixes.md) (in progress: stage 2, foundations, and stage 3, the plant, are logged; Tier 3 is only partly built) |
+| 2026-10-31 | [Fix C-1/C-2/C-3 (+M-5, H-4, H-6) and build Tier 3: a `SimPlant` physics simulation](2026-10-31-sim-plant-and-critical-fixes.md) (in progress: stages 2 to 4 are logged: foundations, the plant, and the tipover cutoff / teleop watchdog / pitch rate with their sim checks; stage 4: review round 1 is done and round 2 is pending; Tier 3 is only partly built) |

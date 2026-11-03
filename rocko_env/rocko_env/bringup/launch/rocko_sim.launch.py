@@ -57,7 +57,19 @@ def generate_launch_description():
                 "connected, DiffDriveController keeps sending a zero velocity reference). false: "
                 "start neither; whoever runs the scenario publishes the references."
             ),
-        )
+        ),
+        # The teleop watchdog's timeout (finding C-3), passed to DiffDriveController.py. The default
+        # MUST equal that node's own default for command_timeout_s (0.2 s), so a plain launch tests
+        # what the robot runs. It is an argument so verify_sim.sh's watchdog check can be shown to
+        # fail: with a huge timeout the watchdog never fires.
+        DeclareLaunchArgument(
+            "command_timeout_s",
+            default_value="0.2",
+            description=(
+                "teleop:=true only: seconds without a gamepad command before DiffDriveController "
+                "zeroes the velocity reference (finding C-3). Default = the node's default."
+            ),
+        ),
     ]
     for name, (default, description) in SIM_ARGUMENTS.items():
         declared_arguments.append(DeclareLaunchArgument(name, default_value=default, description=description))
@@ -122,6 +134,10 @@ def generate_launch_description():
     diffdrive_controller = Node(
         package="rocko_env",
         executable="DiffDriveController.py",
+        # value_type=float: "1000" would otherwise arrive as an integer, which the node's
+        # declare_parameter (default 0.2, a float) refuses.
+        parameters=[{"command_timeout_s": ParameterValue(
+            LaunchConfiguration("command_timeout_s"), value_type=float)}],
         condition=IfCondition(teleop),
     )
     joystick = Node(

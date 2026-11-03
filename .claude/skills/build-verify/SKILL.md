@@ -194,11 +194,12 @@ Tier 3 is partly built (the ladder is the authority on how much). Run it after a
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh
 ```
 
-Success: `PASS (simulation, S1 and S2a)` and exit 0. It launches `rocko_sim.launch.py teleop:=false`
-three times, one after another (each wait is bounded by a timeout in the script; the total time was not measured). Exit 1 prints which run failed
+Success: `PASS (simulation: S1 S2a H4 C3 C2 H6)` and exit 0. It launches `rocko_sim.launch.py` 8 times, one after
+another (about 119 s in total on 2026-11-02, before `H4`'s recording window grew from 8 s to 16 s; not re-timed). Name checks to run only some: `verify_sim.sh H4 C3`. Exit 1 prints which run failed
 and why; exit 2 means it could not run (no build, or a controller manager is already running) or printed `COULD NOT JUDGE` (the probe saw no messages or no movement; read its reason and the kept run directory). It
-checks that the real cascade runs against the simulated robot, that pitch responds to the wheels, and
-that the robot falls with no torque. It does **not** check that anything balances: no upright, impulse
+checks that the real cascade runs against the simulated robot, that pitch responds to the wheels, that
+the robot falls with no torque, and the stage 4 safeguards in the model (the tipover cutoff `H4`, the teleop
+watchdog `C3`, an IMU outage `C2` and the gyro pitch rate `H6`). It does **not** check that anything balances: no upright, impulse
 or step scenario exists, and the plant's parameters are estimates. Never describe a pass as "the
 robot balances" or "the gains work". Make it fail once when you change `verify_sim.sh`, the plant or
 the sim launch (the ladder lists the breaks already tried). Also, on any machine with a C++17
