@@ -3,6 +3,49 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="diffdrive_robot">
   <xacro:arg name="prefix" default="" />
   <xacro:arg name="use_mock_hardware" default="false" />
+  <!-- true: the simulated robot (rocko_env/SimPlant, Tier 3) instead of the real hardware or the
+       mock. Wins over use_mock_hardware if both are true. -->
+  <xacro:arg name="use_sim_plant" default="false" />
+
+  <!-- SimPlant parameters, used only when use_sim_plant is true. Units in the names. Meaning and
+       basis of each: docs/architecture/sim-plant.md §4 and §5. These defaults are the ones the
+       simulated robot runs with. They must equal the ones in
+       hardware/sim/include/rocko_env/SimPlantModel.hpp (which the unit test uses) and, for the
+       settings in its SIM_ARGUMENTS, in bringup/launch/rocko_sim.launch.py: verify_urdf.sh runs
+       sim/check_sim_config.py, which fails if they differ. -->
+  <!-- ESTIMATE, NOT MEASURED. Nothing below was weighed or measured on ROCKO. -->
+  <xacro:arg name="wheel_radius_m" default="0.06" />
+  <xacro:arg name="belt_ratio" default="1.355" />
+  <xacro:arg name="wheel_mass_kg" default="0.3" />
+  <xacro:arg name="body_mass_kg" default="2.0" />
+  <xacro:arg name="com_height_m" default="0.20" />
+  <xacro:arg name="body_height_m" default="0.40" />
+  <xacro:arg name="body_depth_m" default="0.10" />
+  <xacro:arg name="gravity_m_s2" default="9.81" />
+  <xacro:arg name="motor_stall_torque_Nm" default="0.774725" />
+  <!-- 1150 RPM = 1150/60*2*pi rad/s, floating point on purpose; see SimPlantModel.hpp. -->
+  <xacro:arg name="motor_no_load_speed_rad_s" default="120.42771838760874" />
+  <xacro:arg name="motor_stall_current_A" default="9.2" />
+  <xacro:arg name="motor_no_load_current_A" default="0.25" />
+  <xacro:arg name="coulomb_friction_Nm" default="0.0" />
+  <xacro:arg name="battery_voltage_V" default="12.0" />
+  <xacro:arg name="motor_rated_voltage_V" default="12.0" />
+  <xacro:arg name="imu_delay_ms" default="20" />
+  <xacro:arg name="imu_pitch_bias_deg" default="0.0" />
+  <xacro:arg name="fallen_pitch_deg" default="60.0" />
+  <!-- Conventions and switches: assumptions, not physics (sim-plant.md §2.4). -->
+  <xacro:arg name="pitch_sign" default="-1" />
+  <xacro:arg name="encoder_sign" default="1" />
+  <xacro:arg name="model_write_quirks" default="true" />
+  <xacro:arg name="model_encoder_node" default="true" />
+  <xacro:arg name="imu_delay_max_ms" default="100" />
+  <!-- Scenario and fault injection, all OFF by default. Times count from release. -->
+  <xacro:arg name="initial_pitch_deg" default="0.0" />
+  <xacro:arg name="disable_torque" default="false" />
+  <xacro:arg name="imu_fault_start_s" default="0.0" />
+  <xacro:arg name="imu_fault_duration_s" default="0.0" />
+  <xacro:arg name="impulse_time_s" default="-1.0" />
+  <xacro:arg name="impulse_angular_velocity_deg_per_s" default="0.0" />
 
   <xacro:include filename="$(find rocko_env)/urdf/rocko_description.urdf.xacro" />
 
@@ -15,6 +58,7 @@
   <xacro:diffbot prefix="$(arg prefix)" />
 
   <xacro:rocko_ros2_control
-    name="DiffBot" prefix="$(arg prefix)" use_mock_hardware="$(arg use_mock_hardware)"/>
+    name="DiffBot" prefix="$(arg prefix)" use_mock_hardware="$(arg use_mock_hardware)"
+    use_sim_plant="$(arg use_sim_plant)"/>
 
 </robot>

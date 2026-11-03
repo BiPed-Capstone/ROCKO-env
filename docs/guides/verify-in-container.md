@@ -42,7 +42,7 @@ There is one container per laptop, and it mounts the checkout whose `docker/comp
 `up -d`. So `up -d` is itself the switch: run from your checkout it points the container at you, and
 it takes the container away from anything running in another checkout. If the container is already
 up, you may skip `up -d`, and then it is still showing whichever checkout it had. In the wrong
-checkout, steps 2 to 4 still run and the container commands can still pass, but they test the other
+checkout, steps 2 to 5 still run and the container commands can still pass, but they test the other
 folder's files.
 
 ```bash
@@ -132,12 +132,20 @@ container.
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_urdf.sh
 ```
 
-What happens: for balancing and tank mode, each with the mock off and on, it expands the xacro (a
+What happens: for balancing and tank mode, each with the mock off and on, and for balancing mode with
+the simulated robot (`use_sim_plant:=true`, without and with `use_mock_hardware:=true`), and for tank
+mode asked for the simulator (which tank mode ignores by design and must still come out as the plain
+real tank robot) — seven expansions in all — it expands the xacro (a
 *xacro* file is XML with macros), checks the result is a valid robot description, and then checks the
 right hardware is in it: the two real motor plugins (and the IMU, in balancing mode) when the mock is
-off, exactly one `MockRocko` system when it is on. Finally it checks the mock exports **exactly the
-same interfaces** (joints, sensors and gpio, duplicates included) as the real hardware, so the mock
-cannot quietly drift from the robot. The
+off, exactly one `MockRocko` system when it is on, exactly one `SimPlant` system (and nothing else)
+for the sim. Finally it checks the mock, and the sim, export **exactly the same interfaces** (joints,
+sensors and gpio, duplicates included) as the real hardware, so neither can quietly drift from the
+robot. A last step runs `sim/check_sim_config.py`, which fails if `rocko_sim_controllers.yaml` differs
+from `rocko_controllers.yaml` in anything but the gain numbers, or if a simulator setting's default is
+not the same in `SimPlantModel.hpp`, `rocko.urdf.xacro` and `rocko_sim.launch.py` (it also checks that
+every `<param>` is wired to the xacro arg of its own name). Exit 1 from it is drift; exit 2 means it
+could not run (for example PyYAML is missing), and `verify_urdf.sh` says which. The
 content checks matter because a valid-looking description passes the first two checks whichever
 hardware was selected. It needs step 2 first, because the xacro files find each other through the
 installed package.
@@ -151,8 +159,20 @@ ok    rocko: the mock exports the same 12 interfaces as the real hardware
 ok    rocko_tank_mode mock=false
 ok    rocko_tank_mode mock=true
 ok    rocko_tank_mode: the mock exports the same 6 interfaces as the real hardware
-PASS: all four combinations expand, parse, hold the right hardware, and the mock matches the real interfaces.
+ok    rocko sim=true mock=false
+ok    rocko sim=true mock=false: the sim exports the same 12 interfaces as the real hardware
+ok    rocko sim=true mock=true
+ok    rocko sim=true mock=true: the sim exports the same 12 interfaces as the real hardware
+ok    rocko_tank_mode sim=true (ignored by design)
+      ok    18 wiring values equal, with their types (gains maps: next check)
+      ok    each controller's `gains` keys are its dof_names in both files; every gains key except the tunable numbers is equal
+      ok    29 simulator settings: header, xacro and ros2_control params agree; 10 launch-file defaults match the xacro
+      ok    IMU fault limit equal in ICM20948.hpp and SimPlantModel.hpp
+ok    sim config: no drift
+PASS: all seven expansions (four real/mock, two sim, one tank-with-sim-request) expand, parse, hold the right hardware, the mock and the sim match the real interfaces, tank mode ignores the sim request, and the sim config has not drifted.
 ```
+
+That is twelve `ok` lines at the left margin (four more, indented, come from the config check) and `PASS`.
 
 A `FAIL` line names the combination and what it expected. Exit status is 0 on a pass, 1 on a
 failure, 2 if there is no build yet.
@@ -225,9 +245,48 @@ Use `rocko_tank_mode.launch.py` instead for tank mode. Press Ctrl+C to stop it. 
 process is left over afterwards, restart the container to clear all of it:
 `docker compose -f docker/compose.yml restart ros2`.
 
-## 5. What to do next
+## 5. Run the simulated robot (Tier 3, partly built)
 
-A green run of steps 2–4 means the change builds and wires up. To say anything about whether the
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh
+```
+
+What happens: it launches the same controllers against `rocko_env/SimPlant`, a physics **model** of the
+robot, three times in a row (`rocko_sim.launch.py teleop:=false`). It checks that the four cascade
+controllers and `joint_state_broadcaster` go active with all 12 interfaces, that the simulated pitch
+does not move when nothing pushes it (S1 baseline), that it does move when the wheels get a command
+(S1 command), and that with the motors producing no torque the robot passes 35 deg within 0.48 s (S2a).
+It needs step 2 first. The total time was not measured; each wait in the script is bounded.
+
+Success: it ends with `PASS (simulation, S1 and S2a)` and exit status 0. A failure prints `FAIL` with
+the run that failed and why, and exits 1; exit 2 means it could not run or could not judge (`COULD NOT JUDGE`: the probe saw no messages or no movement; read its reason and the kept run directory) — e.g. no build yet, or a controller
+manager is already running: restart the container as in step 4). Every run must also show that the
+robot was *released* (SimPlant logs it) at least 3 s before the probe stopped, so a robot that never
+moved cannot pass the baseline. On anything but a pass the script keeps its run directory (launch
+logs, `samples.csv`, `metrics.json` per run) and prints its path inside the container; on a pass it
+deletes it.
+
+**What a pass does not tell you.** Every physical number in the model (masses, inertia, motor
+constants, the IMU delay) is an estimate; nothing was measured on the robot. No scenario that checks
+the controllers *hold* the model upright exists yet, so a pass does not mean the cascade balances,
+and it certainly does not mean the real robot balances or that any gain is good. The
+[verification ladder](../architecture/verification-ladder.md) says what is and is not built, and
+[the model's specification](../architecture/sim-plant.md) says what it leaves out.
+
+To run the plant's own unit test (no ROS, any machine with a C++17 compiler; from the repo root):
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
+    -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test
+```
+
+Success: it prints `all SimPlantModel tests passed` and exits 0. It is not a tier and nothing runs it
+automatically.
+
+## 6. What to do next
+
+A green run of steps 2–5 means the change builds, wires up, and passes the few checks of an estimated model that exist. To say anything about whether the
 robot *behaves*, a person has to test it on the robot, tethered: that is
 [Reproducing results](reproducing-results.md) territory, and an AI change should come with its own
 test procedure in the [run journal](../journal/README.md).

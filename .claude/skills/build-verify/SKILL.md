@@ -25,7 +25,7 @@ being present does.
 | --- | --- | --- |
 | Docker dev container | 0, 1, 2 | Builds without the motor plugin. This is where an agent works |
 | Raspberry Pi (Ubuntu 24.04, Jazzy, WiringPi) | 0, 1 (the only place the motor plugin builds), 2, and 4 | A human's machine; `ros2 launch` here drives real motors. Not run by an agent |
-| Simulation | 3 | See the ladder for whether it exists; `bootstrap-sim` builds it |
+| Simulation | 3 | `verify_sim.sh` runs in the container. See the ladder for how much of Tier 3 exists (partly built, not called built); `bootstrap-sim` builds the rest |
 
 ## Before any tier (Docker target) — is the container looking at your files?
 
@@ -121,11 +121,19 @@ Needs the build first: the xacro files resolve `$(find rocko_env)` through the i
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_urdf.sh
 ```
 
-It expands balancing and tank mode, each with the mock off and on, runs `check_urdf` on every
+It expands balancing and tank mode, each with the mock off and on, plus balancing mode with
+`use_sim_plant:=true`, without and with `use_mock_hardware:=true`, plus tank mode asked for
+`use_sim_plant:=true` (seven expansions), runs `check_urdf` on every
 result, **and asserts what is inside**: `mock=false` holds the real plugins
 (`<plugin>rocko_env/Motor12VoltQuadEncoder</plugin>`, and `rocko_env/ICM20948` in balancing mode) and
-no `mock_components`; `mock=true` holds exactly one `MockRocko` system and no real motor plugin.
-Success is six `ok` lines (one per combination, plus one interface-parity line per model) and `PASS`. The assertions are the point: `check_urdf` alone passes
+no `mock_components`; `mock=true` holds exactly one `MockRocko` system and no real motor plugin;
+`sim=true` holds exactly one `SimPlant` (`SimRocko`) and nothing else, with the mock on or off; tank
+mode ignores `use_sim_plant` by design and must still hold the two real motor plugins and no `SimPlant`.
+It also runs `sim/check_sim_config.py`, which fails when the sim controller YAML's wiring or a
+simulator setting's default drifts from the hardware YAML or from the other places it is written
+(its exit 1 is drift, exit 2 is "could not run"; the script says which).
+Success is twelve `ok` lines at the left margin (seven expansions, four interface-parity lines against
+the real hardware, and the config check, which prints four more, indented) and `PASS`. The assertions are the point: `check_urdf` alone passes
 whichever block was selected, so a swapped `xacro:if`/`xacro:unless` would otherwise pass.
 
 When you change that script, break it on purpose to see it go red for the right reason (swap the
@@ -180,7 +188,31 @@ break the thing on purpose — delete a `<state_interface>` from the `MockRocko`
 
 ## Tier 3 and 4
 
-Tier 3: see the ladder for whether it exists, and `bootstrap-sim` to build it. Tier 4 needs a robot and a person. You cannot run
+Tier 3 is partly built (the ladder is the authority on how much). Run it after a Tier 1 build:
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh
+```
+
+Success: `PASS (simulation, S1 and S2a)` and exit 0. It launches `rocko_sim.launch.py teleop:=false`
+three times, one after another (each wait is bounded by a timeout in the script; the total time was not measured). Exit 1 prints which run failed
+and why; exit 2 means it could not run (no build, or a controller manager is already running) or printed `COULD NOT JUDGE` (the probe saw no messages or no movement; read its reason and the kept run directory). It
+checks that the real cascade runs against the simulated robot, that pitch responds to the wheels, and
+that the robot falls with no torque. It does **not** check that anything balances: no upright, impulse
+or step scenario exists, and the plant's parameters are estimates. Never describe a pass as "the
+robot balances" or "the gains work". Make it fail once when you change `verify_sim.sh`, the plant or
+the sim launch (the ladder lists the breaks already tried). Also, on any machine with a C++17
+compiler, the plant's unit test (not a tier, no script runs it):
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
+    -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test
+```
+
+Success: `all SimPlantModel tests passed`, exit 0.
+
+Tier 4 needs a robot and a person. You cannot run
 it, so end every behavior change with the procedure for it (tethered, what to launch, what success
 looks like, when to abort), or a link to the proposal that holds it.
 

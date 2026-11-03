@@ -21,9 +21,9 @@ Update it when a step lands. Work top to bottom; each step is its own goal with 
 | 2 | `rocko_env` builds off the Pi | `build_ros.sh` in the container builds both packages; the Pi default still requires WiringPi | Status: [ADR 0003 "Progress"](../../../docs/decisions/0003-simulation-target.md) (follow-on 2) |
 | 3 | Compile-check the motor plugin off-Pi | A clearly named, **compile-only** check builds `Motor12VoltQuadEncoder.cpp` against a stub `wiringPi.h`/`softPwm.h` with `-fsyntax-only`. It must be impossible to link or run, and the docs must say it proves syntax and types only | Agent. **Done 2026-10-31**: `check_motor_plugin_compiles.sh`; see the [ladder](../../../docs/architecture/verification-ladder.md) |
 | 4 | Measured inertial properties | `rocko_description.urdf.xacro` has mass, centre of mass and inertia per link, each with a comment naming where the number came from | **Human measures**, agent writes the procedure and wires the numbers in |
-| 5 | **Decide which Tier 3 plant** (see below) | A human has picked in a proposal; ADR 0003 is amended or superseded to match | **Human decides**; agent writes the proposal |
-| 6 | The plant exists and the same controllers run against it | `rocko_sim.launch.py` starts it; the same `rocko_controllers.yaml` loads; `ros2 control list_controllers` shows all active; pitch now **changes** when the wheels move | Agent |
-| 7 | Scenarios with pass/fail | A scenario runner executes: hold upright 10 s, recover from an impulse, follow a velocity step. Each scenario writes a metrics file and exits non-zero on failure | Agent |
+| 5 | **Decide which Tier 3 plant** (see below) | A human has picked in a proposal; ADR 0003 is amended or superseded to match | **Decided** for the 2026-10-31 run: `SimPlant` first (the person's instruction). The proposal to amend ADR 0003 is **still to write**; the ADR stays `Proposed` |
+| 6 | The plant exists and the same controllers run against it | `rocko_sim.launch.py` starts it; the same controller wiring loads (from `rocko_sim_controllers.yaml`, a copy of the hardware wiring and gains; sim gains live only there); `ros2 control list_controllers` shows all active; pitch now **changes** when the wheels move | Agent. **Partly done 2026-10-31:** the plant exists, `verify_sim.sh` checks the wiring, that pitch responds to the wheels (S1) and that the robot falls with no torque (S2a). Its parameters are **estimates** (step 4 is not done) |
+| 7 | Scenarios with pass/fail | A scenario runner executes: hold upright 10 s, recover from an impulse, follow a velocity step. Each scenario writes a metrics file and exits non-zero on failure | Agent. **Not done:** none of the three scenarios exists, nor S2b (a copy of the upright scenario with one sign flipped must fail). Tier 3 is not called built until they do |
 | 8 | Sim-to-real gap, written down | `docs/architecture/sim-to-real-gap.md` lists what the model omits (backlash, PWM aliasing, battery sag, IMU latency) and what each omission does to a gain | Agent |
 | 9 | Let the loop run it | `.claude/settings.json` allows the sim launch command; `verification-ladder.md` marks Tier 3 as built; `tune-gains` is now actionable | Agent writes a **proposal** for the settings change (it edits a guardrail, `CLAUDE.md` §3); a human approves it |
 
@@ -50,6 +50,8 @@ interfaces as the real hardware. They are not exclusive, but you build one first
 | Cost to the image | None | Gazebo and its bridge |
 | Risk | You only get the physics you wrote down, and you must keep the model honest | Heavy, and still needs measured inertia |
 | Fits "simple and explainable" | Yes | Less so |
+
+**Update 2026-10-31:** `SimPlant` was built first (see step 6); the sentence below is what recommended it. It did not stay "one readable file": it is three files, about 915 lines (the model header 484, the plugin 349, its header 82; `wc -l` on 2026-11-02), because it also copies the motor `write()` duty map and models the IMU delay and faults. The specification a student should read first is [`docs/architecture/sim-plant.md`](../../../docs/architecture/sim-plant.md).
 
 My recommendation is `SimPlant` first: it is the smaller thing, it makes the cascade checkable
 sooner, and Gazebo can be added later if contact fidelity turns out to matter. That is a project

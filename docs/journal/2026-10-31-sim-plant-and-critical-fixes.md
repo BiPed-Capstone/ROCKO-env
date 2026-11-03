@@ -35,7 +35,7 @@ sim can see it. The wording below is the person's.
 
 ### Decisions the person made in advance (not re-asked)
 
-- Plant: `SimPlant` first, not Gazebo; a proposal to amend ADR 0003 is filed and the work carries on.
+- Plant: `SimPlant` first, not Gazebo; a proposal to amend ADR 0003 is to be written (not yet written; see "Not done") and the work carries on.
 - Inertia and wheel radius are unmeasured. Every such number sits in one parameter block labelled
   `ESTIMATE, NOT MEASURED`. No "right" wheel radius is picked and issue #16 is not closed.
   `docs/guides/measure-inertia.md` and a proposal ask a human to measure.
@@ -334,6 +334,158 @@ fixed; needs the read in C++, which is C-1); L-5, a D-term spike after held cycl
 was added to C-1: when a timeout is added, its timeout branch must remove the pending request, or the
 client's pending-request map grows.
 
+### Stage 3 — the plant: `SimPlant`, Tier 3 (partly built)
+
+Built on `1318f95` (the stage 2 commit), committed as the stage 3 commit. The
+specification the code follows is [`docs/architecture/sim-plant.md`](../architecture/sim-plant.md).
+Status words as in the queue's [*Reading the table*](../next-steps.md#reading-the-table).
+
+**Where each success criterion stands**
+
+| Criterion | State | Evidence |
+| --- | --- | --- |
+| S1: the four cascade controllers load unchanged against `SimPlant`, go active, and pitch changes when the wheels move | **Met** (in the model) | `verify_sim.sh` baseline and command runs, below |
+| S2a: with no torque the simulated robot falls past 35 deg within a stated time | **Met** | `verify_sim.sh` S2a run: 0.440, 0.432, 0.430 s against a limit of 0.48 s |
+| S2b: a copy of the upright scenario with one sign flipped must fail | **Not done.** The upright scenario does not exist, so there is nothing to flip | |
+| S3: upright, impulse and velocity-step scenarios; thresholds committed before tuning; the +/-30 % sweep | **Not done** | The impulse and IMU-fault *parameters* exist and are unit-tested; no scenario uses them |
+| S4: the fixes checked in the sim (C-2 downstream, C-3, H-4, H-6) | **Not done.** C-3, H-4 and H-6 are not written; the C-2 downstream check has no scenario | |
+| S5: docs updated; Tier 3 marked built only after S1 **and** S2 | Docs updated. Tier 3 is **not** marked built, because S2b is missing | [ladder](../architecture/verification-ladder.md) |
+
+**What changed**
+
+| File | Change |
+| --- | --- |
+| `rocko_env/rocko_env/hardware/sim/include/rocko_env/SimPlantModel.hpp` (new, 484 lines on 2026-11-02) | The physics, plain C++17 with no ROS types. One parameter block (`SimPlantParams`) marked `ESTIMATE, NOT MEASURED`; a planar inverted pendulum on wheels integrated with RK4 at `kSubStepS` = 1 ms; a DC-motor model (`motor_output_torque`); the IMU delay as a ring buffer of the lean angle, sized once in the constructor; a copy of the **new** `Motor12VoltQuadEncoder::write()` duty map (`write_path_duty`) that keeps the integer-division `MAX_RAD_PER_SEC` (`kWriteMaxRadPerSec` = 119.381 rad/s) on purpose so the sim sees what the motor sees (finding [L-7](../claude-analysis/balance-loop-findings.md#l-7--max_rad_per_sec-divides-integers)); a switch `model_encoder_node` that copies the encoder node's speed halving; the C-2 rule through `ImuFaultTracker` (`ImuFaultTracker.hpp`) |
+| `rocko_env/rocko_env/hardware/sim/SimPlant.cpp`, `.../include/rocko_env/SimPlant.hpp` (new) | The `rocko_env/SimPlant` `SystemInterface` that wraps the model and exports the same 12 interfaces as the real hardware. **Release hold:** `released_` (a member of `SimPlant`, set in `SimPlant::write()`) keeps the plant still until both wheel commands are finite, which happens when the cascade activates, because the hardware component activates seconds before the controllers are spawned. Sim time and every scenario time count from release. `read()` carries the sub-step remainder (`unintegrated_s_`) from one cycle to the next (round 2) |
+| `rocko_env/rocko_env_hardware.xml`, `rocko_env/CMakeLists.txt` | Registers the plugin and always builds it (it needs no WiringPi), adds its include folder |
+| `rocko_env/rocko_env/description/urdf/rocko.urdf.xacro`, `.../ros2_control/rocko.ros2_control.xacro` | `use_sim_plant` (default `false`) and 29 sim parameters as xacro args. The new `SimRocko` block is the first `xacro:if` in the ros2_control xacro. The real `<ros2_control>` block is **unchanged inside**; only its condition is widened to `unless use_mock_hardware or use_sim_plant`, so with the sim on neither the real plugins nor the mock load |
+| `rocko_env/rocko_env/bringup/config/rocko_sim_controllers.yaml` (new) | A copy of the hardware controller wiring and gains. **Sim gains live only here.** `rocko_controllers.yaml` and `rocko.launch.py` are untouched, and nothing sets `use_sim_plant` except `rocko_sim.launch.py` |
+| `rocko_env/rocko_env/bringup/launch/rocko_sim.launch.py` (new) | Starts the sim with a banner. `teleop:=true` by default (starts `Joystick.py` and `DiffDriveController.py`); spawns `joint_state_broadcaster` first, then the four cascade controllers; forwards the fault and scenario arguments (`SIM_ARGUMENTS`) to the xacro |
+| `sim/sim_probe.py` (new) | Records pitch from `/dynamic_joint_states`, writes `samples.csv` and `metrics.json`, and exits 0 / 1 / 2 by mode (`report`, `exceed`, `change`, `still`) |
+| `verify_sim.sh` (new, repo root) | The Tier 3 check: three launches (S1 baseline, S1 command, S2a); thresholds are named at the top of the file with the reason for each |
+| `verify_urdf.sh` | A fifth and sixth expansion, `rocko` with `use_sim_plant:=true` (mock off and on): exactly one `SimPlant` (`SimRocko`), no real plugin, no mock, and the same interfaces as the real hardware; a seventh, tank mode asked for `use_sim_plant:=true`, must still hold the two real motors and no `SimPlant`; and `sim/check_sim_config.py`. The success output is now **12 `ok` lines at the left margin plus 4 indented ones from the config check, and `PASS`** (it was 6 lines before stage 3; counted from a run on 2026-11-02) |
+| `tools/sim_plant_model_test.cpp` (new) | A host unit test of the model: 70 checks (61 in stage 3, plus 9 for parameter validation in round 2) against the numbers of [sim-plant.md §7.1](../architecture/sim-plant.md). Not a tier |
+| `docs/architecture/sim-plant.md` | New in this change (the implementer's specification of the plant, written with the code), with a *predicted vs observed* note in §7.2 added at the end of stage 3 |
+
+**Risks**
+
+- `rocko_sim_controllers.yaml` is in `bringup/config/`, which `CLAUDE.md` §6 lists as critical path,
+  so `realtime-auditor` is mandatory for this stage even though `SimPlant` runs only off the robot.
+  No hardware gain, limit or `update_rate` was changed; the sim file starts as a copy of them.
+- `rocko.ros2_control.xacro` and `rocko.urdf.xacro` are edited, and the real block's condition was
+  widened. With `use_sim_plant` left at its default (`false`) the condition is the old one; `verify_urdf.sh`
+  checks that the two real expansions still hold the real plugins and no mock. It cannot check the Pi.
+- `SimPlant.cpp` is always built, so every Tier 1 build now compiles it and every installed package
+  contains the plugin. It cannot be selected by accident: only `use_sim_plant:=true` loads it.
+- Copies drift: the duty map and the encoder-node halving are copies of robot code. Nothing checks
+  that they still match. (The sim's *configuration* is checked since review round 1: see below.)
+- **A pass of any sim check is a pass for a model with invented numbers.** Do not read it as a
+  statement about the robot or about any gain.
+
+**The observation worth a human's eye: the hardware gains in the model.** With the unchanged
+hardware gains (copied into `rocko_sim_controllers.yaml`), a 2 deg start, teleop on, `pitch_sign =
+-1`, `encoder_sign = +1` and a 20 ms IMU delay, the simulated pitch decays to about 1 deg, then
+drifts: 4.8 deg at 8 s, 13 deg at 9 s, 31.7 deg at 10 s after release, past 35 deg at 10.05 s, lying
+at 60 deg at 10.20 s, with the wheels at -2.0 m/s at 10 s. So in the model the cascade does **not**
+hold the robot up with these gains. Three limits on what that means: the plant's numbers are
+estimates; the two sign parameters are assumptions that nobody has established on the robot (the
+`.srv` and `pitch_offset` comments say the sign of pitch is not established); and this is one run, not
+a sweep. It is **not** evidence that the real robot falls, or that these gains are bad. It also
+contradicts the failure mode that [sim-plant.md §7.2](../architecture/sim-plant.md#72-model-predictions-with-the-hardware-gains-not-robot-claims)
+predicted (fast oscillation made unstable by the delay): the model failed by a slow drift instead.
+That note is now in §7.2. **This run was not recorded with an exact command**, so the numbers are the
+implementer's report (a slow drift, no growing oscillation observed); a run such as `ros2 launch rocko_env rocko_sim.launch.py initial_pitch_deg:=2.0`
+with `sim/sim_probe.py --duration 15 --mode report` should show the same kind of curve (**not rerun
+by the author of this entry**). No gain was changed in response. Candidate gains for the sim belong in
+`rocko_sim_controllers.yaml` and, if ever promoted, in a proposal.
+
+**Verification (stage 3).** All run on 2026-10-31 in the container, before the stage 3 commit.
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| pre | `./check_container_mount.sh` | `ok`, exit 0 (as for stage 2) |
+| 1 build | `docker compose -f docker/compose.yml exec -T ros2 bash -c 'cd /ros2_ws && src/ROCKO-env/build_ros.sh'` | exit 0, 0 compiler warnings. `SimPlant.cpp` is compiled; `Motor12VoltQuadEncoder.cpp` is still left out |
+| 0 static | `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_urdf.sh` | `PASS`, 7 expansions, 12 `ok` lines at the left margin plus 4 indented from the config check (round 2, 2026-11-02; at the first stage 3 run it was 5 expansions and 8 lines, and after round 1, 6 expansions). `rocko sim=true` holds exactly one `SimPlant` and exports the same 12 interfaces as the real hardware |
+| 2 mock | `verify_mock.sh`; `verify_mock.sh tank` (same prefix) | PASS; PASS |
+| compile-only (not a tier) | `check_motor_plugin_compiles.sh` | PASS |
+| 0 host | `.claude/hooks/test-guard-protected-files.sh` | 81 cases ok |
+| host unit test (not a tier) | `g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include -I rocko_env/rocko_env/hardware/sensors/icm20948/include tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test` | `all SimPlantModel tests passed`, 70 `ok` (61 at the first stage 3 run), 0 `FAIL`, exit 0. Falling-pole rate 8.59149 s^-1 (expected 8.5915); fall from 2 to 35 deg with no torque 0.427297 s (expected 0.4273); through the 100 Hz loop with a 20 ms delay 0.45 s. This command was copied from the test file's header comment and run again while writing this entry |
+| 3 sim (partly built) | `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh` | `PASS (simulation, S1 and S2a)`, exit 0. S1 baseline moved 0.0000 deg (limit 0.01). S1 command (+5 rad/s feedforward) moved the pitch 0.06 s after release, to a maximum of 13.8, 60.0 and 60.2 deg in three runs before round 1, 8.30 deg in a later one and 60.23 deg in the round-2 run (it varies from run to run; only the 0.5 threshold matters). S2a: 35 deg passed within 0.48 s, measured 0.440, 0.432, 0.430 s |
+| 4 robot | | not run, and not possible for an agent |
+
+**Deliberate breaks (each watched going red for the right reason, then restored)**
+
+| Break | Result |
+| --- | --- |
+| Flip the sign of the body torque in `SimPlantModel.hpp` | Unit test: 9 checks failed |
+| Drop gravity | Unit test: 22 checks failed |
+| Leave `roll` out of the sim's `<ros2_control>` block | `verify_urdf.sh` FAIL from the sim-versus-real interface comparison |
+| Put the real block's old condition back | `verify_urdf.sh` FAIL: `plugins=4` in the `rocko sim=true` expansion |
+| Freeze the pitch `SimPlant` reports | `verify_sim.sh` FAIL: the S1 command run moved 0.0000 deg, and S2a never reached 35 deg |
+| Make `SimPlant` ignore `disable_torque` | `verify_sim.sh` FAIL: S2a never reached 35 deg (it peaked at 2.92 deg); unit test: 16 checks failed |
+
+**Not done / not verified (stage 3)**
+
+- **S2b and every scenario** (upright, impulse, velocity step), so Tier 3 is **not** called built, and
+  the robustness sweep (S3) has not been run.
+- **The impulse and IMU-fault parameters** are unit-tested but were not run end to end through a launch.
+- **The wheel radius (issue #16)** is only exercised inside the header class `SimPlantModel`, not through
+  the plugin, and the sim picks no value as right.
+- **The release hold** has no check of its own, except that `verify_sim.sh` now requires the release to
+  be logged at least 3 s before the probe stops (so a robot that was never released cannot pass the
+  baseline). It exists so the plant does not fall during the seconds between the hardware activating
+  and the controllers starting; the robot has no such hold. How long the loops take to have a
+  reference after release (an open-loop gap) was not measured: sim-plant.md §3.6.
+- **One hardware owner.** An IMU `ERROR` in the sim stops the whole plant, unlike the robot, where the
+  motor plugin is a separate component (H-7). The sim cannot show H-7.
+- **The unit test is not called by any script.**
+- **Deprecated `on_init(HardwareInfo)` override.** All hardware plugins, `SimPlant` included, use it;
+  the build prints no warning, and whether a later release removes it was not checked.
+- **A proposal to amend ADR 0003** (Gazebo to `SimPlant` first) is to follow; it is not written yet.
+  See [next-steps row 2.1](../next-steps.md).
+- **Anything about the robot.** Every number comes from a model with estimated parameters.
+- **Review of stage 3**: round 1 findings from `ros2-control-reviewer` and `explainability-reviewer`
+  are fixed (next section); `realtime-auditor` and `docs-reviewer` have not reviewed it, and no
+  second round has run. See the *Review rounds* table.
+
+**Stage 3, review round 1: what was fixed.** Run 2026-10-31 in the container, before the stage 3 commit.
+
+| Finding | Fix | Evidence it can fail |
+| --- | --- | --- |
+| The sim controller YAML could drift from the hardware wiring | `sim/check_sim_config.py`, run by `verify_urdf.sh`: both YAMLs with every `gains` map removed must be equal | Renaming one `dof_names` entry in a copy, and in the real file temporarily: `FAIL  wiring differs at /pitch_pid_controller/ros__parameters/dof_names ...`; changing `update_rate` likewise; changing a gain stays green on purpose |
+| Simulator defaults written in three places | The same script: every `<xacro:arg>` default equals `SimPlantParams`'s, every `SIM_ARGUMENTS` default equals the xacro's, the `<param>` names equal the struct's members, and the IMU consecutive-failure limit equals `ICM20948.hpp`'s | `imu_delay_ms` 20 to 30 in the xacro: `FAIL  default of 'imu_delay_ms': SimPlantModel.hpp says 20, rocko.urdf.xacro says 30` (and the launch file line); launch default to 25 and header limit 5 to 6 in copies: red |
+| `use_sim_plant:=true use_mock_hardware:=true` was not expanded | A sixth expansion in `verify_urdf.sh`, with the same assertions and interface comparison | Removing `and not use_sim_plant` from the mock block: `FAIL  rocko sim=true mock=true: ... (got sim=1 named=1 motors=0 imu=0 mock=1 plugins=2)` |
+| S1 baseline could pass vacuously (never released) | `verify_sim.sh` requires SimPlant's "releasing the simulated robot" log line, stamped at least `RELEASED_MIN_S` = 3 s before the probe stopped, in every run | Searching for a line that does not exist: all three runs `FAIL ... SimPlant never logged 'releasing the simulated robot'` |
+| A failed run's evidence was deleted | `verify_sim.sh` deletes its run directory only on PASS and prints the path otherwise | The same broken run printed `Run directory KEPT as evidence (inside the dev container): /tmp/tmp.CZtjTOr2nr` (removed afterwards by hand) |
+| Partial integer parameters (`20ms`) read as 20 | `SimPlant.cpp` rejects text left over after the number | `rocko_sim.launch.py imu_delay_ms:=20ms`: `SimPlant parameter 'imu_delay_ms' must be a whole number, got '20ms'` |
+| Explainability (M1-M7 and lows) | Comments (default parameters are for the unit test, not the plugin; why the release hold; why RK4 at 1 ms; the two spellings of the motor speed, with a `static_assert` that the integer-division constant stays below 120 rad/s; the friction-through-belt factor is N_b squared), `on_init` split into `check_joint_interfaces()` and `read_parameters()`, per-parameter `invalid_reason()` messages, `rocko_sim_controllers.yaml` cleaned of dead lines and given units, `sim-plant.md` rewritten in the present tense | Reviewed by reading only |
+
+One finding was *not* done as asked: the plant's IMU fault limit is not tied to `ICM20948.hpp` with a
+`static_assert`. The constant is `private` in a class whose header needs ROS headers, and the model
+header is deliberately ROS-free, so `sim/check_sim_config.py` compares the two numbers instead.
+
+Results after the round 1 fixes (container, before the stage 3 commit): `build_ros.sh` exit 0 with nothing but
+CMake notices in `log/latest_build/rocko_env/stderr.log` (0 compiler warnings); `verify_urdf.sh` PASS;
+`verify_mock.sh` and `verify_mock.sh tank` PASS; `check_motor_plugin_compiles.sh` PASS;
+`verify_sim.sh` PASS (S1 baseline 0.0000 deg, S1 command 8.2956 deg, S2a 0.442 s to 35 deg, each run
+with the release logged); the host unit test prints `all SimPlantModel tests passed` and compiles with
+no `-Wall -Wextra` warning; the hook tests pass (81 cases). Tier reached: 3, partly built (not called
+built).
+
+**Reproduce (stage 3).** After the commands in *Reproduce* below (from `check_container_mount.sh`
+through the Tier 1 build), run from the repo root:
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_urdf.sh       # Tier 0; 12 ok lines at the left margin (+4 indented), PASS
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh        # Tier 3, partly built; PASS, exit 0
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
+    -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test   # host, not a tier
+```
+
+Battery voltage and surface do not apply (nothing ran on a robot). `verify_sim.sh` prints its results
+to the terminal; the probe writes `samples.csv` and `metrics.json` to a folder inside the container.
+
 ## Verification
 
 | Tier | Command | Result |
@@ -366,7 +518,10 @@ stage log above.
 | 1 | `ros2-control-reviewer` (opus) | (a) The new code may need a newer Jazzy `ros2_control` 4.x than `find_package(controller_manager 4.0.0)` allows (`set_value()` returning `bool`; the `.hpp` `realtime_tools` headers). Plausible, not proven. (b) What `controller_manager` does after an `update()` returns `ERROR` depends on the ros2_control version. (c) The C-2 procedure called `ERROR` a lifecycle state | (a) **Not fixed, by design**: raising the CMake minimum is a version-pin change, which is a human's decision, so no proposal is written in this change; recorded in *Risks*, the robot procedures (record versions, `apt upgrade` first) and *Not verified*. (b) Added robot steps to the C-2 and M-5 procedures. (c) Fixed: the wording now says `ERROR` is a return code and the expected state is unverified |
 | 1 | `explainability-reviewer` (sonnet) | Missing units and sign on the `.srv` fields; magic numbers in the throttle calls; `read()` harder to follow than it needed to be; `pitch_offset = 7.6` in `ICM20948.py` unexplained | Fixed: units and the "sign of pitch not established" note on the `.srv`; `kLogThrottleMs` (ms) in both files; `read()` simplified; a comment on `pitch_offset` saying it is in degrees and that its origin is undocumented (the value was not changed) |
 | 2 | `realtime-auditor` (opus) | **High:** (a) an interaction with H-2: writing `0.0` on the fault paths flipped the motor direction pin (the old code treated `0.0` as forward) while the old duty stayed latched, because the `pwmVal > 2` guard skipped the speed write. **Medium:** (b) one missed upstream write produced a one-cycle (10 ms) zero pulse; (c) `on_deactivate` wrote no safe state (H-7); (d) the `AddFeedforwardController` logic has no automated test. **Low, four:** (e) comments that did not match the code; (f) a missing `static_assert` on the IMU limits; (g) a range comment that missed the pitch offset; (h) the findings document was out of date. **Plausible, not proven:** (i) in-range garbage from a bus fault, an all-equal Euler triple, would pass the range check | (a) **Fixed, pulled forward** from stage 4: `write()` always writes the speed pin, a non-finite or sub-deadband command writes 0 % with the direction pin untouched, duty clamped to [0, 100] (H-2, M-1, M-3 code; see *Deviation*). (b) **Fixed:** a NaN reference repeats the last finite command for at most `kMaxStaleReferenceCycles = 3` cycles, then writes `0.0`. (c) **Fixed:** `on_deactivate` writes `0.0` to every command interface. (d) **Declined as a gtest this round**: the Tier 3 fault scenarios are planned to exercise it end to end, and Tier 3 is not built yet, so **nothing tests it today**; the tracker test is run by hand. (e), (f), (g) **Fixed** in the code comments and the `static_assert`. (h) **Fixed** in this documentation sync. (i) **Fixed:** `ICM20948.py` rejects an all-equal Euler triple; not seen on a real sensor |
-| 3 | `realtime-auditor` + `explainability-reviewer` | pending | pending |
+| 3 | `realtime-auditor` (opus) | CLEAN: no Critical/High/Medium. Lows: the motor `write()` direction/duty interaction is closed; a comment named the wrong upstream controller; no test for AddFeedforward's stop logic | Fixed the comments. **Declined, with why:** a gtest for AddFeedforward's NaN/stale logic (it is exercised end to end only once the sim fault scenarios exist; recorded as a blind spot in the ladder); the H-7 watchdog thread idea (row 1.7 stays open) |
+| stage 3, 1 | `ros2-control-reviewer`, `explainability-reviewer` | Drift of the sim YAML and of the three copies of the defaults; a vacuous S1 baseline; failed-run evidence deleted; the missing sim+mock expansion; partial integer parse; explainability items M1-M7 | Fixed (see *Stage 3, review round 1* above), except the `static_assert` tie to `ICM20948.hpp` (the constant is private; a script compares the numbers instead) |
+| stage 3, 2 | `ros2-control-reviewer` (opus), `realtime-auditor` (opus), `explainability-reviewer` (sonnet), `docs-reviewer` (sonnet) | ros2: the drift checker ignored the whole `gains` map, never tied a `<param>` to its xacro arg, was type-blind, could still pass the S1 baseline without a release, and tank mode ignored `use_sim_plant` silently. Realtime: only Lows (sub-step remainder not carried, `invalid_reason()` gaps, a non-finite IMU sample counted as good, no upper bound on the IMU delay). Explainability: CLEAN, Lows. Docs: stale counts, a stale blind-spot bullet, wrong line citations, a false 'reconciled' sentence | All fixed (checker rewritten and shown red on each mutation; remainder carry; stronger `invalid_reason()` with unit test #17; the `last_stamp_s` release check; a seventh `verify_urdf.sh` expansion). The first attempt at this round hit the account's usage limit and was rerun |
+| stage 3, 3 | `ros2-control-reviewer` (opus), `realtime-auditor` (opus), `docs-reviewer` (sonnet) | ros2: **CLEAN**. Six Lows: the checker still misses a duplicated `<xacro:arg>` (xacro keeps the first, the checker the last), overrides typed into `rocko_sim.launch.py`, struct members not written as `type name = value;`, odd or duplicate `<param>` tags, a crash mislabelled as drift, and a mis-pointed row in `read_parameters()`. Realtime: **CLEAN**; a negative period would become owed time; the C-2 fault branch of the sim has never been run end to end. Docs: one Medium (a stale expansion count in the ladder's Tier 0 row) and Lows | Fixed: the stale counts and wording, a negative period now counts as zero. **Declined for this round (cap of three), recorded as known limits in the ladder's blind spots:** the six checker gaps. The C-2 fault scenario is stage 4's first job. `CLAUDE.md` line 177 still says 'all four modes' (a human-reviewed file; flagged for the maintainer) |
 
 **An honest note about the guard hook.** While making the round 1 fixes, the guard hook denied a first
 `Write` of `ImuFaultTracker.hpp` because the new file contained fewer safety words (`fault`) than the
@@ -377,7 +532,7 @@ intact. What does check the logic is the host unit test above (the counting rule
 
 ## Not verified — needs a human
 
-Stage 2 only; later stages add to this list. The robot procedures are in the stage log above.
+Stage 2 only; stage 3's list (and its reproduce commands) is in its own subsection of the stage log. The robot procedures are in the stage log above.
 
 - **Anything on a Pi or a robot.** The motor plugin build with real WiringPi, the IMU node against a
   real BNO055, and every failure path (the IMU fault, a failed `set_value()`) have not run.
@@ -423,7 +578,7 @@ Stage 2 only; later stages add to this list. The robot procedures are in the sta
 
 ## Reproduce
 
-Stage 2 only; later stages add to this. Commit: the commit that adds this file (built on `3882790`).
+Stage 2 only; stage 3's commands are at the end of its subsection in the stage log. Commit: the commit that adds this file (built on `3882790`).
 No SHA is written here because the file cannot name the commit that contains it; read it from
 `git log -- docs/journal/2026-10-31-sim-plant-and-critical-fixes.md`. Environment: the
 `rocko-env-dev` container (`ros:jazzy`, arm64 on Docker Desktop for macOS) for everything marked
@@ -446,3 +601,10 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/in
 Expected: the results in the *Verification* table. Not recorded for these runs: battery voltage and
 surface (no robot was involved) and a log location (output was read from the terminal; the build log
 is `log/latest_build/rocko_env/stderr.log` in the container workspace).
+
+## Where the run stands
+
+Stages 1 to 3 are done, reviewed in three rounds each, committed and pushed. Stage 3 is **not**
+'Tier 3 built': S1 and S2a hold, S2b and the three scenarios do not exist. The first attempt at stage
+3's second review round was cut off by the account's usage limit and was rerun; nothing in the code was
+affected. See the stage 4 and later entries (if any) below for what came next.

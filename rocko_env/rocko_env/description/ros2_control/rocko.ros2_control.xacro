@@ -1,12 +1,73 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:macro name="rocko_ros2_control" params="name prefix use_mock_hardware">
+  <xacro:macro name="rocko_ros2_control" params="name prefix use_mock_hardware use_sim_plant:=false">
 
-    <!-- use_mock_hardware:=true  -> the one MockRocko system below.
-         use_mock_hardware:=false -> the real motor and IMU plugins (what runs on the robot). -->
+    <!-- Exactly one of three blocks is used:
+         use_sim_plant:=true      -> the one SimPlant system (the simulated robot, Tier 3).
+         use_mock_hardware:=true  -> the one MockRocko system (only if use_sim_plant is false).
+         both false (default)     -> the real motor and IMU plugins (what runs on the robot). -->
 
-    <xacro:if value="${use_mock_hardware}">
+    <xacro:if value="${use_sim_plant}">
+      <!-- A SIMULATION WITH ESTIMATED PARAMETERS, NOT THE ROBOT. rocko_env/SimPlant integrates an
+           inverted pendulum on wheels driven by a DC-motor model, so pitch changes when the wheels
+           move and the robot falls without control. Every physical number is an estimate
+           (docs/architecture/sim-plant.md §4); a gain that holds this model up is a candidate, not
+           a result. It exports the same joint and interface names as the real plugins and the mock.
+           The <param> values come from the xacro args in urdf/rocko.urdf.xacro. -->
+      <ros2_control name="SimRocko" type="system">
+        <hardware>
+          <plugin>rocko_env/SimPlant</plugin>
+          <param name="wheel_radius_m">$(arg wheel_radius_m)</param>
+          <param name="belt_ratio">$(arg belt_ratio)</param>
+          <param name="wheel_mass_kg">$(arg wheel_mass_kg)</param>
+          <param name="body_mass_kg">$(arg body_mass_kg)</param>
+          <param name="com_height_m">$(arg com_height_m)</param>
+          <param name="body_height_m">$(arg body_height_m)</param>
+          <param name="body_depth_m">$(arg body_depth_m)</param>
+          <param name="gravity_m_s2">$(arg gravity_m_s2)</param>
+          <param name="motor_stall_torque_Nm">$(arg motor_stall_torque_Nm)</param>
+          <param name="motor_no_load_speed_rad_s">$(arg motor_no_load_speed_rad_s)</param>
+          <param name="motor_stall_current_A">$(arg motor_stall_current_A)</param>
+          <param name="motor_no_load_current_A">$(arg motor_no_load_current_A)</param>
+          <param name="coulomb_friction_Nm">$(arg coulomb_friction_Nm)</param>
+          <param name="battery_voltage_V">$(arg battery_voltage_V)</param>
+          <param name="motor_rated_voltage_V">$(arg motor_rated_voltage_V)</param>
+          <param name="imu_delay_ms">$(arg imu_delay_ms)</param>
+          <param name="imu_pitch_bias_deg">$(arg imu_pitch_bias_deg)</param>
+          <param name="fallen_pitch_deg">$(arg fallen_pitch_deg)</param>
+          <param name="pitch_sign">$(arg pitch_sign)</param>
+          <param name="encoder_sign">$(arg encoder_sign)</param>
+          <param name="model_write_quirks">$(arg model_write_quirks)</param>
+          <param name="model_encoder_node">$(arg model_encoder_node)</param>
+          <param name="imu_delay_max_ms">$(arg imu_delay_max_ms)</param>
+          <param name="initial_pitch_deg">$(arg initial_pitch_deg)</param>
+          <param name="disable_torque">$(arg disable_torque)</param>
+          <param name="imu_fault_start_s">$(arg imu_fault_start_s)</param>
+          <param name="imu_fault_duration_s">$(arg imu_fault_duration_s)</param>
+          <param name="impulse_time_s">$(arg impulse_time_s)</param>
+          <param name="impulse_angular_velocity_deg_per_s">$(arg impulse_angular_velocity_deg_per_s)</param>
+        </hardware>
+        <joint name="left_wheel_joint">
+          <command_interface name="velocity"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="yaw"/>
+          <state_interface name="pitch"/>
+          <state_interface name="roll"/>
+        </joint>
+        <joint name="right_wheel_joint">
+          <command_interface name="velocity"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="yaw"/>
+          <state_interface name="pitch"/>
+          <state_interface name="roll"/>
+        </joint>
+      </ros2_control>
+    </xacro:if>
+
+    <xacro:if value="${use_mock_hardware and not use_sim_plant}">
       <!-- A WIRING CHECK, NOT A SIMULATION. mock_components/GenericSystem has no physics: it
            echoes each velocity command back as that joint's velocity state, and the IMU states
            (yaw/pitch/roll) stay at 0.0. A balance controller therefore always looks "fine" here.
@@ -38,8 +99,8 @@
     </xacro:if>
 
     <!-- The real hardware, exactly as it was before the mock existed. Not re-indented, so the
-         diff shows that nothing inside changed. -->
-    <xacro:unless value="${use_mock_hardware}">
+         diff shows that nothing inside changed. Used only when neither the mock nor the sim is. -->
+    <xacro:unless value="${use_mock_hardware or use_sim_plant}">
     <ros2_control name="LeftDriveMotor" type="actuator">
       <hardware>
         <plugin>rocko_env/Motor12VoltQuadEncoder</plugin>

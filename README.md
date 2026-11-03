@@ -126,13 +126,16 @@ ROCKO-env
 ├── CLAUDE.md                       How AI agents work in this repo (read this branch's rules first)
 ├── build_ros.sh                    Installs dependencies and builds, in the container or on the Pi
 ├── check_container_mount.sh        Checks the dev container is mounting THIS checkout, so the verify scripts test your files (laptop)
-├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware, mock on and off (container)
+├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware: real, mock and simulated; and that the sim config has not drifted (container)
 ├── verify_mock.sh                  Checks the controllers load and chain on mock hardware (container)
+├── verify_sim.sh                   Runs the controllers against the simulated robot (SimPlant) and checks S1 and S2a. A model with estimated parameters (container)
 ├── check_motor_plugin_compiles.sh  Type-checks the motor plugin off the Pi, syntax and types only (container). Stub headers in tools/compile_check/stubs/
 ├── .githooks/                      Git hooks: no commit on main, no push but a fast-forward of ai-forward to origin. Inactive until copied into .git/hooks/ (proposal 0002, item E)
 ├── docker/                         Dev container for laptops (compose files + Dockerfile)
 ├── docs/                           Architecture, guides, decisions, run journal, proposals, audits
 ├── examples/example_hardware/      Skeleton templates. Copy when adding new hardware
+├── sim/sim_probe.py                Records the simulated pitch for verify_sim.sh (container)
+├── sim/check_sim_config.py         Fails if the sim controller YAML's wiring or the sim settings' defaults drift from the hardware YAML / the physics header (run by verify_urdf.sh)
 ├── joystick/computer_joystick.py   Runs on YOUR laptop, not the robot. Sends gamepad input over TCP
 ├── rocko_env/                      The main package
 │   ├── CMakeLists.txt, package.xml     Build config and dependency list
@@ -140,8 +143,8 @@ ROCKO-env
 │   ├── rocko_env_controllers.xml       Registers the controller plugin with ROS
 │   └── rocko_env/
 │       ├── bringup/
-│       │   ├── config/                 PID gains and controller settings. Tune here
-│       │   └── launch/                 The three "start everything" files
+│       │   ├── config/                 PID gains and controller settings. Tune here (rocko_sim_controllers.yaml holds the simulator's gains only)
+│       │   └── launch/                 The three "start everything" files, plus rocko_sim.launch.py for the simulated robot
 │       ├── controllers/
 │       │   ├── add_feedforward/        C++ controller that adds a feedforward term
 │       │   ├── diffdrive/              Turns steering commands into per-wheel targets
@@ -155,12 +158,13 @@ ROCKO-env
 │       ├── hardware/
 │       │   ├── WiringPi/               Reference copy of wiringPi.h
 │       │   ├── motors/                 Motor driver, the only file writing motor PWM
+│       │   ├── sim/                    SimPlant: the simulated robot (a physics model with estimated parameters), not hardware
 │       │   └── sensors/
 │       │       ├── icm20948/           IMU driver + calibration scripts
 │       │       └── quadEncoder/        Wheel encoder readers
 │       └── webserver/                  Small Flask app for live plots in a browser
 ├── rocko_interfaces/                   Custom message and service definitions
-└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and a host test of the IMU fault counter (imu_fault_tracker_test.cpp)
+└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp) and the simulated robot's physics (sim_plant_model_test.cpp)
 ```
 
 A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
@@ -288,7 +292,8 @@ There is one container per laptop, and it sees one folder: the *checkout* (a fol
 - **builds** `rocko_interfaces` and `rocko_env`, **without** `Motor12VoltQuadEncoder.cpp`. A green container build says nothing about that file; only a build on the Pi compiles it.
 - **type-checks the motor plugin** with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/check_motor_plugin_compiles.sh` (run it after the build above). It checks syntax and types only, against hand-written stand-ins for `wiringPi.h` and `softPwm.h`, so it can catch a typo or a misspelt ROS name, but not a wrong WiringPi signature, and it never links or runs anything. Exit 0 means it type-checks.
 - **can run the mock**: `verify_mock.sh` launches the controllers against `mock_components/GenericSystem` and checks they load, chain and stay active. Run it with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh` (add `tank` for tank mode). The step-by-step version, with the expected output and what to do when it fails, is [Verify a change without the robot](docs/guides/verify-in-container.md).
-- **cannot simulate the robot.** There is no physics; see [the verification ladder](docs/architecture/verification-ladder.md) and [ADR 0003](docs/decisions/0003-simulation-target.md). It also cannot drive motors or read the real IMU.
+- **can run a simulated robot, partly**: `verify_sim.sh` launches the same controllers against `rocko_env/SimPlant`, a physics *model* of the robot (an inverted pendulum on wheels with a DC-motor model), and checks that they go active, that pitch responds to the wheels, and that the simulated robot falls when its motors give no torque. Run it after the build above with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh`. **Every physical number in the model is an estimate; nothing was measured on ROCKO**, and no scenario that checks the cascade holds the model upright exists yet, so a pass says nothing about whether the real robot balances or whether any gain is good. Tier 3 is not called built: see [the verification ladder](docs/architecture/verification-ladder.md), [the model's specification](docs/architecture/sim-plant.md) and [ADR 0003](docs/decisions/0003-simulation-target.md). To see the simulated robot yourself, open a shell with `docker compose -f docker/compose.yml exec ros2 bash`, run `source /opt/ros/jazzy/setup.bash` and `source /ros2_ws/install/setup.bash`, then `ros2 launch rocko_env rocko_sim.launch.py`, which starts it with the sim gains from `rocko_sim_controllers.yaml`; it drives no motors and needs no robot. The simulator is its own launch file, `rocko_sim.launch.py`: `use_sim_plant` is an argument of the robot-description xacro only, and is **not** an argument of `rocko.launch.py` or `rocko_tank_mode.launch.py`, so those two can never start it. (The tank-mode xacro does not declare `use_sim_plant` at all and ignores it if given; `verify_urdf.sh` checks that tank mode asked for the simulator still holds the two real motor plugins and no `SimPlant`.)
+- **cannot drive motors or read the real IMU**, and its mock (`use_mock_hardware:=true`) has no physics.
 
 Without `-DROCKO_SKIP_WIRINGPI=ON` the build stops with "WiringPi not found", on purpose: a robot should never be built without its motor driver by accident. If a build directory was ever used for a skip build and you later build on a Pi, run `rm -rf build/rocko_env` first: CMake remembers the flag between builds (it stops with "WiringPi IS installed here" when that has happened). In a skip build, launching **without** `use_mock_hardware:=true` fails with `Could not create class of type rocko_env::Motor12VoltQuadEncoder`, because that plugin is not in it.
 

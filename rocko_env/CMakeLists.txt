@@ -49,6 +49,8 @@ add_library(
   rocko_env/hardware/sensors/icm20948/ICM20948.cpp
   rocko_env/hardware/WiringPi/wiringPi.h
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp
+  # The simulated robot (Tier 3). Always built: it needs no WiringPi and drives no hardware.
+  rocko_env/hardware/sim/SimPlant.cpp
   # Controller .cpp files
   rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp
 )
@@ -65,6 +67,7 @@ target_include_directories(rocko_env PUBLIC
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sim/include>
 # Paths to controller include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/joystick/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/include>
@@ -76,7 +79,8 @@ $<INSTALL_INTERFACE:include/rocko_env>
 #   colcon build --cmake-args -DROCKO_SKIP_WIRINGPI=ON
 # The default is deliberately unchanged: with WiringPi missing the build FAILS, so a robot can
 # never be built without its motor driver by accident. A skip build loads and wires the
-# controllers (with use_mock_hardware:=true), but it cannot drive motors.
+# controllers (with use_mock_hardware:=true) and runs the simulated robot (rocko_sim.launch.py;
+# SimPlant needs no WiringPi), but it cannot drive motors.
 # See docs/decisions/0003-simulation-target.md.
 option(ROCKO_SKIP_WIRINGPI "Leave out the WiringPi motor plugin (off-Pi builds only)" OFF)
 
@@ -93,7 +97,8 @@ if(ROCKO_SKIP_WIRINGPI)
                         "pass -DROCKO_SKIP_WIRINGPI=OFF) and build again.")
   endif()
   message(WARNING "ROCKO_SKIP_WIRINGPI=ON: building WITHOUT Motor12VoltQuadEncoder. "
-                  "This build cannot drive motors; use it only with use_mock_hardware:=true.")
+                  "This build cannot drive real motors; use it only with use_mock_hardware:=true "
+                  "or the simulated robot (rocko_sim.launch.py, which needs no WiringPi).")
 else()
   if(NOT WIRINGPI_LIBRARIES)
     message(FATAL_ERROR "WiringPi not found. On a Raspberry Pi, install it. On a laptop or in "
@@ -116,7 +121,8 @@ pluginlib_export_plugin_description_file(controller_interface rocko_env_controll
 install(
   DIRECTORY rocko_env/hardware/motors/include/ 
             rocko_env/hardware/sensors/icm20948/include/ 
-            rocko_env/hardware/sensors/quadEncoder/include/ 
+            rocko_env/hardware/sensors/quadEncoder/include/
+            rocko_env/hardware/sim/include/
             rocko_env/controllers/add_feedforward/include/
   DESTINATION include
 )

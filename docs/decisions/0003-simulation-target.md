@@ -1,14 +1,18 @@
 # ADR 0003 — Simulate with `gz_ros2_control` for off-robot development
 
 - **Status:** Proposed — **the decision itself (a Gazebo physics simulation) is not implemented.**
-  Follow-on steps 1 and 2 are implemented on the `ai-forward` branch only; see "Progress" below.
-- **Date:** 2026-09-20 (progress added 2026-10-27)
+  Follow-on steps 1 and 2 are implemented on the `ai-forward` branch only, and a different plant,
+  `SimPlant`, was built first (2026-10-31); see "Progress" below. The ADR **stays `Proposed`**: it
+  names Gazebo, Gazebo does not exist here, and the proposal to amend it is not written yet.
+- **Date:** 2026-09-20 (progress added 2026-10-27 and 2026-10-31)
 - **Deciders:** ROCKO capstone team
 
-> Read the status line. This ADR records an intention. Today there is **no physics simulation** in
-> this repository, and no page in `docs/` should describe one as working until this ADR is
-> `Accepted`. On `ai-forward` there is a *mock* that checks controller wiring; it has no physics and
-> is not a simulation. See the [verification ladder](../architecture/verification-ladder.md).
+> Read the status line. This ADR records an intention. There is **no Gazebo simulation** in this
+> repository. On `ai-forward` there is a *mock* that checks controller wiring (no physics, not a
+> simulation) and, since 2026-10-31, `SimPlant`: a small physics **model** with estimated, unmeasured
+> parameters and only a few checks. It is not a finished Tier 3. No page in `docs/` should describe
+> any of this as evidence about the robot. See the
+> [verification ladder](../architecture/verification-ladder.md) for what exists.
 
 ## Progress (on `ai-forward`; not on `main`)
 
@@ -16,15 +20,17 @@
 | --- | --- |
 | 1. `use_mock_hardware` selects a mock plugin | **Done.** Selects `mock_components/GenericSystem`. Verified by `verify_mock.sh`. |
 | 2. `rocko_env` configures and builds off-Pi | **Done**, with a deliberate cost: `-DROCKO_SKIP_WIRINGPI=ON` leaves out the motor plugin, so `Motor12VoltQuadEncoder.cpp` is **not compiled** off a Pi. The Pi default is unchanged and still requires WiringPi. Since 2026-10-31 a separate compile-only check type-checks that file against stub headers (syntax and types only; see [the ladder](../architecture/verification-ladder.md)). |
-| 3. Measured inertial properties | Not done. Needs a person with the robot. |
-| 4. `gz_ros2_control` and a world | Not done. |
-| 5. Document the sim-to-real gap | Not done. |
+| 3. Measured inertial properties | Not done. Needs a person with the robot. `SimPlant` uses estimates, labelled `ESTIMATE, NOT MEASURED`, in their place. |
+| 4. `gz_ros2_control` and a world | Not done. `SimPlant` (a hardware plugin with its own dynamics, no Gazebo) was built instead, first, on 2026-10-31: see [sim-plant.md](../architecture/sim-plant.md). Status of the tier: [the ladder](../architecture/verification-ladder.md) (partly built, not called built). |
+| 5. Document the sim-to-real gap | Not done as its own page. [sim-plant.md §6](../architecture/sim-plant.md) lists what `SimPlant` leaves out. |
 
 **An open disagreement.** Finding **M-4** in
 [`balance-loop-findings.md`](../claude-analysis/balance-loop-findings.md) recommends a `SimPlant`
 hardware plugin (about 200 lines of C++ integrating cart-pole dynamics) over a full Gazebo setup.
-This ADR chose Gazebo before that audit. They need reconciling by a human; the `bootstrap-sim` skill
-lays out the trade and recommends `SimPlant` first.
+This ADR chose Gazebo before that audit. For the 2026-10-31 run the person decided `SimPlant` first
+and it was built; Gazebo is not ruled out. The amendment to this ADR that records that (a proposal)
+**is to follow and has not been written**, so until then this ADR and the code disagree. The
+`bootstrap-sim` skill lays out the trade.
 
 ## Context
 

@@ -12,14 +12,25 @@
 #   mock=true  -> exactly one mock_components system (MockRocko), no real hardware, nothing else
 # and, per model, that the mock exports EXACTLY the same interfaces as the real hardware (joints,
 # sensors and gpio alike; a duplicated interface counts as a difference).
+# A fifth and a sixth expansion, balancing mode with use_sim_plant:=true (and again with
+# use_mock_hardware:=true as well, where the sim must win), must each hold exactly one SimPlant system
+# (SimRocko) and nothing else, and export exactly the real hardware's interfaces too.
+# A seventh expansion, TANK mode with use_sim_plant:=true, must still hold the two real motor plugins
+# and no SimPlant: tank mode ignores that argument BY DESIGN (rocko_tank_mode.urdf.xacro does not
+# declare it, so the simulator can only ever be reached through rocko.urdf.xacro and rocko_sim.launch.py).
+# Finally sim/check_sim_config.py checks that the simulator's configuration has not drifted: the sim
+# controller YAML keeps the hardware YAML's wiring, and the simulator settings' defaults agree in
+# SimPlantModel.hpp, rocko.urdf.xacro and rocko_sim.launch.py.
 # check_urdf alone passes whichever block was selected; without these assertions a swapped
 # xacro:if / xacro:unless, or a mock that has drifted from the real names, would pass every
 # off-Pi check and first show up on the robot.
 #
-# Exit status:  0 = all four combinations ok   1 = something wrong   2 = could not run (no build)
+# Exit status:  0 = all seven expansions and the sim config check ok   1 = something wrong
+#               2 = could not run (no build)
 set -uo pipefail
 
 WS="${ROS2_WS:-$HOME/ros2_ws}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ROS's setup scripts read variables that may be unset, so `set -u` is off while sourcing them.
 set +u
@@ -117,8 +128,84 @@ for model in rocko rocko_tank_mode; do
   fi
 done
 
+# Fifth and sixth expansions: balancing mode with the simulated robot (use_sim_plant:=true, Tier 3),
+# without and with use_mock_hardware:=true. use_sim_plant must win, so both must hold exactly one
+# SimPlant system and nothing else (no real plugin, no mock), and export exactly the same interfaces
+# as the real hardware, compared with the rocko mock=false expansion above.
+for sim_mock in false true; do
+  label="rocko sim=true mock=$sim_mock"
+  urdf="$work/rocko-sim-$sim_mock.urdf"
+  if ! xacro "$urdf_dir/rocko.urdf.xacro" use_sim_plant:=true use_mock_hardware:="$sim_mock" >"$urdf" 2>"$work/err"; then
+    fail "$label: xacro could not expand it:"; show "$work/err"
+  elif ! check_urdf "$urdf" >"$work/out" 2>&1; then
+    fail "$label: check_urdf rejected it:"; show "$work/out"
+  else
+    sims=$(count "$urdf" "<plugin>rocko_env/SimPlant</plugin>")
+    named=$(count "$urdf" 'name="SimRocko"')
+    real_motors=$(count "$urdf" "<plugin>rocko_env/Motor12VoltQuadEncoder</plugin>")
+    real_imus=$(count "$urdf" "<plugin>rocko_env/ICM20948</plugin>")
+    mocks=$(count "$urdf" "<plugin>mock_components/GenericSystem</plugin>")
+    plugins=$(count "$urdf" "<plugin>")
+    if [ "$sims" -ne 1 ] || [ "$named" -ne 1 ] || [ "$real_motors" -ne 0 ] || [ "$real_imus" -ne 0 ] || [ "$mocks" -ne 0 ] || [ "$plugins" -ne 1 ]; then
+      fail "$label: expected exactly one SimPlant (SimRocko) and no other plugin (got sim=$sims named=$named motors=$real_motors imu=$real_imus mock=$mocks plugins=$plugins)"
+    else
+      echo "ok    $label"
+      if [ ! -s "$work/rocko-false.urdf" ]; then
+        fail "rocko: no real-hardware expansion to compare the sim with (it failed above)"
+      elif interfaces "$work/rocko-false.urdf" >"$work/real.raw" 2>"$work/err" \
+           && interfaces "$urdf" >"$work/sim.raw" 2>>"$work/err" \
+           && [ -s "$work/real.raw" ]; then
+        sort "$work/real.raw" >"$work/real.if"
+        sort "$work/sim.raw" >"$work/sim.if"
+        if diff "$work/real.if" "$work/sim.if" >"$work/diff"; then
+          echo "ok    $label: the sim exports the same $(wc -l <"$work/real.if" | tr -d ' ') interfaces as the real hardware"
+        else
+          fail "$label: the sim and the real hardware export different interfaces (< real, > sim):"
+          show "$work/diff"
+        fi
+      else
+        fail "$label: could not read the interfaces out of the sim description:"; show "$work/err"
+      fi
+    fi
+  fi
+done
+
+# Seventh expansion: tank mode asked for the simulator. Tank mode does not declare use_sim_plant (xacro
+# silently accepts an argument nothing declares), so it must come out as the plain real tank robot:
+# the two motor plugins and nothing else. If someone adds the argument to the tank xacro, this is
+# where "tank mode now selects the simulator" shows up.
+label="rocko_tank_mode sim=true (ignored by design)"
+urdf="$work/tank-sim.urdf"
+if ! xacro "$urdf_dir/rocko_tank_mode.urdf.xacro" use_sim_plant:=true >"$urdf" 2>"$work/err"; then
+  fail "$label: xacro could not expand it:"; show "$work/err"
+else
+  sims=$(count "$urdf" "<plugin>rocko_env/SimPlant</plugin>")
+  real_motors=$(count "$urdf" "<plugin>rocko_env/Motor12VoltQuadEncoder</plugin>")
+  mocks=$(count "$urdf" "<plugin>mock_components/GenericSystem</plugin>")
+  plugins=$(count "$urdf" "<plugin>")
+  if [ "$sims" -ne 0 ] || [ "$real_motors" -ne 2 ] || [ "$mocks" -ne 0 ] || [ "$plugins" -ne 2 ]; then
+    fail "$label: expected the two real motor plugins and no SimPlant (got sim=$sims motors=$real_motors mock=$mocks plugins=$plugins)"
+  else
+    echo "ok    $label"
+  fi
+fi
+
+# The simulator's configuration must not drift (what each check guards: the script's docstring).
+# Exit 1 means drift (lines starting FAIL); exit 2 means the checker could not run at all (a file
+# unreadable, or PyYAML missing), which says nothing about drift.
+python3 "$here/sim/check_sim_config.py" >"$work/config" 2>&1
+config_status=$?
+if [ "$config_status" -eq 0 ]; then
+  sed 's/^/      /' "$work/config"
+  echo "ok    sim config: no drift"
+elif [ "$config_status" -eq 1 ]; then
+  fail "sim config has drifted:"; show "$work/config"
+else
+  fail "sim config check could not run (exit $config_status; this is not drift):"; show "$work/config"
+fi
+
 if [ "$failures" -eq 0 ]; then
-  echo "PASS: all four combinations expand, parse, hold the right hardware, and the mock matches the real interfaces."
+  echo "PASS: all seven expansions (four real/mock, two sim, one tank-with-sim-request) expand, parse, hold the right hardware, the mock and the sim match the real interfaces, tank mode ignores the sim request, and the sim config has not drifted."
   exit 0
 fi
 echo "FAIL: $failures problem(s) above."

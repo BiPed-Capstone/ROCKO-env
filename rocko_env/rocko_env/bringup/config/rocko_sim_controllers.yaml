@@ -1,0 +1,77 @@
+# ==================================================================================================
+# SIM GAINS LIVE ONLY HERE. Loaded by rocko_sim.launch.py (the simulated robot, rocko_env/SimPlant),
+# never by a launch file that drives the real robot.
+#
+# Gains found against the simulator are CANDIDATES, NOT RESULTS: the simulator's physical parameters
+# are estimates, not measurements (docs/architecture/sim-plant.md §4). Moving a gain from this file
+# to rocko_controllers.yaml is a human decision, made in a proposal and checked by a tethered test
+# (.claude/skills/tune-gains/SKILL.md).
+#
+# Starting point: a copy of rocko_controllers.yaml with the same controller names, types, wiring and,
+# for now, the same gain values as the hardware file on 2026-10-31. The WIRING must stay identical:
+# sim/check_sim_config.py (run by verify_urdf.sh) fails if anything except the `gains` maps differs
+# from rocko_controllers.yaml. The gains may differ once someone tunes against the simulator.
+# ==================================================================================================
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+left_add_feedforward_controller:
+  ros__parameters:
+    type: rocko_env/AddFeedforwardController
+    interfaces: [left_wheel_joint/velocity]
+    feedforward_topic_name: "left_feedforward"
+
+right_add_feedforward_controller:
+  ros__parameters:
+    type: rocko_env/AddFeedforwardController
+    interfaces: [right_wheel_joint/velocity]
+    feedforward_topic_name: "right_feedforward"
+
+# INNER loop: measured pitch -> wheel velocity command.
+pitch_pid_controller:
+  ros__parameters:
+    type: pid_controller/PidController
+    dof_names:
+      - left_add_feedforward_controller/left_wheel_joint
+      - right_add_feedforward_controller/right_wheel_joint
+
+    command_interface: velocity
+
+    reference_and_state_interfaces: ["pitch"]
+    reference_and_state_dof_names:
+      - left_wheel_joint
+      - right_wheel_joint
+
+    # Units: the error is in degrees of pitch and the output is a wheel velocity in rad/s, so
+    # p is [(rad/s) per deg of pitch error] and i_clamp_min/max are limits in rad/s.
+    gains:
+      left_add_feedforward_controller/left_wheel_joint:   {p: 10.0, i: 0.0, d: 0.1, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      right_add_feedforward_controller/right_wheel_joint:   {p: 10.0, i: 0.0, d: 0.1, i_clamp_max: 150.0, i_clamp_min: -150.0}
+
+# OUTER loop: measured wheel velocity -> target pitch (the inversion that makes the robot lean
+# before it can speed up; docs/architecture/control-cascade.md).
+velocity_pid_controller:
+  ros__parameters:
+    type: pid_controller/PidController
+    dof_names:
+      - pitch_pid_controller/left_wheel_joint
+      - pitch_pid_controller/right_wheel_joint
+
+    command_interface: pitch
+
+    reference_and_state_interfaces: ["velocity"]
+    reference_and_state_dof_names:
+      - left_wheel_joint
+      - right_wheel_joint
+
+    # Units: the error is in m/s of wheel velocity and the output is a target pitch in degrees, so
+    # p is [deg of target pitch per m/s of velocity error] and i_clamp_min/max are limits in deg.
+    # A 150 deg clamp is far past the 35 deg tipover angle (finding H-4): it never limits anything
+    # that matters here.
+    gains:
+      pitch_pid_controller/left_wheel_joint:   {p: 2.0, i: 5.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      pitch_pid_controller/right_wheel_joint:   {p: 2.0, i: 5.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}

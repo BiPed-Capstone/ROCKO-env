@@ -10,7 +10,7 @@ description: Guided, reproducible PID tuning for ROCKO's cascaded balance contro
 | Kind | Where | Who changes it |
 | --- | --- | --- |
 | **Hardware gains** | `rocko_env/rocko_env/bringup/config/rocko_controllers.yaml` | A human. The hook **denies** your edit; you write a proposal. |
-| **Sim gains** | a separate `*_sim.yaml` next to it, once a physics sim exists | You, freely. The hook does not guard files with `sim` in the name. |
+| **Sim gains** | `rocko_sim_controllers.yaml`, next to it (the simulator's only gain file) | You, freely. The hook does not guard files with `sim` in the name. |
 
 A hardware gain is the outcome of a physical experiment on one robot, one surface, one battery
 voltage. You have no robot and cannot observe the result, so you never edit one. A sim gain is a
@@ -18,11 +18,13 @@ number tuned against a model; it is a *candidate* for the hardware file, never a
 
 ## What you can do without a physics simulation
 
-Check the [verification ladder](../../../docs/architecture/verification-ladder.md) for whether Tier 3
-(a physics simulation, [ADR 0003](../../../docs/decisions/0003-simulation-target.md)) exists. The mock
+Check the [verification ladder](../../../docs/architecture/verification-ladder.md) for how much of
+Tier 3 (a physics simulation) exists. A simulator now exists, but it is a model with estimated,
+unmeasured parameters ([`sim-plant.md`](../../../docs/architecture/sim-plant.md)) and it has no
+balance scenarios yet, so any gain found against it is a candidate and never a result. The mock
 hardware, which always exists, echoes commands and holds pitch at 0.0, so a balance controller always
-looks fine against it: without Tier 3 nothing exists for you to tune *against*. Say so plainly rather
-than inventing a number. Until Tier 3 exists, gain work is:
+looks fine against it and tuning against it teaches nothing. Do not invent a number or a pass
+threshold. Until Tier 3 has scenarios that define "holds upright", gain work is:
 
 - explain the loop and predict the direction of a change,
 - find which loop a symptom implicates (table below),

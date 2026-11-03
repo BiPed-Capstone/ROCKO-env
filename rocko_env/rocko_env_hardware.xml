@@ -13,6 +13,14 @@
       A 9-axis IMU for robot orientation
     </description>
   </class>
+  <class name="rocko_env/SimPlant"
+         type="rocko_env::SimPlant"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      SIMULATION (Tier 3): ROCKO's physics as a model with estimated, unmeasured parameters,
+      exporting the same interfaces as the real motors and IMU. See docs/architecture/sim-plant.md.
+    </description>
+  </class>
   <class name="rocko_env/QuadEncoder"
          type="rocko_env::QuadEncoder"
          base_class_type="hardware_interface::SensorInterface">

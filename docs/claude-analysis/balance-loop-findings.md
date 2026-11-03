@@ -51,7 +51,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
 | M-3 | Medium | PWM value is never clamped to its valid range — **clamped on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31) |
-| M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi — **partly fixed on `ai-forward`** (wiring mock and off-Pi build exist; no physics) |
+| M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi — **partly fixed on `ai-forward`** (wiring mock and off-Pi build exist; a `SimPlant` physics model exists with estimated parameters and no scenarios yet) |
 | M-5 | Medium | `AddFeedforwardController` ignores the result of `set_value()`, so a failed command write is silently dropped — **fixed on `ai-forward`, awaiting robot** (2026-10-31) |
 | M-6 | Medium | `AddFeedforwardController`'s feedforward value was uninitialised and shared between two threads without synchronisation (found 2026-10-31) — **fixed on `ai-forward`** |
 | L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances |
@@ -471,8 +471,8 @@ hardware, row 1.7 stays open.** In code, none of it run on a robot:
 Checked: the Tier 1 build with no compiler warnings, Tier 2 (the controller loads and activates), and
 the compile-only check of the motor plugin. Not checked: the NaN path, the hold, `on_deactivate` or the
 motor `write()` on any tier, and anything on a robot; no automated test of the controller's stop logic
-exists (a gtest was declined in round 2; the Tier 3 fault scenarios are meant to cover it, and Tier 3 is
-not built). What `controller_manager` does when a hardware component's `read()` or a controller's
+exists (a gtest was declined in round 2; the Tier 3 fault scenarios are meant to cover it, and they do not
+exist yet: Tier 3 is only partly built). What `controller_manager` does when a hardware component's `read()` or a controller's
 `update()` returns `ERROR` depends on the ros2_control version; what the author remembers of Jazzy 4.x
 is from memory, not from a test, so it is not recorded here as fact. The H-4 tipover cutoff is not
 written.
@@ -624,9 +624,21 @@ stack — chained controllers, sign conventions, units, the watchdog, arm/disarm
 - Item 2: `use_mock_hardware:=true` selects `mock_components/GenericSystem`. As this finding
   predicted, it only echoes commands and holds pitch at 0.0, so it checks controller *wiring* and
   nothing about balance. Verified by `verify_mock.sh`.
-- Item 3 (`SimPlant`) is the missing piece and is the recommended Tier 3. It conflicts with
-  [ADR 0003](../decisions/0003-simulation-target.md), which chose Gazebo; see the `bootstrap-sim`
-  skill for the trade.
+- Item 3 (`SimPlant`) was the missing piece. **Update 2026-10-31 (stage 3): the plugin now exists as a
+  model, and it is not a finished Tier 3.** `rocko_env/SimPlant` integrates planar inverted-pendulum
+  dynamics with a DC-motor model and exports the same 12 interfaces as the real hardware; the real
+  cascade loads against it unchanged (`rocko_sim.launch.py`, `rocko_sim_controllers.yaml`), and
+  `verify_sim.sh` checks that pitch responds to the wheels and that the robot falls with no torque.
+  The recommendation above said "on the order of 150–200 lines"; the model header alone is 484 lines
+  and the plugin 349 (`wc -l`, 2026-11-02), because the plant also copies the motor `write()` duty map and the encoder
+  node's speed halving, models the IMU delay and injects faults. **Every physical parameter is an
+  estimate** (nothing was measured), the upright, impulse and velocity-step scenarios and the
+  one-sign-flip check do not exist, and the sim stops the whole plant on an IMU `ERROR` where the
+  robot would not (H-7), so M-4 stays *partly done*. See the
+  [verification ladder](../architecture/verification-ladder.md) for the tier's status and
+  [`sim-plant.md`](../architecture/sim-plant.md) for the model. It still conflicts with
+  [ADR 0003](../decisions/0003-simulation-target.md), which chose Gazebo and stays `Proposed`; a
+  proposal to amend it is to follow.
 
 ---
 
@@ -862,7 +874,7 @@ Ordered by risk removed per unit of effort.
 4. **C-1 (encoders)** — same treatment for the encoder reads.
 5. **H-2, M-1, M-3** — fix the `write()` path. Small, mechanical, low risk. (Code written ahead of
    this position on `ai-forward`, 2026-10-31, compile-checked only; see H-2.)
-6. **M-4** — CMake guard (done on `ai-forward`) plus the `SimPlant` plugin (not done), so the rest can be developed and tested on a
+6. **M-4** — CMake guard (done on `ai-forward`) plus the `SimPlant` plugin (a model with estimated parameters exists, 2026-10-31; no scenarios yet), so the rest can be developed and tested on a
    laptop.
 7. **C-3, H-4** — watchdog and tipover cutoff, developed against `SimPlant`.
 8. **H-5** — real-time scheduling and core isolation; measure the period histogram before and
