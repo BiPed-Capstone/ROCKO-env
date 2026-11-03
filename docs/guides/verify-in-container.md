@@ -252,10 +252,9 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 ```
 
 What happens: it launches the same controllers against `rocko_env/SimPlant`, a physics **model** of the
-robot, once per check (`rocko_sim.launch.py`), one launch after another. With no arguments it runs six
-checks in 8 launches and took about 119 s in the arm64 container on 2026-11-02 (one measurement, taken
-before `H4`'s recording window grew from 8 s to 16 s, so expect a little longer; each wait in the script is
-bounded):
+robot, once per check (`rocko_sim.launch.py`), one launch after another. With no arguments it runs seven
+checks in 9 launches and takes about 2.5 minutes (157 s in the arm64 container on 2026-11-03; one measurement,
+not a promise; each wait in the script is bounded):
 
 | Check | What it shows, in the model |
 | --- | --- |
@@ -265,8 +264,9 @@ bounded):
 | `C3` | The teleop watchdog (finding C-3): when a fake gamepad goes silent, the velocity reference becomes exactly `[0, 0]` between 0.2 s and 0.3 s later and the balance loop keeps running; the log must show `teleop commands resumed` before the first `teleop command timed out` |
 | `C2` (2 launches) | An IMU outage (finding C-2): a 0.03 s one causes no `ERROR`; a 0.2 s one makes `read()` return `ERROR` and `controller_manager` deactivate the hardware; the pitch is never exported as 0.0 or NaN |
 | `H6` | The pitch PID's D term reads the exported gyro `pitch_rate` (finding H-6) |
+| `FF` | The feedforward age limit (finding H-11): a script publishes a feedforward on both wheels at 100 Hz, then is killed; each wheel's controller must log the time-out once, 0.1 s to 0.5 s later, and stay active. A time-out logged while the publisher was still running is printed as a note (seen in the container; cause not established), not a failure |
 
-To run only some, name them, in any order (the names are `S1 S2a H4 C3 C2 H6`):
+To run only some, name them, in any order (the names are `S1 S2a H4 C3 C2 H6 FF`):
 
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh H4 C3
@@ -277,7 +277,7 @@ whole script before you report.
 
 It needs step 2 first (the build).
 
-Success: with no arguments it ends with `PASS (simulation: S1 S2a H4 C3 C2 H6)` and exit status 0,
+Success: with no arguments it ends with `PASS (simulation: S1 S2a H4 C3 C2 H6 FF)` and exit status 0,
 followed by one line per check (with only some checks, the names that ran are listed instead). A failure
 prints `FAIL` with the run that failed and why, and exits 1; exit 2 means it could not run or could not
 judge (`COULD NOT JUDGE`: a probe saw no messages or no movement; read its reason and the kept run
@@ -319,10 +319,12 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
 python3 -I tools/teleop_watchdog_test.py
 python3 -I tools/computer_joystick_heartbeat_test.py
 python3 -I tools/imu_node_test.py
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/feedforward_timeout_test.cpp -o /tmp/feedforward_timeout_test && /tmp/feedforward_timeout_test
 ```
 
-Success: `all TipoverLatch tests passed` (exit 0); the three Python tests print `PASS <name>` per check and
-then `16/16 passed`, `5/5 passed` and `4/4 passed`, exit 0 (2026-11-02). What they do and do not prove is in the
+Success: `all TipoverLatch tests passed` and `all FeedforwardTimeout tests passed` (exit 0 each); the three
+Python tests print `PASS <name>` per check and then `22/22 passed`, `5/5 passed` and `6/6 passed`, exit 0
+(2026-11-03; the imu node test was 4/4 on 2026-11-02 and the watchdog test 16/16). What they do and do not prove is in the
 [verification ladder](../architecture/verification-ladder.md#the-host-tests-of-the-stage-4-safeguards-not-tiers).
 
 ## 6. What to do next

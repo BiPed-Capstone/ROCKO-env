@@ -92,9 +92,9 @@ meaning, or it tests a different robot.
 | Wheel position state | `<wheel>_joint/position` | **m** of **left** wheel travel, on both joints | Same as velocity | `QuadEncoders.py:101` returns `left_position` only; `Motor12VoltQuadEncoder::read()` stores it in `_wheel.pos` |
 | Wheel command | `<wheel>_joint/velocity` (command) | **rad/s**, read as a fraction of the gearbox-output no-load speed | Positive = sim-forward, by definition | `Motor12VoltQuadEncoder::write()`: `radPerSec = _wheel.cmd`; non-finite or `abs(radPerSec) < 0.05` (`kDeadbandRadPerSec` in the `.hpp`) writes duty 0; else duty % = `clamp(abs(radPerSec) / MAX_RAD_PER_SEC * 100 + 2.0, 0, 100)` (`kStictionDutyPercent` in the `.hpp`), truncated to `int`. `MAX_RAD_PER_SEC` (the `.hpp`) is "1150 RPM" at the gearbox output (finding U-3) |
 | Direction pin | GPIO | — | `cmd >= 0` writes `!invert`, else `invert`; left unchanged for a non-finite or deadband command | `Motor12VoltQuadEncoder::write()`, the two `digitalWrite(_dirPin, ...)` calls. Left `invert=true` (`rocko.ros2_control.xacro`, `LeftDriveMotor` block), right `invert=false` (`RightDriveMotor` block) |
-| Velocity reference | `velocity_pid_controller/reference` (topic) | "m/s" by intent | Positive = stick forward, probably | `DiffDriveController.py:84-87` sends `linear.x` for both wheels; `Joystick.py:48`, `:101` scale the stick by −10, so the range is ±10 "m/s" |
-| Feedforward | `left_feedforward`, `right_feedforward` (topics) | **rad/s of the wheel** | Same sign as `linear.x` (± turning) | `DiffDriveController.py:80-81`, `:90-99`: `(linear ∓ angular) / 0.06`. `AddFeedforwardController::update_and_write_commands()` adds it to the pitch loop's output: `u = pitch_pid output + feedforward` |
-| Pitch rate state | `<wheel>_joint/pitch_rate` (the same number on both) | **deg/s**, meant to be positive while pitch increases | Depends on `pitch_rate_axis` and `pitch_rate_sign` in `ICM20948.py`, both **unverified guesses** (finding H-6) | `ICM20948.py`'s `callback()` reads `.gyro` once and answers `pitch_rate_sign * degrees(gyro[pitch_rate_axis])` as `pitch_rate_deg_s`; `ICM20948::read()` stores it in `_pitch_rate`, which `export_state_interfaces()` exports under both joints. The comment in `ICM20948.py` says the Adafruit driver returns rad/s and that versions before 5.0 returned deg/s; which one is installed was not checked, so the unit conversion is also unverified. **No controller in `rocko_controllers.yaml` reads it**; the sim's `rocko_sim_controllers.yaml` does (§2.2) |
+| Velocity reference | `velocity_pid_controller/reference` (topic) | "m/s" by intent | Positive = stick forward, probably | `DiffDriveController.command_controller()` sends `linear_vel` (the `linear.x` it received) for both wheels; `Joystick.py` multiplies the stick by `linear_scale = -10.0` (set in `__init__`, applied where the `TwistStamped` is built), so the range is ±10 "m/s" |
+| Feedforward | `left_feedforward`, `right_feedforward` (topics) | **rad/s of the wheel** | Same sign as `linear.x` (± turning) | `DiffDriveController.command_controller()`: `left_vel = linear_vel - angular_vel`, `right_vel = linear_vel + angular_vel`, each divided by `wheel_radius_meters` (0.06). `AddFeedforwardController::update_and_write_commands()` adds it to the pitch loop's output: `u = pitch_pid output + feedforward`, **while the feedforward's last message is at most 200 ms old** (`kMaxFeedforwardAgeNs`, proposed, finding H-11); after that it adds 0.0. The sim's publisher is `DiffDriveController.py` or a script, as on the robot |
+| Pitch rate state | `<wheel>_joint/pitch_rate` (the same number on both) | **deg/s**, meant to be positive while pitch increases | Depends on `pitch_rate_axis` and `pitch_rate_sign` in `ICM20948.py`, both **unverified guesses** (finding H-6) | `ICM20948.py`'s `callback()` reads `.gyro` once, **only if its `read_pitch_rate` parameter is true (default false, finding M-7; then `pitch_rate_deg_s` is NaN and no gyro read happens)**, and answers `pitch_rate_sign * degrees(gyro[pitch_rate_axis])` as `pitch_rate_deg_s`; `ICM20948::read()` stores it in `_pitch_rate`, which `export_state_interfaces()` exports under both joints. The comment in `ICM20948.py` says the Adafruit driver returns rad/s and that versions before 5.0 returned deg/s; which one is installed was not checked, so the unit conversion is also unverified. **No controller in `rocko_controllers.yaml` reads it**; the sim's `rocko_sim_controllers.yaml` does (§2.2) |
 | Yaw, roll states | `<wheel>_joint/yaw`, `/roll` | degrees | — | Exported (`ICM20948::export_state_interfaces()`); **no controller reads them** (`rocko_controllers.yaml` uses only `pitch` and `velocity`) |
 
 ### 2.2 What each PID consumes and produces
@@ -161,18 +161,18 @@ are a different list; where one of these is also a finding there, the entry says
   **What the sim does:** the write-path replica uses the code's 119.381; the motor physics uses the
   motor's own 120.428 (§4). The 0.9 % mismatch then appears in the sim as it does on the robot.
 - **U-4 · The feedforward and the duty map disagree about which shaft "rad/s" is.**
-  `DiffDriveController.py:90-91` computes the feedforward as wheel rad/s (`m/s ÷ wheel radius`).
+  `DiffDriveController.command_controller()` computes the feedforward as wheel rad/s (`m/s ÷ wheel radius`).
   `write()` divides by the gearbox-output no-load speed. `QuadEncoders.py:35` says a 1.355 belt
   reduction sits between the gearbox output and the wheel. If it does, a feedforward of `x` wheel-rad/s
   actually asks for `x / 1.355` wheel-rad/s. The older `QuadEncoder.py:28` (not launched;
   `rocko.launch.py:128-148` comments it out) has no belt factor, so the repo disagrees with itself
   about whether the belt exists. **What the sim does:** model the belt at 1.355 as an estimate (§4).
 - **U-5 · The velocity reference asks for more than the wheels can give.** Full stick is ±10 "m/s"
-  (`Joystick.py:48`). The wheels' no-load ground speed is about 5.3 m/s with the belt (7.2 m/s
+  (`linear_scale` in `Joystick.py`). The wheels' no-load ground speed is about 5.3 m/s with the belt (7.2 m/s
   without), at 12 V, before any load. A full-stick request therefore saturates the motors and winds up
   the velocity loop's integrator (clamped only at ±150°).
 - **U-6 · Geometry disagrees too.** Wheel radius: §4.2. Wheel separation: 0.1 m (`rocko_description.urdf.xacro:49`, `:85`, ±0.05 m), 0.32 m (`rocko_tank_mode_controllers.yaml:15`) and 0.356 m
-  (`DiffDriveController.py:61`, declared and never used). The planar sim needs no separation.
+  (`wheel_distance` in `DiffDriveController.__init__`, declared and never used). The planar sim needs no separation.
 
 ### 2.4 Sign conventions: is the cascade negative feedback?
 
@@ -244,7 +244,7 @@ has the same sign as the outer loop**. It is consistent with the outer loop whic
 out. (On the fast time scale it first pushes the wheels toward sim-forward, which tips the body the
 other way: the "back up to lean forward" move that [control-cascade.md](control-cascade.md) describes.)
 
-**What the code's authors intended, and why it cannot all be true.** `DiffDriveController.py:84-99`
+**What the code's authors intended, and why it cannot all be true.** `DiffDriveController.command_controller()`
 sends `linear.x` as the velocity reference *and*, divided by the radius, as a positive wheel
 feedforward. So the authors took sim-forward, positive measured velocity and positive `linear.x` to be
 the same direction (`s_v = +1`). The README and control-cascade.md say the velocity loop commands
@@ -631,7 +631,7 @@ The repo holds four different wheel radii. This page does **not** pick the right
 
 | Value | Where | Used by |
 | --- | --- | --- |
-| 0.06 m | `DiffDriveController.py:35`; `QuadEncoders.py:34` ("60 mm radius"); `QuadEncoder.py:28` (as "120 mm wheel diameter") | Feedforward; encoder → metres in the launched node |
+| 0.06 m | `wheel_radius_meters` in `DiffDriveController.__init__`; `QuadEncoders.py:34` ("60 mm radius"); `QuadEncoder.py:28` (as "120 mm wheel diameter") | Feedforward; encoder → metres in the launched node |
 | 0.0813 m (effective) | `QuadEncoder.py:28` vs `QuadEncoders.py:35` | The older node converts counts to metres without the 1.355 belt factor. If the belt is real, its numbers are what a 0.06 × 1.355 = 0.0813 m wheel would give |
 | 0.127 m | `rocko_tank_mode_controllers.yaml:17` | Tank mode's `diff_drive_controller` (issue #16 suspects it is left over from a demo) |
 | 0.015 m | `rocko_description.urdf.xacro:14` | The URDF; what a Gazebo plant would use |

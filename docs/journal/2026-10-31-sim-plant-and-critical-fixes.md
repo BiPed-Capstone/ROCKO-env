@@ -445,8 +445,8 @@ by the author of this entry**). No gain was changed in response. Candidate gains
   See [next-steps row 2.1](../next-steps.md).
 - **Anything about the robot.** Every number comes from a model with estimated parameters.
 - **Review of stage 3**: round 1 findings from `ros2-control-reviewer` and `explainability-reviewer`
-  are fixed (next section); `realtime-auditor` and `docs-reviewer` have not reviewed it, and no
-  second round has run. See the *Review rounds* table.
+  are fixed (next section); later rounds ran after this was written (the table's stage 3 rows, rounds 2 and 3 CLEAN
+  for the technical reviewers). See the *Review rounds* table.
 
 **Stage 3, review round 1: what was fixed.** Run 2026-10-31 in the container, before the stage 3 commit.
 
@@ -491,8 +491,8 @@ to the terminal; the probe writes `samples.csv` and `metrics.json` to a folder i
 Built on `85bdc31` (the stage 3 commit); the code and these docs were uncommitted when this subsection
 was last revised (2026-11-02, a second docs pass after code fixes made following the first one: one
 shared re-arm topic with a re-arm band, separate treatment of the gyro rate, the watchdog's start-up
-behaviour, input checks in `Joystick.py`, and changes to checks `H4` and `C3`). Review round 1 is done
-and its fixes are in; round 2 is pending (see the *Review rounds* table). Status words as in the queue's
+behaviour, input checks in `Joystick.py`, and changes to checks `H4` and `C3`). Review rounds 1 and 2 are done
+and their fixes are in; round 3 was dirty (2026-11-03) and round 4 is done: reviewed, its findings fixed, the final fixes not reviewed again (see the *Review rounds* table). Status words as in the queue's
 [*Reading the table*](../next-steps.md#reading-the-table). The verification below was run on
 2026-11-02 in the container by the integrator, on the code as fixed, not by the author of this entry,
 except where a row says otherwise; the author of this entry read the code and the diff and re-ran the
@@ -813,7 +813,7 @@ the plant `unconfigured`), and record whether the **motor** component stays acti
 - **The TCP path in a launch.** `C3` publishes `TwistStamped` directly; `Joystick.py`'s socket code and the
   laptop heartbeat are covered by host tests with stand-ins only.
 - **The cause of the slow drift in the model** (stage 5).
-- **Review of stage 4:** round 1 is done (fixed above) and round 2 is pending: see the *Review rounds* table.
+- **Review of stage 4:** rounds 1 and 2 are done and fixed; round 3 was dirty (2026-11-03); round 4 (authorised by the person) fixed them, was reviewed (no Critical or High), and its findings were fixed without a further review: see the *Review rounds* table and the last section.
 
 **Reproduce (stage 4).** After the commands in *Reproduce* below (through the Tier 1 build), from the
 repo root. Commit: built on `85bdc31` plus the uncommitted stage 4 changes; the commit that adds this
@@ -855,9 +855,9 @@ the terminal and keeps its run directory (launch logs, `samples.csv`, `metrics.j
 
 ## Review rounds
 
-Stage 2, rounds 1 and 2 of at most three. The round 1 reviewers ran on the first version of the stage
-2 change, the round 2 auditor on the version after round 1's fixes; the fixes are described in the
-stage log above.
+Stage 2 had two rounds (the round 1 reviewers ran on the first version of the stage 2 change, the round
+2 auditor on the version after round 1's fixes), stage 3 had three, and stage 4 has had three, with a fourth
+authorised by the person: its code is done, its review has not run. The fixes are described in the stage logs above and the last section.
 
 | Round | Reviewer | Findings | Fixed / declined (why) |
 | --- | --- | --- | --- |
@@ -869,7 +869,10 @@ stage log above.
 | stage 3, 1 | `ros2-control-reviewer`, `explainability-reviewer` | Drift of the sim YAML and of the three copies of the defaults; a vacuous S1 baseline; failed-run evidence deleted; the missing sim+mock expansion; partial integer parse; explainability items M1-M7 | Fixed (see *Stage 3, review round 1* above), except the `static_assert` tie to `ICM20948.hpp` (the constant is private; a script compares the numbers instead) |
 | stage 3, 2 | `ros2-control-reviewer` (opus), `realtime-auditor` (opus), `explainability-reviewer` (sonnet), `docs-reviewer` (sonnet) | ros2: the drift checker ignored the whole `gains` map, never tied a `<param>` to its xacro arg, was type-blind, could still pass the S1 baseline without a release, and tank mode ignored `use_sim_plant` silently. Realtime: only Lows (sub-step remainder not carried, `invalid_reason()` gaps, a non-finite IMU sample counted as good, no upper bound on the IMU delay). Explainability: CLEAN, Lows. Docs: stale counts, a stale blind-spot bullet, wrong line citations, a false 'reconciled' sentence | All fixed (checker rewritten and shown red on each mutation; remainder carry; stronger `invalid_reason()` with unit test #17; the `last_stamp_s` release check; a seventh `verify_urdf.sh` expansion). The first attempt at this round hit the account's usage limit and was rerun |
 | stage 3, 3 | `ros2-control-reviewer` (opus), `realtime-auditor` (opus), `docs-reviewer` (sonnet) | ros2: **CLEAN**. Six Lows: the checker still misses a duplicated `<xacro:arg>` (xacro keeps the first, the checker the last), overrides typed into `rocko_sim.launch.py`, struct members not written as `type name = value;`, odd or duplicate `<param>` tags, a crash mislabelled as drift, and a mis-pointed row in `read_parameters()`. Realtime: **CLEAN**; a negative period would become owed time; the C-2 fault branch of the sim has never been run end to end. Docs: one Medium (a stale expansion count in the ladder's Tier 0 row) and Lows | Fixed: the stale counts and wording, a negative period now counts as zero. **Declined for this round (cap of three), recorded as known limits in the ladder's blind spots:** the six checker gaps. The C-2 fault scenario is stage 4's first job. `CLAUDE.md` line 177 still says 'all four modes' (a human-reviewed file; flagged for the maintainer) |
-| stage 4, 1 | the reviewers named in `CLAUDE.md` §2 step 5 (`realtime-auditor` is mandatory: `AddFeedforwardController.cpp`, `ICM20948.cpp` and a `bringup/config` YAML changed) | round 1 done (fixed above); round 2 pending | The reviewers' names and findings were not passed to the author of this entry. To be filled in by the person |
+| stage 4, 1 | the reviewers named in `CLAUDE.md` §2 step 5 (`realtime-auditor` is mandatory: `AddFeedforwardController.cpp`, `ICM20948.cpp` and a `bringup/config` YAML changed) | round 1 done and fixed (above) | The reviewers' names and findings were not passed to the author of this entry. To be filled in by the person |
+| stage 4, 2 | not recorded | round 2 done and fixed (see the handoff above) | Names and findings not recorded here |
+| stage 4, 3 | `realtime-auditor`, `ros2-control-reviewer`, `docs-reviewer` (2026-11-03) | **Dirty**: H-A, M-A, M-B, R-1, D-1 to D-5 (see *Stage 4, review round 3* at the end of this file) | Run stopped at the three-round cap; the person then authorised round 4, which fixed all of them in code (see *Stage 4, review round 4* at the end of this file) |
+| stage 4, 4 | `realtime-auditor` (mandatory), `ros2-control-reviewer`, `explainability-reviewer`, `docs-reviewer` (2026-11-03) | No Critical or High. Findings (naming, from two reviewers; an unused accessor; a stale `16 of 16`; a time-out WARN not rate-limited; an out-of-range gyro rate reported by nobody) all fixed (last section) | The final fixes had **no** further review. Round 4 is the person's extra round past the cap of three in `CLAUDE.md` §2 step 6; there is no fifth |
 
 **An honest note about the guard hook.** While making the round 1 fixes, the guard hook denied a first
 `Write` of `ImuFaultTracker.hpp` because the new file contained fewer safety words (`fault`) than the
@@ -922,7 +925,7 @@ Stage 2 only; stage 3's and stage 4's lists (and their reproduce commands) are i
   alters duty scaling by about 0.9 %, so a human confirms). Also L-6: a failed encoder read in
   `Motor12VoltQuadEncoder::read` and `QuadEncoder::read` returns OK with the old values (hidden today by
   C-1's missing timeout).
-- **Review round 3** is pending; its results are to be added to the table above by the person.
+- **Review round 3** was dirty on 2026-11-03; see *Stage 4, review round 3* at the end of this file. Round 4 is done: reviewed (no Critical or High) and its findings fixed; the fixes themselves were not reviewed (last section).
 
 ## Reproduce
 
@@ -951,6 +954,8 @@ surface (no robot was involved) and a log location (output was read from the ter
 is `log/latest_build/rocko_env/stderr.log` in the container workspace).
 
 ## Where the run stands (handoff written 2026-11-02, for the next session)
+
+> **Out of date in two places:** round 3 has run (dirty) and round 4 is done (reviewed, findings fixed); see the last two sections of this file. The 'Not started' list and the rules below still hold.
 
 **Committed and pushed:** stages 1, 2, 3 and 4 (`1318f95`, `85bdc31`, `e35fe57`). Stage 4 was pushed on the
 person's explicit instruction (2026-11-02) BEFORE its third review round, which departs from
@@ -1004,7 +1009,7 @@ commit, fix, and then push.
 - An account usage limit stopped this run once (2026-10-31); subagents die with it. Check
   `git status` for half-finished work before trusting a report.
 
-## Stage 4, review round 3 (2026-11-03) — DIRTY, run stopped here
+## Stage 4, review round 3 (2026-11-03) — DIRTY (the run stopped here; round 4 below was authorised afterwards)
 
 **Preflight (container, clean rebuild, 2026-11-03, HEAD `387d6dc`):** matched the handoff above. `build_ros.sh`
 exit 0, 0 compiler warnings; `verify_urdf.sh` PASS; `verify_mock.sh` PASS in balance and tank;
@@ -1028,8 +1033,151 @@ a human. Nothing below has been fixed; no code was changed this session.
 | D-4 | Low | `verify_sim.sh` duration: about 150 s here, about 119 s in `verify-in-container.md:256` and the ladder line 110 (that figure predates a longer H4 window) | docs |
 | D-5 | Low | Proposal 0004 names `ICM20948.hpp` for the window constants, which are defined in `ImuFaultTracker.hpp` | `docs/proposals/0004-safety-thresholds.md` |
 
-**Not done, on purpose:** H-A and M-A are on the §6 critical path and would need their own review round, which
-the cap forbids; a human decides whether to open a fourth. H-A is a new finding that also belongs in
+**Not done, on purpose (at the time):** H-A and M-A are on the §6 critical path and would need their own review round, which
+the cap forbids; a human decides whether to open a fourth. (The person opened one on 2026-11-03: next section.) H-A is a new finding that also belongs in
 `claude-analysis/balance-loop-findings.md` and `next-steps.md` (row 2.5 says C-3 is "done, awaiting robot",
-which H-A shows overstates it); neither is edited yet. Stage 5 and 6 were not started: the order is
+which H-A shows overstates it); neither was edited at the time (both are now: findings H-11, M-7 and M-8, rows 1.15, 2.5). Stage 5 and 6 were not started: the order is
 review-clean first. Nothing was pushed this session (stage 4 itself went out on 2026-11-02).
+
+## Stage 4, review round 4 (2026-11-03) — reviewed, findings fixed, fixes not re-reviewed
+
+**Goal.** The person authorised a fourth round (the cap in `CLAUDE.md` §2 step 6 is three) to fix round 3's
+findings. In findings-doc names: H-A is [H-11](../claude-analysis/balance-loop-findings.md#h-11--nothing-ages-out-the-feedforward),
+M-A is [M-7](../claude-analysis/balance-loop-findings.md#m-7--the-imu-node-read-the-gyro-every-cycle-for-nothing),
+M-B is [M-8](../claude-analysis/balance-loop-findings.md#m-8--two-info-lines-per-gamepad-message). The
+round 3 table above still uses H-A and M-A; the code comments now use H-11 and M-7.
+
+**Success criteria (checkable).**
+1. With the feedforward publisher killed, each wheel's controller logs the time-out once, 0.1 to 0.5 s later,
+   and the controllers stay active (check `FF`); red when the limit is infinite and when it is 50 ms.
+2. The age decision is covered by a host test that goes red when `FeedforwardTimeout.hpp` is broken.
+3. `FF_AGE_S` in `verify_sim.sh` cannot drift from `kMaxFeedforwardAgeNs` unnoticed (Tier 0).
+4. By default the IMU node does not read the gyro and sends NaN; the plugin does not warn about that.
+5. Every earlier check still passes (`verify_sim.sh` all checks).
+6. Every doc that states a count or a behaviour agrees with the code.
+
+**Changes (files).**
+- **H-11** (critical path): `AddFeedforwardController.cpp` and `.hpp` use the new header-only
+  `include/rocko_env/FeedforwardTimeout.hpp`. The feedforward [rad/s] and its arrival time [ns] are kept
+  together; a steady (monotonic) `rclcpp::Clock` supplies the time, because the node's ROS clock is system time
+  and an NTP step back would keep a dead feedforward looking fresh. Past `kMaxFeedforwardAgeNs` (200 ms,
+  **proposed**, a named constant, same value as `command_timeout_s`) `update()` returns 0.0 for the feedforward
+  term only; the pitch loop's reference still goes through. One `WARN` per wheel when a time-out starts. A
+  message with a NaN or infinite value is ignored and does not refresh the age. Nothing received yet is 0.0, not a
+  time-out. Host test `tools/feedforward_timeout_test.cpp` (7 test functions). `verify_sim.sh` gained check `FF`
+  (and `ALL_CHECKS`), and `sim/check_sim_config.py` gained a sixth comparison, `FF_AGE_S` against
+  `kMaxFeedforwardAgeNs`.
+- **M-7** (critical path: `ICM20948.cpp`): `ICM20948.py` has a parameter `read_pitch_rate`, default false; while
+  false the gyro is not read and `pitch_rate_deg_s` is NaN. `ICM20948.cpp` warns about an unusable rate only
+  after one good rate has been seen. `Icm20948Data.srv` and the header comment say so. `tools/imu_node_test.py`
+  gained a default test (6 tests).
+- **M-8:** two unthrottled INFO lines in `DiffDriveController.robot_body_vector_updated` removed.
+- **R-1:** `sim/check_sim_config.py` already compared the teleop timeout in three places (earlier this round);
+  H-11's check is the sixth item in its docstring.
+- **D-1 to D-5:** fixed earlier in round 4 (symbols instead of `file:line` in `sim-plant.md`; proposal 0005's
+  dead link replaced by a plain note; this journal's table and intro; the `verify_sim.sh` duration; proposal 0004's
+  file name for the window constants). This pass also updated the counts and the new constants in the
+  ladder, the verify guide, the README, `next-steps.md` (rows 1.2, 1.15, 2.3, 2.5, the threshold table, the
+  handoff), proposal 0004, and the findings (H-11, M-7, M-8, the H-6 and C-3 status text).
+
+**Commands run and results** (2026-11-03; the container ones were run by the integrator and are given here as
+they were passed on to the author of this entry, who did not run them):
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| Host, Tier 0 | `g++ ... tools/feedforward_timeout_test.cpp` (the command in the ladder) | 7 test functions pass; red on 2 deliberate breaks (which two was not passed on) |
+| Host | `python3 -I tools/imu_node_test.py` | 6/6 |
+| Container, Tier 3 | `verify_sim.sh` (all checks) | PASS `S1 S2a H4 C3 C2 H6 FF`, 157 s, 9 launches |
+| Container, Tier 3 | check `FF` with the age limit infinite; with 50 ms | red both times |
+| Host, Tier 0 | `python3 -I sim/check_sim_config.py` (run by the author of this entry) | six `ok` lines, exit 0, including `feedforward age limit equal in AddFeedforwardController.hpp and verify_sim.sh (0.2 s)` |
+| Host, Tier 0 | the same with `--root` a scratch copy where `FF_AGE_S` is 0.5 | `FAIL  the feedforward age limit differs: kMaxFeedforwardAgeNs in AddFeedforwardController.hpp is 0.2 s, FF_AGE_S in verify_sim.sh is 0.5 s (they must be equal)`, exit 1; `FF_AGE_S` in the real `verify_sim.sh` is still 0.2 |
+
+Tiers 0 to 2 for the whole round (`verify_urdf.sh`, `build_ros.sh`, `verify_mock.sh`): **not recorded in what was
+passed to the author of this entry**; see the *Stage 4, review round 3* preflight for the last full set. The
+hook tests were not run by the author of this entry. Highest tier reached: **Tier 3 (partly built), a model with
+estimated parameters.**
+
+**Observation, cause not established.** In the container the right wheel sometimes logged the time-out while its
+Python publisher was running, so a message gap above 200 ms happened: 1 of 1 runs at 20 Hz and 2 of 6 `FF`
+runs at 100 Hz (always one wheel, so not a stall of the controller's executor, which serves both). Check `FF`
+prints a note and does not fail. Not known whether it is the container's scheduling, DDS, or the publisher
+process; nothing was measured on a Pi.
+
+**Not verified.**
+- Anything on a robot. That 200 ms is a good limit (it is a proposal; [0004](../proposals/0004-safety-thresholds.md)).
+- What zeroing the feedforward does to a leaning robot (it is a step, no ramp); a real crash of
+  `DiffDriveController.py` (check `FF` kills a plain `ros2 topic pub`).
+- Whether `pid_controller` also holds its last reference if the node setting it dies (unconfirmed).
+- The IMU change on the Pi: `ICM20948.cpp` is checked by the Tier 1 build and the node by a host test with
+  stand-ins; neither reads a real BNO055. With `read_pitch_rate` true and a rate bad from the first read (a failed
+  gyro read, or beyond +/-2000 deg/s), the plugin says nothing and the node logs `Pitch rate unavailable` (the
+  out-of-range case since the round 4 fixes below).
+- **Turning the rate on later needs two things:** the gated change to `rocko_controllers.yaml` (finding H-6,
+  with L-8) **and** launching `ICM20948.py` with `read_pitch_rate:=true`.
+- Whether the new `imu_node_test.py` default test and `check FF`'s note path were each made to fail: only the
+  two `FF` reds and the host test's two breaks above were reported.
+- **Review.** Round 4 was reviewed (next subsection); the fixes made for its findings were **not** reviewed.
+
+### Round 4 review and its fixes (2026-11-03)
+
+**Reviewed by** `realtime-auditor`, `ros2-control-reviewer`, `explainability-reviewer` and `docs-reviewer`:
+**no Critical or High.** Findings, all fixed in this pass:
+- **Naming** (two reviewers): code, test and script comments said H-A / M-A; they now say
+  [H-11](../claude-analysis/balance-loop-findings.md#h-11--nothing-ages-out-the-feedforward) and
+  [M-7](../claude-analysis/balance-loop-findings.md#m-7--the-imu-node-read-the-gyro-every-cycle-for-nothing)
+  (no code comment used M-B). The docs that explain the alias keep the old names.
+- **Unused accessor:** `FeedforwardTimeout::timed_out()` removed; `tools/feedforward_timeout_test.cpp` asserts on
+  `just_timed_out()` and the returned value instead (7 test functions).
+- **Stale count:** the ladder's watchdog test count `16 of 16` is now `22 of 22`.
+- **Time-out WARN not rate-limited:** `AddFeedforwardController` now counts every time-out
+  (`feedforward_timeouts_`, in the line as `(N time-outs since start)`) and logs at most one line per
+  `kTimeoutLogMinCycles` (100 cycles, 1 s at 100 Hz) per instance, the first at once, with a per-instance cycle
+  counter like the re-arm refusal's (not `RCLCPP_WARN_THROTTLE`, whose state both wheels share). Check `FF`'s
+  rule (one line per wheel after the kill) still holds; it now exits 2 (could not judge) if a time-out was
+  logged less than `FF_LOG_GAP_S` (1 s) before the kill and none follows it, since that line could be suppressed.
+- **Out-of-range rate reported by nobody:** a finite gyro rate beyond +/-2000 deg/s from the first read was
+  rejected by the plugin silently. `ICM20948.py` now applies the same limit (`MAX_ABS_PITCH_RATE_DEG_S`, must
+  equal `kMaxAbsPitchRateDegS`), sends NaN and logs `Pitch rate unavailable` (only with `read_pitch_rate`
+  true); `tools/imu_node_test.py` gained a case (7 tests). The M-7 text and the `ICM20948.hpp`/`.cpp` comments
+  now say who reports what.
+
+**Not reviewed:** these final edits had **no** further review. The three-round cap was already exceeded by
+the person's authorisation of a fourth round; there is no fifth.
+
+**Hazard the auditor catalogued (not fixed, a human decides):** when H-6 goes into the real
+`rocko_controllers.yaml`, a `pitch_rate_required` hardware parameter (the plugin returns `ERROR` on a
+persistent rate failure) and the `read_pitch_rate:=true` launch must land **together**. Otherwise the D term
+gets NaN silently. Plausible chain: NaN rate, then 0.0 somewhere downstream, then a fall; how `pid_controller`
+handles a NaN state is unchecked. Also in [next-steps row 1.2](../next-steps.md).
+
+**Commands run for these fixes** (2026-11-03, by the author of this pass; container shown by
+`./check_container_mount.sh` as this checkout, sole user; clean rebuild first):
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| precondition | `./check_container_mount.sh` | `ok`, exit 0 |
+| 1 | `rm -rf build install log && src/ROCKO-env/build_ros.sh` | `Summary: 2 packages finished`, exit 0, 0 compiler warnings (3 CMake warnings: the expected `ROCKO_SKIP_WIRINGPI` notices and a `tl_expected` deprecation) |
+| 0 | `verify_urdf.sh` | `PASS: all seven expansions ...`, exit 0 |
+| 2 | `verify_mock.sh`; `verify_mock.sh tank` | `PASS (balance, mock hardware)`, exit 0; `PASS (tank, mock hardware)`, exit 0 |
+| compile-only | `check_motor_plugin_compiles.sh` | `PASS (compile-only)`, exit 0, 0 warnings |
+| 3 | `verify_sim.sh` (all) | `PASS (simulation: S1 S2a H4 C3 C2 H6 FF)`, exit 0; FF: left 0.198 s, right 0.208 s after the kill, 1 line each, now ending `(1 time-outs since start)`; no delivery-gap note this run |
+| host | the four C++ host tests (tipover latch, feedforward timeout, IMU fault tracker, SimPlant model) | all pass, exit 0, no warnings with `-Wall -Wextra` |
+| host | `teleop_watchdog_test.py`, `computer_joystick_heartbeat_test.py`, `imu_node_test.py` | 22/22, 5/5, 7/7, exit 0 |
+| 0, host | `.claude/hooks/test-guard-protected-files.sh` | 81 cases, exit 0 |
+| 0, host | `python3 -I sim/check_sim_config.py` | six `ok` lines, exit 0 |
+| docs | relative-link scan of every `*.md` | 380 links, 1 broken: `proposals/0005` -> `sim-to-real-gap.md` (known, the page does not exist yet) |
+
+**Made to fail:** the feedforward test against scratch copies of the header, (a) edge detection removed from
+`just_timed_out_` and (b) `update()` returning a stale value: red on both. `imu_node_test.py` against a scratch
+copy of the node with the range check disabled: red, 6 of 7. The real files were not touched. **Not made to
+fail:** the WARN rate limit itself (no test suppresses a second time-out; `FF` only sees one per wheel) and
+`FF`'s new exit-2 path. Highest tier reached: **Tier 3 (partly built), a model with estimated parameters.**
+
+**Robot procedure (for a human; tethered, wheels off the ground first).** Not written in full here: the
+`FF` behaviour needs a robot-side way to stop `DiffDriveController.py` mid-turn while the stick is held (for
+example `kill` its process on the Pi), then `ros2 topic echo /left_feedforward` stops and the wheels'
+turn bias must go away within about 0.2 s while the robot stays upright; abort on any lurch. The exact commands
+are still to be written.
+
+**Run stopped here:** round 4 is done: reviewed, its findings fixed and checked on the ladder above, the fixes
+not reviewed again (no fifth round). Nothing in this section is committed.

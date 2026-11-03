@@ -22,13 +22,13 @@ physical number is still an estimate.
 
 ## Evidence
 
-Tier 3 partly built: `verify_sim.sh` passes S1, S2a and the H4, C3, C2, H6 checks on a model with estimated
+Tier 3 partly built: `verify_sim.sh` passes S1, S2a and the H4, C3, C2, H6 and FF checks on a model with estimated
 parameters. Nothing about the real robot.
 
 ## Risk
 
 A confident-looking simulator with invented inertia is worse than none (ADR 0003's own warning). Mitigation:
-[the measurement guide](../guides/measure-inertia.md), the `ESTIMATE, NOT MEASURED` labels, and
+the measurement guide (`docs/guides/measure-inertia.md`, not yet written), the `ESTIMATE, NOT MEASURED` labels, and
 [the sim-to-real gap page](../architecture/sim-to-real-gap.md).
 
 ## Test for a human

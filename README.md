@@ -128,7 +128,7 @@ ROCKO-env
 ├── check_container_mount.sh        Checks the dev container is mounting THIS checkout, so the verify scripts test your files (laptop)
 ├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware: real, mock and simulated; and that the sim config has not drifted (container)
 ├── verify_mock.sh                  Checks the controllers load and chain on mock hardware (container)
-├── verify_sim.sh                   Runs the controllers against the simulated robot (SimPlant): S1, S2a and the checks of the tipover cutoff, the teleop watchdog, an IMU outage and the gyro pitch rate (H4, C3, C2, H6); about 2 minutes. A model with estimated parameters (container)
+├── verify_sim.sh                   Runs the controllers against the simulated robot (SimPlant): S1, S2a and the checks of the tipover cutoff, the teleop watchdog, an IMU outage, the gyro pitch rate and the feedforward age limit (H4, C3, C2, H6, FF); 7 checks in 9 launches, about 2.5 minutes (157 s on 2026-11-03). A model with estimated parameters (container)
 ├── check_motor_plugin_compiles.sh  Type-checks the motor plugin off the Pi, syntax and types only (container). Stub headers in tools/compile_check/stubs/
 ├── .githooks/                      Git hooks: no commit on main, no push but a fast-forward of ai-forward to origin. Inactive until copied into .git/hooks/ (proposal 0002, item E)
 ├── docker/                         Dev container for laptops (compose files + Dockerfile)

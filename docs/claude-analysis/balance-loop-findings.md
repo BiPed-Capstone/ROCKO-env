@@ -49,12 +49,15 @@ Severity reflects impact on the robot staying upright, not code quality.
 | H-8 | High | An intermittent IMU fault that alternates good and bad reads never tripped the consecutive-only counter (found 2026-10-31) — **fixed in the tracker on `ai-forward`, awaiting robot** |
 | H-9 | High (not fixed) | A frozen or reset BNO055 that still reads valid-looking numbers is undetectable (found 2026-10-31); one variant, an all-equal Euler triple, is now rejected in the node |
 | H-10 | High (not fixed; unmeasured) | Upstream PID integrators keep winding while the tipover cutoff is latched, so a re-arm can produce a large command (found 2026-11-02) |
+| H-11 | High | Nothing aged out the feedforward: if `DiffDriveController.py` died mid-turn, the wheels kept opposite biases and the gamepad could not stop them (found 2026-11-03; called H-A in the round-3 review and in code comments) — **fixed on `ai-forward`, awaiting robot** (2026-11-03; checked in the sim; the 200 ms limit is proposed) |
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
 | M-3 | Medium | PWM value is never clamped to its valid range — **clamped on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31) |
 | M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi — **partly fixed on `ai-forward`** (wiring mock and off-Pi build exist; a `SimPlant` physics model exists with estimated parameters and no scenarios yet) |
 | M-5 | Medium | `AddFeedforwardController` ignores the result of `set_value()`, so a failed command write is silently dropped — **fixed on `ai-forward`, awaiting robot** (2026-10-31) |
 | M-6 | Medium | `AddFeedforwardController`'s feedforward value was uninitialised and shared between two threads without synchronisation (found 2026-10-31) — **fixed on `ai-forward`** |
+| M-7 | Medium | The IMU node read the gyro (a second I2C transaction) inside the blocking service call every cycle although no real controller uses the rate (found 2026-11-03; called M-A in the round-3 review) — **fixed on `ai-forward`, awaiting robot**: `read_pitch_rate`, default false; one gap left |
+| M-8 | Medium | Two unthrottled INFO lines per gamepad message in `DiffDriveController.py` (found 2026-11-03; called M-B in the round-3 review) — **fixed on `ai-forward`** (the lines were removed) |
 | L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances |
 | L-2 | Low | IMU class is named for a part that is no longer used; dead imports |
 | L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build — **fixed on `ai-forward`** (2026-10-31) |
@@ -274,6 +277,12 @@ later checks were made to fail was not recorded. Not checked: the TCP path in a
 launch, anything on a robot, and what the step to zero does to a leaning robot (the reference goes to 0 in
 one cycle with no ramp; `RateLimiter` is unused). Procedure: the
 [stage 4 journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
+
+**The node's own death (2026-11-03):** this watchdog lives inside `DiffDriveController.py`, so it cannot
+act if that node dies or hangs; the last feedforwards would have stayed in force. [H-11](#h-11--nothing-ages-out-the-feedforward)
+adds an age limit in `AddFeedforwardController` (200 ms, proposed) that zeroes the feedforward term in that
+case. Checked in the model only (check `FF` kills a plain `ros2 topic pub`, not `DiffDriveController.py`
+itself).
 
 ---
 
@@ -508,7 +517,9 @@ This is likely the largest single control improvement available without changing
 [`bno055-improvements.md`](bno055-improvements.md) § 1.
 
 **Status on `ai-forward` (2026-11-02): partly fixed.** Next-steps row 1.2. *Done in code:*
-`Icm20948Data.srv` has `pitch_rate_deg_s`; `ICM20948.py` reads `.gyro` once and exports
+`Icm20948Data.srv` has `pitch_rate_deg_s`; `ICM20948.py` reads `.gyro` once per reply, **only when its `read_pitch_rate` parameter is true (default false since
+2026-11-03, finding [M-7](#m-7--the-imu-node-read-the-gyro-every-cycle-for-nothing); with it false the rate is NaN and
+the real D term is unaffected)**, and exports
 `pitch_rate_sign * degrees(gyro[pitch_rate_axis])`, with `pitch_rate_axis` (0) and `pitch_rate_sign` (+1) as named
 parameters that are **unverified guesses**. The unit is a guess too: the BNO055 counts 1 LSB = 1/16 deg/s, the
 Adafruit driver is documented to return rad/s, and versions older than 5.0 returned deg/s, which would make
@@ -521,7 +532,7 @@ separate counter, and never makes `read()` return `ERROR`; only the angles feed 
 sim's copy differs: it ties the rate to the pitch, so a bad rate is a failed read of the whole sample there,
 and no sim check exercises the plugin's separate rule. The rate is a second sensor read after the angles,
 not one snapshot; one 12-byte burst read (registers `0x14`–`0x1F`) belongs to the C-1 IMU migration (stage
-6) and is not implemented. Host test `tools/imu_node_test.py` (5/5) covers the node's reply with a stand-in
+6) and is not implemented. Host test `tools/imu_node_test.py` (6/6) covers the node's reply with a stand-in
 sensor; the real, mock and sim `<ros2_control>` blocks all export it (14
 interfaces now); `SimPlant` exports `pitch_sign * degrees(psi_dot)` with no IMU delay; and the **sim**
 YAML (only) sets `pitch_pid_controller`'s `reference_and_state_interfaces` to `["pitch", "pitch_rate"]`. That
@@ -721,6 +732,51 @@ next-steps row 2.3 to check and a person to check on a stand. Queue: [next-steps
 
 ---
 
+### H-11 — Nothing ages out the feedforward
+
+**Found** 2026-11-03, by the `realtime-auditor` in review round 3 of stage 4 (named H-A there; the code
+comments now say H-11).
+
+**Where** `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp`
+(`update_and_write_commands`), `include/rocko_env/AddFeedforwardController.hpp`,
+`include/rocko_env/FeedforwardTimeout.hpp` (new)
+
+**What**
+
+`DiffDriveController.py` publishes each wheel's feedforward [rad/s] every 10 ms and
+`AddFeedforwardController` added the LAST value it had received to the wheel command, however old. If that
+node died during a turn, nothing replaced the value: the two wheels kept opposite biases and the gamepad
+could not stop them. C-3's watchdog cannot help, because it lives inside the node that died. Not seen on a
+robot; plausible (a Python node crashing is what H-8-style faults and C-1's blocking calls make likely).
+
+**Fix**
+
+`FeedforwardTimeout` (header only, no ROS types) stores the value and its arrival time [ns] on a steady
+(monotonic) clock, both lock-free atomics. Each cycle `update()` returns the value while it is at most
+`kMaxFeedforwardAgeNs` old (200 ms, **proposed**, equal to `command_timeout_s`) and 0.0 after that. Only the
+**feedforward term** goes to 0.0: the reference from `pitch_pid_controller` still goes through, so the
+balance loop keeps holding the robot up (the same rule as C-3; zeroing the whole command would drop the
+robot). One `WARN` per wheel when a time-out starts, `Feedforward on '<topic>' is N ms old ... (K
+time-outs since start)`, at most one line per second per wheel (`kTimeoutLogMinCycles`, 100 cycles; a
+time-out inside that second is counted, not logged); a fresh message ends it at once. A message the callback ignores for being NaN or infinite does not refresh the
+arrival time. Nothing arrived yet counts as 0.0 and not as a time-out (the earlier behaviour).
+
+**Status on `ai-forward` (2026-11-03): fixed in code, checked in the sim, awaiting robot.** Next-steps row
+1.15. Checked: host test `tools/feedforward_timeout_test.cpp` (7 test functions, red on 2 deliberate
+breaks); check `FF` of `verify_sim.sh` (a script publishes on both wheels at 100 Hz for 4 s, then is
+killed: both controllers logged the time-out once, 0.1 to 0.5 s later, and stayed active; red with the
+limit infinite and with 50 ms); `sim/check_sim_config.py` compares `FF_AGE_S` with `kMaxFeedforwardAgeNs`;
+full `verify_sim.sh` PASS (`S1 S2a H4 C3 C2 H6 FF`, 9 launches, 157 s). **Observation, cause not
+established:** in the container the right wheel sometimes timed out while its Python publisher was
+running, so a message gap of more than 200 ms happened (1 of 1 runs at 20 Hz, 2 of 6 `FF` runs at 100
+Hz). Check `FF` prints this as a note and does not fail on it. If the same gaps happen on the robot, the
+feedforward would drop out for a moment and come back; nobody has measured that. Not checked: anything on
+a robot, that 200 ms is a good limit, DDS delivery on the Pi, and the zeroing step's effect on a leaning
+robot (it is a step, no ramp). Related and **unconfirmed**: `pid_controller` may also hold its last
+reference forever if the node that sets it dies. Journal: *Stage 4, review round 4*.
+
+---
+
 ### M-1 — Logging from inside the real-time loop
 
 **Where (line numbers at audit time, before the 2026-10-31 edit)** `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp:223-224`
@@ -895,6 +951,50 @@ NaN or infinite is ignored and the previous finite value stays in effect.
 **Status on `ai-forward` (2026-10-31): fixed.** Checked: the Tier 1 build compiles it, including the
 `static_assert`, with no compiler warnings; Tier 2 loads and activates the controller. Not checked:
 the lock-free property on a Pi (only the arm64 container was tried), and any behaviour on a robot.
+
+---
+
+### M-7 — The IMU node read the gyro every cycle for nothing
+
+**Found** 2026-11-03, by the `realtime-auditor` in review round 3 of stage 4 (M-A there).
+
+**Where** `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.py` (`callback()`),
+`ICM20948.cpp` (`read()`)
+
+**What**
+
+H-6 added a gyro read to the IMU node. That is a second I2C transaction inside the blocking service call
+of every 10 ms cycle (C-1), and the real `rocko_controllers.yaml` does not use `pitch_rate`, so on the robot
+it cost loop time for nothing.
+
+**Fix**
+
+A node parameter `read_pitch_rate`, default `false`. While false the gyro is never read and
+`pitch_rate_deg_s` is NaN ("no rate"); the plugin holds NaN and does not warn, because that is by design.
+The plugin warns about an unusable rate only after it has seen one good rate.
+
+**Status on `ai-forward` (2026-11-03): fixed in code, awaiting robot.** Checked: host test
+`tools/imu_node_test.py` (7 of 7, including: started with no parameters, one sensor read per reply, NaN
+rate, no warning; and a rate beyond +/-2000 deg/s sent as NaN and logged). The C++ change is checked by the
+Tier 1 build only; `verify_sim.sh` uses `SimPlant`, not this node. **Who reports a rate that is bad from
+the very first read** (with the rate on): the node, not the plugin. The node logs `Pitch rate unavailable`
+(once a second at most) both for a failed gyro read and for a rate beyond +/-2000 deg/s, because it applies
+the same limit as the plugin (`MAX_ABS_PITCH_RATE_DEG_S` in `ICM20948.py`, which must equal
+`kMaxAbsPitchRateDegS` in `ICM20948.hpp`) and sends NaN for it. The plugin stays silent until it has seen
+one good rate. **To use the rate:** BOTH the gated change to
+`rocko_controllers.yaml` (finding H-6, with L-8) AND launching `ICM20948.py` with `read_pitch_rate:=true`.
+Only the first is a proposal-gated edit; forgetting the second leaves the D term with NaN.
+
+---
+
+### M-8 — Two INFO lines per gamepad message
+
+**Found** 2026-11-03, review round 3 (M-B there). `DiffDriveController.robot_body_vector_updated` logged
+`Callback triggered` and the whole twist on every message, 40 to 200 lines a second once the node no longer
+crashed on its first command.
+
+**Status on `ai-forward` (2026-11-03): fixed.** Both lines were removed. Checked only by reading the diff and
+by `teleop_watchdog_test.py` still passing.
 
 ---
 

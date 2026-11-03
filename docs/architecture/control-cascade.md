@@ -95,7 +95,11 @@ robot has fallen, the opposite of the rule below for a lost gamepad. The other s
 sits at the other end of the chain, in `DiffDriveController.py`: when no gamepad command has arrived
 for 0.2 s (proposed) it makes the velocity reference zero and keeps the cascade running, because for a
 robot that stands only while the wheels keep chasing its lean, stopping the motors is falling over.
-Both were checked only in the simulation model; see
+A third guard covers the watchdog's own blind spot: if `DiffDriveController.py` itself dies, nothing would
+replace the last feedforward it sent, so each `AddFeedforwardController` remembers when its feedforward last
+arrived and, once it is older than `kMaxFeedforwardAgeNs` (200 ms, proposed; finding H-11), adds `0.0` instead.
+Only the feedforward term is zeroed: the pitch loop's reference still goes through, so the balance loop keeps
+running. All three were checked only in the simulation model; see
 [the verification ladder](verification-ladder.md).
 
 ## How ros2_control expresses this
