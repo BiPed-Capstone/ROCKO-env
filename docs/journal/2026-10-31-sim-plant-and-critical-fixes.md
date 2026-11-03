@@ -1003,3 +1003,33 @@ commit, fix, and then push.
 - Say "balances in simulation under an estimated model", never "balances" or "tuned".
 - An account usage limit stopped this run once (2026-10-31); subagents die with it. Check
   `git status` for half-finished work before trusting a report.
+
+## Stage 4, review round 3 (2026-11-03) — DIRTY, run stopped here
+
+**Preflight (container, clean rebuild, 2026-11-03, HEAD `387d6dc`):** matched the handoff above. `build_ros.sh`
+exit 0, 0 compiler warnings; `verify_urdf.sh` PASS; `verify_mock.sh` PASS in balance and tank;
+`check_motor_plugin_compiles.sh` PASS; full `verify_sim.sh` PASS (S1 S2a H4 C3 C2 H6); host tests PASS
+(heartbeat 5/5, imu node 5/5, watchdog 22/22, imu fault tracker, tipover latch, sim plant model); hook tests
+81 cases. Highest tier reached: Tier 3 (partly built), model with estimated parameters.
+
+**Round 3 (realtime-auditor, ros2-control-reviewer, docs-reviewer; read-only, no container).** CLAUDE.md §2
+step 6 caps review at three rounds and says a dirty third round means stop and hand the remaining findings to
+a human. Nothing below has been fixed; no code was changed this session.
+
+| ID | Sev | Finding | Where |
+| --- | --- | --- | --- |
+| H-A | High | Nothing ages out the feedforward. If `DiffDriveController.py` dies mid-turn, `_feedforward` keeps its last value, so both wheels keep opposite biases and the gamepad cannot stop it. C-3's watchdog lives inside that node, so it cannot cover the node's own death. Confirmed no age check; the node dying is plausible, not seen. Suggested fix: stamp the arrival time in `topic_callback`, use 0.0 after about 200 ms (proposed, to match `command_timeout_s`), throttled WARN, host test plus a `verify_sim.sh` scenario that kills the node mid-turn. Related, unconfirmed: `pid_controller` may also hold its last reference forever | `AddFeedforwardController.cpp:296,390`, `.hpp:147-161` |
+| M-A | Medium | The IMU node now makes a second I2C read (gyro) inside the blocking service call every cycle, but the real YAML does not consume `pitch_rate`, so on the robot it costs time for nothing and worsens C-1. Suggested fix: node parameter `read_pitch_rate`, default false, turned on with the gated YAML change | `ICM20948.py` `callback()`, `ICM20948.cpp:127-136` |
+| M-B | Medium | Two unthrottled INFO lines per gamepad message (40 to 200 lines/s now that the node no longer crashes on the first command) | `DiffDriveController.py:194-195` |
+| R-1 | Low | The sim launch default `command_timeout_s` 0.2 is not checked against the node's `DEFAULT_COMMAND_TIMEOUT_S` or `verify_sim.sh`'s `TELEOP_TIMEOUT_S`; add the comparison to `sim/check_sim_config.py` | `rocko_sim.launch.py:64` |
+| D-1 | High (docs) | Stale `file:line` citations into `DiffDriveController.py` and `Joystick.py` in `sim-plant.md` (lines 95, 96, 164, 171, 175, 247, 634); cite symbols instead | `docs/architecture/sim-plant.md` |
+| D-2 | Medium | Proposal 0005 links `../guides/measure-inertia.md`, which does not exist yet | `docs/proposals/0005-...md:31` |
+| D-3 | Medium | This journal's review table says stage 4 round 2 is pending while the handoff says it is done; the intro still says stage 2 rounds 1 and 2 | this file |
+| D-4 | Low | `verify_sim.sh` duration: about 150 s here, about 119 s in `verify-in-container.md:256` and the ladder line 110 (that figure predates a longer H4 window) | docs |
+| D-5 | Low | Proposal 0004 names `ICM20948.hpp` for the window constants, which are defined in `ImuFaultTracker.hpp` | `docs/proposals/0004-safety-thresholds.md` |
+
+**Not done, on purpose:** H-A and M-A are on the §6 critical path and would need their own review round, which
+the cap forbids; a human decides whether to open a fourth. H-A is a new finding that also belongs in
+`claude-analysis/balance-loop-findings.md` and `next-steps.md` (row 2.5 says C-3 is "done, awaiting robot",
+which H-A shows overstates it); neither is edited yet. Stage 5 and 6 were not started: the order is
+review-clean first. Nothing was pushed this session (stage 4 itself went out on 2026-11-02).
