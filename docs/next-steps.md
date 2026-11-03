@@ -23,7 +23,7 @@ added. Stage 4's review round 1 is done and round 2 is pending (the
 [journal](journal/2026-10-31-sim-plant-and-critical-fixes.md) has the table).
 
 > **Handoff (2026-11-02):** stages 1 to 3 are pushed; stage 4 (tipover cutoff, teleop watchdog, gyro rate, four
-> new sim checks) is committed locally and awaits its third review round before a push. Stage 5 (scenarios,
+> new sim checks) is pushed (`e35fe57`) but its third review round is still owed. Stage 5 (scenarios,
 > tuning, sweep, sim-to-real-gap, measurement guide) and stage 6 (C-1) are next. Details and the first
 > question to ask are in the journal's last section,
 > [Where the run stands](journal/2026-10-31-sim-plant-and-critical-fixes.md#where-the-run-stands-handoff-written-2026-11-02-for-the-next-session).

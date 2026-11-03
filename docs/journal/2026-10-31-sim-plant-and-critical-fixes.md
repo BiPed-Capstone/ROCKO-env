@@ -952,10 +952,10 @@ is `log/latest_build/rocko_env/stderr.log` in the container workspace).
 
 ## Where the run stands (handoff written 2026-11-02, for the next session)
 
-**Committed and pushed:** stages 1, 2 and 3 (`1318f95`, `85bdc31`). **Committed locally, NOT pushed:** stage 4
-(its commit message says round 3 review pending). Push only after the third review round of stage 4
-is clean (CLAUDE.md §2 steps 5 to 8), starting with `git fetch origin` and
-`git log --oneline HEAD..origin/ai-forward` (must print nothing).
+**Committed and pushed:** stages 1, 2, 3 and 4 (`1318f95`, `85bdc31`, `e35fe57`). Stage 4 was pushed on the
+person's explicit instruction (2026-11-02) BEFORE its third review round, which departs from
+CLAUDE.md §2 steps 5 to 8; its commit message still says 'NOT PUSHED', which is out of date. The third
+round is still owed (below).
 
 **What every tier said on 2026-11-02 for the stage 4 tree (container, clean build):** `build_ros.sh` 0
 compiler warnings; `verify_urdf.sh` PASS (7 expansions, 14 interfaces, config drift check); `verify_mock.sh`
