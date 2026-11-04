@@ -177,7 +177,62 @@ must not touch `rocko_sim_controllers.yaml`.
 
 ## Verification
 
-(Filled in by commit (c).)
+**Thresholds committed before tuning: commit `0b0e39b`** (b). No scenario had been run when it was
+made. One later commit touched the runner, `9101fc0`, and only its printouts (the per-second pitch list
+skipped seconds; fall times printed with 16 decimals); no threshold or pass rule changed (`git diff
+0b0e39b 9101fc0`). No gain was changed in this stage; `rocko_sim_controllers.yaml` and
+`rocko_controllers.yaml` are as they were at `23c1117`.
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| — laptop | `python3 -I sim/cascade_linearisation.py` | ran, self-checks passed (braked poles +6.9306, −2.0304, −12.1916); numbers in the diagnosis above |
+| 0 static | `verify_urdf.sh` (container) | `PASS: all seven expansions ... and the sim config has not drifted.` exit 0 (`check_sim_config.py`'s six checks `ok`; it reads `TELEOP_TIMEOUT_S` and `FF_AGE_S` from `verify_sim.sh`, still found) |
+| 0 static | `.claude/hooks/test-guard-protected-files.sh` (host) | 81 cases, pass (no hook change; run as a baseline) |
+| 1 build | `build_ros.sh` (container) | `Summary: 2 packages finished`, exit 0 (no C++ changed in this stage) |
+| 2 mock | `verify_mock.sh`, `verify_mock.sh tank` | not run: no ROS code, launch file, URDF or YAML changed |
+| 3 sim, scenarios | `verify_sim.sh scenarios` at `0b0e39b` | **exit 1, as expected.** U, I, V `FAIL (expected until the sim gains are tuned)`; S2b `ok`; AB `ok`. 78 s. Details below |
+| 3 sim, default | `verify_sim.sh` (no argument) at `9101fc0` | **exit 1: `C3` failed, the other 8 launches `ok`** (156.6 s). `C3` then run alone 3 times: pass, **fail**, pass. The C3 code is unchanged since `23c1117`; see *C3 is flaky* below |
+
+**Raw scenario results, first run (`0b0e39b`, hardware gains, `encoder_sign:=-1` assumed except AB).**
+Times are seconds after release; pitch is the exported pitch; velocity the mean measured velocity.
+
+| Scenario | Verdict | What happened |
+| --- | --- | --- |
+| U | FAIL | No fall in 10 s, but a sustained oscillation of about **2.4 Hz** (pitch zero crossings) with amplitude about 23 deg: pitch at 1 s, 2 s, ...: −13.9, 21.2, −23.0, 23.4, −23.7, −19.9, 23.0, 11.9, 1.7 deg (the first printout skipped one second). Reason printed: `\|pitch\| reached 30.252 deg between 5.0 and 10.0 s (limit 2.0 deg)`. Velocity reached 2.05 m/s, 1.41 m/s at 10 s |
+| I | FAIL | The push **was applied**: a 98.7 deg/s jump in `pitch_rate` at 2.016 s (the first end-to-end run of SimPlant's impulse). Then an oscillation of about 2.6 Hz grew and the robot fell: `\|pitch\| reached 35.0 deg 4.514 s after it` (6.514 s after release). Before the push the pitch was exactly 0 (exact equilibrium) |
+| V | FAIL | Step to 0.1 m/s at 1.043 s; an oscillation of about 2.7 Hz grew; peak mean velocity 2.08 m/s (overshoot 1977 %); `\|pitch\| reached 35.0 deg 6.694 s after release (5.651 s after the step)` |
+| S2b | ok | U with `pitch_sign:=1`: `\|pitch\| reached 35.0 deg 0.194 s after release` (limit 1.0 s); the linear model's ~0.2 s |
+| AB | ok | As-built signs: the slow drift, pitch at 1 s, 2 s, ...: −0.03, 0.17, 0.75, 0.88, 1.14, 2.05, 4.25, 9.10, 21.2 deg, then lying at 60 deg; **fell at 9.400 s** (stage 4 saw 9.34 to 9.42 s). Velocity −0.65 m/s at 8 s, −1.46 m/s at 9 s: it runs away in one direction |
+
+So with `encoder_sign:=-1` the failure is the growing ~2.4-2.7 Hz pitch oscillation the linear model
+predicts (it puts the pair at ~3.5 Hz; the difference is not explained), and U, at 10 s, is a large
+bounded-looking oscillation rather than a fall (the diagnosis run before this stage, with the same
+signs, fell at about 10.8 s; U's record ends at 10 s). With the as-built signs the failure is the slow one-way run-away of H-12.
+Two different failures, each where the analysis put it.
+
+**Deliberate breaks** (scratch copies in the container's `/tmp/brk`, never in the repo; each run alone
+with `verify_sim.sh scenarios <name>`):
+
+| Break | Result |
+| --- | --- |
+| S2b without the flip (`pitch_sign:=-1`) | `SCENARIO S2b: FAIL: U failed, but not by a fast fall within 1.0 s (fell_at_s: None)`, exit 1: S2b refuses a failure for the wrong reason |
+| AB with `disable_torque:=true` | `SCENARIO AB: FAIL: fell 0.449 s after release, sooner than 3.0 s: not the slow run-away of H-12`, exit 1 |
+| I with the push size 0 | `SCENARIO I: FAIL ...: no push seen: the largest pitch_rate jump near 2.0 s was 0.0 deg/s (need >= 80)`, exit 1 |
+| V with `command_timeout_s:=0.001` (the watchdog zeroes nearly every command) | `FAIL ...: overshoot 572.4 %`: **not a clean break** (a few commands still got through, and with these gains any kick grows), so it was replaced by the next row |
+| V with the fake gamepad on a topic nobody reads (a scratch copy of `scenario_checks.py`) | `SCENARIO V: FAIL ...: the mean measured velocity did not reach 0.09 m/s within 3.0 s of the step`, exit 1 (the robot stood exactly still) |
+| U from exactly upright (`U_START_DEG=0.0`) | `SCENARIO U: PASS`, `SCENARIOS: PASS (exit 0)`: the pass branch and exit 0 work, and a start at exactly 0 passes trivially, which is why U starts at 2 deg |
+
+U's own red needs no break: it is red now. The pass branches of I and V, and the `COULD NOT JUDGE` /
+exit 2 path of the scenarios mode, were **not** exercised.
+
+**C3 is flaky (an observation, not caused by this stage).** In the default run `C3` failed with
+`command_timed_out went True while commands were still arriving` (the flag went True 1.03 s into the 2 s
+drive and False again 8 ms later). Run alone 3 more times it passed, failed (`True 0.003 s after the last
+command`, with 40 commands taking 2.15 s instead of 1.95 s), and passed. Both failures fit a gap of 200
+ms or more in the fake gamepad's publishing or its delivery, the same kind of gap check `FF` already notes
+for its publishers. The C3 code is unchanged since `23c1117` (`git diff 23c1117 -- sim/scenario_checks.py`
+shows additions only). Not investigated; recorded in the ladder. So the default run is **not** green on
+this commit, for a reason outside this stage's change.
 
 ## Review rounds
 
@@ -191,6 +246,9 @@ critical-path file changed, so `realtime-auditor` is not required.
 - **The robot's signs** (proposal 0006): the two-step check of sim-plant.md §2.4. Until it is done, the
   scenarios' `encoder_sign:=-1` is an assumption, and AB's fall says nothing about the robot.
 - Everything the model omits (sim-plant.md §6) and every estimated parameter (§4).
+- The pass branches of scenarios I and V (only U's was seen, from an exactly upright start), and the
+  scenarios mode's `COULD NOT JUDGE` / exit 2 path.
+- Why `C3` is flaky in the container (2 of 4 runs failed on 2026-11-03).
 
 ## Reproduce
 
@@ -214,4 +272,13 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 - (a) diagnosis, H-12, proposal 0006: the commit that adds this file. It already carries the plan for
   (b) and the threshold table above, written before (b) was committed; the code in (b) implements that
   table.
-- (b) scenarios and thresholds: not yet made when this version of the entry was written.
+- (a) is `6ea1355`.
+- (b) scenarios and thresholds: **`0b0e39b`, thresholds committed before tuning.**
+- `9101fc0`: printouts only (see *Verification*).
+- (c) the results above, the ladder, next-steps row 2.3 and the two skills' status lines: the commit
+  that adds this section.
+
+**Why the run stopped here:** the stage's task list is done (scenarios first, no tuning). Next, for
+whoever picks it up: the reviewers listed under *Review rounds*; the C3 flake; then tuning the **sim**
+gains against U, I, V under the labelled `encoder_sign:=-1` assumption, inner loop first
+(`tune-gains`), with the ±30 % sweep and held-out scenarios before any claim.
