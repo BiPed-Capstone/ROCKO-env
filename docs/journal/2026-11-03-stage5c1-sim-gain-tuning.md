@@ -338,8 +338,8 @@ Observed:      see sections 3 and 4
   parameters are estimates ([sim-plant.md §4](../architecture/sim-plant.md)); the encoder sign is an
   assumption (proposal 0006); the 20 ms IMU delay is an estimate.
 - **The held-out set in the sim** (`tune-gains`: another initial pitch, ±20 % on mass and friction, one
-  more control period of delay) and the ±30 % sweep of sim-plant.md §4.3: not run in the nonlinear
-  sim. Only the screen's 30 ms column and the linear margins speak to robustness.
+  more control period of delay): not run in the nonlinear sim. The ±30 % sweep of sim-plant.md §4.3
+  was run afterwards, in [stage 5c-2](2026-11-03-stage5c2-sweep.md).
 - **The sim-to-real gap for these gains** (sim-plant.md §6). Optimistic in the sim: the gyro has no
   noise, so a pitch d ten times the hardware value costs nothing here, while on a robot it multiplies
   gyro noise into the wheel command; no backlash, no software-PWM aliasing, no battery sag (the gain

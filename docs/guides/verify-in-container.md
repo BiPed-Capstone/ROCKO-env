@@ -322,6 +322,17 @@ the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md) and, for t
 [stage 5c-1 journal](../journal/2026-11-03-stage5c1-sim-gain-tuning.md). The results are about a model with
 estimated parameters and an assumed encoder sign (`encoder_sign:=-1`, proposal 0006), not the robot.
 
+The ±30 % robustness sweep runs U, I and V on a changed model (about 35 minutes; use a new `--stem` so
+the committed results in `sim/results/` are not appended to):
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 python3 /ros2_ws/src/ROCKO-env/sim/parameter_sweep.py run --stem /tmp/sweep/mine
+```
+
+It ends with `parameter_sweep: wrote ... (25 cases, 125 runs): FAIL n, MARGINAL n, PASS n` and a
+markdown table next to the CSV. What the cases are and what the last run found:
+[stage 5c-2 journal](../journal/2026-11-03-stage5c2-sweep.md).
+
 To run the plant's own unit test (no ROS, any machine with a C++17 compiler; from the repo root):
 
 ```bash

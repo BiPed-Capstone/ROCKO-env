@@ -78,3 +78,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-03 | [Stage 5: find why the model drifts off (finding H-12), and write the balance scenarios before any tuning](2026-11-03-stage5-balance-in-sim.md) |
 | 2026-11-03 | [Find why checks C3 and FF are flaky, and make them judge send times](2026-11-03-c3-ff-flaky-checks.md) |
 | 2026-11-03 | [Stage 5c-1: tune the sim gains until scenarios U, I, V pass (thresholds unchanged)](2026-11-03-stage5c1-sim-gain-tuning.md) |
+| 2026-11-03 | [Stage 5c-2: the ±30 % robustness sweep of the sim gains (mass, centre-of-mass height, motor gain, IMU delay)](2026-11-03-stage5c2-sweep.md) |

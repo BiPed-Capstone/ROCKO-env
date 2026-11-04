@@ -653,6 +653,18 @@ scenario at ±30 % of four estimates, all combinations (16 corners, plus nominal
 | Motor gain | `motor_stall_torque_Nm` (scales `K_u` and `K_ω` together) | 0.542 – 1.007 N·m |
 | IMU delay | `imu_delay_ms` | 14 – 26 ms |
 
+`imu_delay_ms` is a whole number of milliseconds (sub-steps are 1 ms), so 14 and 26 ms are exact,
+not rounded to a control period. The body's inertia follows `body_mass_kg` (a uniform box) but not
+`com_height_m`.
+
+**The sweep is a script:** [`sim/parameter_sweep.py`](../../sim/parameter_sweep.py) (stage 5c-2). It
+runs U and I once and V three times per case (the nominal model, each parameter alone at −30 % and
++30 %, and the 16 corners), through `verify_sim.sh scenarios` with its committed thresholds and the
+model changed by `SIM_PLANT_OVERRIDES` (the four parameters above are launch arguments of
+`rocko_sim.launch.py`, defaulting to the table in §4.1). It writes a CSV and a markdown table with
+the linear model's prediction for each case. The last results and what they mean:
+[stage 5c-2 journal](../journal/2026-11-03-stage5c2-sweep.md). S2b and AB are not part of the sweep.
+
 The [`tune-gains`](../../.claude/skills/tune-gains/SKILL.md) held-out set (different initial pitch,
 ±20 % on mass and wheel friction, one extra control period of sensor delay) still applies on top.
 

@@ -282,5 +282,7 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 whoever picks it up: the reviewers listed under *Review rounds*; the C3 flake; then tuning the **sim**
 gains against U, I, V under the labelled `encoder_sign:=-1` assumption, inner loop first
 (`tune-gains`), with the ±30 % sweep and held-out scenarios before any claim. The tuning was done in
-[stage 5c-1](2026-11-03-stage5c1-sim-gain-tuning.md): U, I and V pass with sim gains, thresholds unchanged; the
-held-out runs in the sim are still to do.
+[stage 5c-1](2026-11-03-stage5c1-sim-gain-tuning.md): U, I and V pass with sim gains, thresholds unchanged. The
+±30 % sweep was run in [stage 5c-2](2026-11-03-stage5c2-sweep.md): no case fell, U and I pass in all 25, V fails
+systematically in one corner (heavy, tall, weak motor, long delay) and otherwise only on noisy single runs. The
+rest of the held-out set (friction, another start) is still to do.
