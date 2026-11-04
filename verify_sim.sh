@@ -242,7 +242,7 @@ V_STEP_S=8.0           # [s] the step is held this long (the gamepad keeps sendi
 V_RISE_FRACTION=0.9    # 90 % of the step
 V_RISE_S=3.0           # [s after the step] to reach 90 %. A balancing robot must first lean the
                        #   other way, then accelerate; 3 s to reach a slow walk is the slowest that
-                       #   still reads as "following" (a 10 s slow mode would take ~20 s and fail)
+                       #   still reads as "following"
 V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x the step
 V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degree in steady state; 10
                        #   deg is far below the 35 deg trip and equals the re-arm band (H-4)
@@ -774,7 +774,9 @@ rounded() { awk '/^-?[0-9.]+([eE][-+]?[0-9]+)?$/ {printf "%.3f\n", $1; next} {pr
 scenario_reason() { metric "$dir/metrics.json" reason; }
 
 # scenario_launch_problems: what is wrong with the run itself (not the robot's behaviour): the wiring
-# before the check ended, and the release. Fills `failures`.
+# before the check ended, and the release. HIDDEN SHARED VARIABLES: it reads `problems` and `dir`
+# (set by wait_for_wiring and new_run) and appends to the caller's `failures` array, which the caller
+# must declare first (`local failures=(); scenario_launch_problems`).
 scenario_launch_problems() {
   [ ${#problems[@]} -ne 0 ] && failures+=("the wiring was not right: ${problems[*]}")
   grep -q "releasing the simulated robot" "$dir/launch.log" \
@@ -897,6 +899,10 @@ if [ "$mode" = scenarios ]; then
   wants S2b && scenario_s2b
   wants AB && scenario_as_built
   echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN assumed for U, I, V, S2b; AB uses +1):"
+  echo "  (ok = the check behaved as designed: S2b ok means U failed for the right reason; AB ok means the robot fell slowly as H-12 predicts)"
+  if [ "$SCENARIOS_EXPECTED_RED" -eq 1 ]; then
+    echo "  (red U/I/V are expected until the sim gains are tuned; red S2b or AB is not)"
+  fi
   for s in $selected; do echo "  ${scenario_line[$s]}"; done
   echo "  A pass would mean: the model, with its estimated parameters and the assumed signs, is held up by"
   echo "  these gains. It would say nothing about the real robot."

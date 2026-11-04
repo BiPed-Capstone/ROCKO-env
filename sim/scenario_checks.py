@@ -511,6 +511,18 @@ def check_pitch_rate(args):
 #   "[ros2_control_node-1] [INFO] [1793667068.42] [SimRocko]: SimPlant: ... releasing the simulated robot"
 RELEASE_LINE = re.compile(r"\[INFO\] \[(\d+\.\d+)\].*releasing the simulated robot")
 
+# Rules of thumb for judging the samples (they are not pass thresholds; those are verify_sim.sh's):
+# a push counts as "seen" if the rate jump is at least this fraction of the commanded push, since
+# the 100 Hz samples may straddle it.
+PUSH_SEEN_FRACTION = 0.8
+# Where to look for the push's rate jump, around the launch's impulse_time_s [s after release]:
+# a little before (the clocks differ slightly) and longer after (the samples arrive late).
+PUSH_WINDOW_S = (-0.05, 0.1)
+# The plant stream must start this soon after the release, or the start of the run was missed.
+MAX_FIRST_SAMPLE_S = 0.5
+# The last sample may stop this far short of the record length (one 100 Hz period is 0.01 s).
+END_SLACK_S = 0.05
+
 
 def release_stamp(launch_log):
     """The epoch-seconds stamp of SimPlant's release line, or None if it is not in the log yet."""
@@ -525,8 +537,8 @@ def release_stamp(launch_log):
     return None
 
 
-def record_from_release(rec, args, topic="/dynamic_joint_states", during=None):
-    """Spin until --record s of plant samples after the release have arrived. Returns (release
+def record_from_release(rec, args, record_s, topic="/dynamic_joint_states", during=None):
+    """Spin until record_s s of plant samples after the release have arrived. Returns (release
     stamp or None, samples), samples = [(t_s after release, pitch_deg, pitch_rate_deg_s,
     mean measured wheel velocity m/s)]; pitch and rate are left_wheel_joint's (one IMU feeds both
     joints). during(t_s) is called while spinning with the latest sample's time (for publishing)."""
@@ -549,13 +561,13 @@ def record_from_release(rec, args, topic="/dynamic_joint_states", during=None):
             samples.append((stamp_s(msg) - release, left.get("pitch", math.nan),
                             left.get("pitch_rate", math.nan), v))
 
-    end = time.monotonic() + args.record + args.wait
+    end = time.monotonic() + record_s + args.wait
     while time.monotonic() < end:
         rec.spin_for(0.02)
         collect_new()
         if during:
             during(samples[-1][0] if samples else None)
-        if samples and samples[-1][0] >= args.record:
+        if samples and samples[-1][0] >= record_s:
             break
     return release, [s for s in samples if s[0] >= 0.0]
 
@@ -569,15 +581,16 @@ def write_samples(out_dir, samples):
             writer.writerow([f"{s[0]:.4f}", repr(s[1]), repr(s[2]), repr(s[3])])
 
 
-def coverage_problem(samples, args):
-    """Why the samples cannot be judged (they must start within 0.5 s of the release and reach
-    --record), or None."""
+def coverage_problem(samples, args, record_s):
+    """Why the samples cannot be judged (they must start within MAX_FIRST_SAMPLE_S of the release
+    and reach record_s), or None."""
     if len(samples) < args.min_samples:
         return f"only {len(samples)} plant samples after the release (need {args.min_samples})"
-    if samples[0][0] > 0.5:
-        return f"the first sample came {samples[0][0]:.2f} s after the release (need <= 0.5 s)"
-    if samples[-1][0] < args.record - 0.05:
-        return f"the samples stop {samples[-1][0]:.2f} s after the release (need {args.record} s)"
+    if samples[0][0] > MAX_FIRST_SAMPLE_S:
+        return (f"the first sample came {samples[0][0]:.2f} s after the release "
+                f"(need <= {MAX_FIRST_SAMPLE_S} s)")
+    if samples[-1][0] < record_s - END_SLACK_S:
+        return f"the samples stop {samples[-1][0]:.2f} s after the release (need {record_s} s)"
     return None
 
 
@@ -586,13 +599,14 @@ def fell_at(samples, tipover_deg):
     return next((s[0] for s in samples if abs(s[1]) >= tipover_deg), None)
 
 
-def scenario_start(args, extra_subscriptions=()):
-    return Recorder([("/dynamic_joint_states", DynamicJointState, DEPTH), *extra_subscriptions])
+def nearest(samples, t_s):
+    """The sample whose time is closest to t_s."""
+    return min(samples, key=lambda s: abs(s[0] - t_s))
 
 
 def check_upright(args):
-    rec = scenario_start(args)
-    release, samples = record_from_release(rec, args)
+    rec = Recorder([("/dynamic_joint_states", DynamicJointState, DEPTH)])
+    release, samples = record_from_release(rec, args, args.record)
     rec.destroy_node()
     if release is None:
         return finish(args.out, {}, COULD_NOT_JUDGE,
@@ -608,7 +622,7 @@ def check_upright(args):
         "max_abs_pitch_after_settle_from_deg": max((abs(s[1]) for s in settled), default=math.nan),
         "max_abs_speed_after_settle_from_m_s": max((abs(s[3]) for s in settled), default=math.nan),
         # The sample nearest each whole second (1, 2, ...), for a quick look at the trend.
-        "pitch_at_1s_intervals_deg": [round(min(samples, key=lambda s: abs(s[0] - k))[1], 3)
+        "pitch_at_1s_intervals_deg": [round(nearest(samples, k)[1], 3)
                                       for k in range(1, int(args.record) + 1)] if samples else [],
         "record_s": args.record, "settle_from_s": args.settle_from,
         "settled_pitch_deg": args.settled_pitch_deg, "max_speed_m_s": args.max_speed_m_s,
@@ -624,7 +638,7 @@ def check_upright(args):
         return finish(args.out, metrics, FAIL,
                       f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s "
                       f"after release (the robot fell)")
-    problem = coverage_problem(samples, args)
+    problem = coverage_problem(samples, args, args.record)
     if problem:
         return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
     worst_pitch = metrics["max_abs_pitch_after_settle_from_deg"]
@@ -643,8 +657,8 @@ def check_upright(args):
 
 
 def check_impulse(args):
-    rec = scenario_start(args)
-    release, samples = record_from_release(rec, args)
+    rec = Recorder([("/dynamic_joint_states", DynamicJointState, DEPTH)])
+    release, samples = record_from_release(rec, args, args.record)
     rec.destroy_node()
     if release is None:
         return finish(args.out, {}, COULD_NOT_JUDGE,
@@ -653,7 +667,7 @@ def check_impulse(args):
     # The push: the largest one-sample jump in the exported pitch_rate (undelayed, sim-plant.md
     # §3.7) near the push time. Exported rate jumps by +impulse_deg_s whatever pitch_sign is (§5).
     near = [(b[0], b[2] - a[2]) for a, b in zip(samples, samples[1:])
-            if args.impulse_time_s - 0.05 <= b[0] <= args.impulse_time_s + 0.1]
+            if args.impulse_time_s + PUSH_WINDOW_S[0] <= b[0] <= args.impulse_time_s + PUSH_WINDOW_S[1]]
     jump_t, jump = max(near, key=lambda x: x[1], default=(None, math.nan))
     fell = fell_at(samples, args.tipover_deg)
     after = [s for s in samples if s[0] >= args.impulse_time_s]
@@ -682,17 +696,18 @@ def check_impulse(args):
         return finish(args.out, metrics, FAIL,
                       f"the pitch diverged before the push: |pitch| reached {args.tipover_deg} deg "
                       f"{fell:.3f} s after release")
-    if not jump >= 0.8 * args.impulse_deg_s:
-        if fell is None and coverage_problem(samples, args):
-            return finish(args.out, metrics, COULD_NOT_JUDGE, coverage_problem(samples, args))
+    if not jump >= PUSH_SEEN_FRACTION * args.impulse_deg_s:
+        if fell is None and coverage_problem(samples, args, args.record):
+            return finish(args.out, metrics, COULD_NOT_JUDGE,
+                          coverage_problem(samples, args, args.record))
         return finish(args.out, metrics, FAIL,
                       f"no push seen: the largest pitch_rate jump near {args.impulse_time_s} s was "
-                      f"{jump:.1f} deg/s (need >= {0.8 * args.impulse_deg_s:g})")
+                      f"{jump:.1f} deg/s (need >= {PUSH_SEEN_FRACTION * args.impulse_deg_s:g})")
     if fell is not None:
         return finish(args.out, metrics, FAIL,
                       f"the pitch diverged after the push: |pitch| reached {args.tipover_deg} deg "
                       f"{fell - args.impulse_time_s:.3f} s after it (the robot fell)")
-    problem = coverage_problem(samples, args)
+    problem = coverage_problem(samples, args, args.record)
     if problem:
         return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
     if settle_s > args.settle_within_s:
@@ -708,7 +723,7 @@ def check_impulse(args):
 def check_velocity_step(args):
     flag_topic = "/diff_drive_controller/command_timed_out"
     latched = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-    rec = scenario_start(args, [(flag_topic, Bool, latched)])
+    rec = Recorder([("/dynamic_joint_states", DynamicJointState, DEPTH), (flag_topic, Bool, latched)])
     gamepad = rec.create_publisher(TwistStamped, "/diffbot_base_controller/cmd_vel", 10)
     command = TwistStamped()
     state = {"next": time.monotonic(), "step_wall_s": None, "published": 0}
@@ -728,8 +743,8 @@ def check_velocity_step(args):
         gamepad.publish(command)
         state["published"] += 1
 
-    args.record = args.before_s + args.step_s
-    release, samples = record_from_release(rec, args, during=publish)
+    record_s = args.before_s + args.step_s  # this scenario's length is the sum, not --record
+    release, samples = record_from_release(rec, args, record_s, during=publish)
     flags = [m.data for _, m in rec.received[flag_topic]]
     rec.destroy_node()
     if release is None:
@@ -771,7 +786,7 @@ def check_velocity_step(args):
         return finish(args.out, metrics, FAIL,
                       f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s after "
                       f"release ({fell - step_t:.3f} s after the step; the robot fell)")
-    problem = coverage_problem(samples, args)
+    problem = coverage_problem(samples, args, record_s)
     if problem:
         return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
     if rise_s is None or rise_s > args.rise_within_s:
