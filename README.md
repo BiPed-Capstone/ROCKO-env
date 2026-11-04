@@ -137,7 +137,7 @@ ROCKO-env
 ├── sim/sim_probe.py                Records the simulated pitch for verify_sim.sh (container)
 ├── sim/scenario_checks.py          The H4, C3, C2, H6 and FF checks of verify_sim.sh, and its balance scenarios: `check_upright`, `check_impulse`, `check_velocity_step` (container)
 ├── sim/cascade_linearisation.py    Laptop, standard library only: linearises the cascade and the plant model to explain the slow drift (finding H-12); not run by any verify script
-├── sim/check_sim_config.py         Fails if the sim controller YAML's wiring or the sim settings' defaults drift from the hardware YAML / the physics header (run by verify_urdf.sh)
+├── sim/check_sim_config.py         Fails if the sim controller YAML's wiring, an untuned gain or the sim settings' defaults drift from the hardware YAML / the physics header (run by verify_urdf.sh)
 ├── joystick/computer_joystick.py   Runs on YOUR laptop, not the robot. Sends gamepad input over TCP
 ├── rocko_env/                      The main package
 │   ├── CMakeLists.txt, package.xml     Build config and dependency list

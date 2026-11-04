@@ -5,14 +5,21 @@ verify_urdf.sh runs it. It fails when two files that must agree have drifted apa
 
   1. WIRING. rocko_sim_controllers.yaml must equal rocko_controllers.yaml in everything except the
      `gains` maps (controller names, types, dof_names, command and state interfaces, update_rate).
-     Sim gains may differ; the wiring may not, or the sim would test a different cascade than the
-     robot runs. Values are compared with their type: 100 and 100.0 differ. The only exceptions are
+     The gains are the next check; the wiring may not differ, or the sim would test a different
+     cascade than the robot runs. Values are compared with their type: 100 and 100.0 differ. The only exceptions are
      the entries of INTENTIONAL_WIRING_DIFFERENCES, each allowed only with exactly the two values
      it names; an entry whose values no longer match either file fails, so it cannot go stale.
-  2. GAINS STRUCTURE. A `gains` map also holds wiring and behaviour switches, so in each file the
-     keys of a controller's `gains` must be exactly its `dof_names` (a joint with no entry silently
-     gets p = i = d = 0), and every key under `gains` except the tunable numbers (TUNABLE_GAINS) must
-     be equal in the two files (an added `angle_wraparound: true` is a different controller).
+  2. GAINS. A `gains` map also holds wiring and behaviour switches, so in each file the keys of a
+     controller's `gains` must be exactly its `dof_names` (a joint with no entry silently gets
+     p = i = d = 0), and every key under `gains` must be equal in the two files (an added
+     `angle_wraparound: true` is a different controller; a changed clamp is a different limit),
+     except the few gains listed in SIM_TUNED_GAINS: those are the gains tuned against the
+     simulator (stage 5c-1), and only they may differ. Until 2026-11-03 every p, i, d and clamp
+     could differ unchecked, so a gain changed in either file passed silently. Each entry pins the
+     hardware value it was tuned away from, so a change to that gain in rocko_controllers.yaml fails
+     here as well (the sim gains were tuned against a cascade that no longer matches the robot's
+     file), and in the sim file a tuned gain must be a finite number, the same for every joint of
+     the controller (the analysis in cascade_linearisation.py treats the two wheels as one loop).
   3. DEFAULTS. A simulator setting's default is written in up to three places:
        SimPlantParams in SimPlantModel.hpp  (used by the unit test),
        <xacro:arg> in rocko.urdf.xacro      (used by the plugin: the real source of truth),
@@ -54,10 +61,6 @@ except ImportError:
 XACRO_NS = "{http://www.ros.org/wiki/xacro}"
 # The xacro args that are not simulator settings.
 NON_SIM_XACRO_ARGS = {"prefix", "use_mock_hardware", "use_sim_plant"}
-# The numbers of a `gains` entry that a person tunes. The sim file may change these; every other key
-# under `gains` (angle_wraparound, antiwindup, ...) changes how the controller behaves and must match.
-TUNABLE_GAINS = {"p", "i", "d", "i_clamp_max", "i_clamp_min", "u_clamp_max", "u_clamp_min",
-                 "feedforward_gain"}
 
 CONFIG = "rocko_env/rocko_env/bringup/config"
 HEADER = "rocko_env/rocko_env/hardware/sim/include/rocko_env/SimPlantModel.hpp"
@@ -154,11 +157,30 @@ def gains_of(controllers):
     return found
 
 
+# The gains tuned against the simulator, as {(controller, gain key): its value in
+# rocko_controllers.yaml when the tuning started}. Only these may differ between the two files; every
+# other number under `gains` must be equal. Why each is here: docs/journal/2026-11-03-stage5c1-sim-gain-tuning.md
+# (the sweep in sim/cascade_linearisation.py --sweep picked them). Keep this list as short as the
+# tuning allows: every entry is a gain the sim tests at a value the robot does not run. If a hardware
+# value is changed on purpose (a proposal applied), update the pinned value here in the same commit.
+SIM_TUNED_GAINS = {
+    ("pitch_pid_controller", "p"): 10.0,
+    ("pitch_pid_controller", "d"): 0.1,
+    ("velocity_pid_controller", "p"): 2.0,
+    ("velocity_pid_controller", "i"): 5.0,
+}
+
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
 def check_gains(root):
     problems = []
-    tunable_free = {}
+    settings = {}  # file -> {flattened key: value} for every gains key except SIM_TUNED_GAINS
+    tuned = {}  # file -> {(controller, key): [value for each dof]}
     for file_name in ("rocko_controllers.yaml", "rocko_sim_controllers.yaml"):
-        side = {}
+        side, tuned_side = {}, {}
         for controller, entry in gains_of(load_controllers(root, file_name)).items():
             gains = entry["gains"]
             if not isinstance(gains, dict):
@@ -173,13 +195,41 @@ def check_gains(root):
                     problems.append(f"{file_name}: {controller} gains for {dof} is not a map")
                     continue
                 for key, value in numbers.items():
-                    if key not in TUNABLE_GAINS:
+                    if (controller, key) in SIM_TUNED_GAINS:
+                        tuned_side.setdefault((controller, key), []).append((dof, value))
+                    else:
                         side[f"/{controller}/gains/{dof}/{key}"] = value
-        tunable_free[file_name] = side
-    problems += differences(tunable_free["rocko_controllers.yaml"],
-                            tunable_free["rocko_sim_controllers.yaml"], "gains setting")
+        settings[file_name], tuned[file_name] = side, tuned_side
+    problems += differences(settings["rocko_controllers.yaml"],
+                            settings["rocko_sim_controllers.yaml"], "gains setting")
+
+    for (controller, key), pinned in SIM_TUNED_GAINS.items():
+        hardware = tuned["rocko_controllers.yaml"].get((controller, key), [])
+        sim = tuned["rocko_sim_controllers.yaml"].get((controller, key), [])
+        if not hardware or not sim:
+            problems.append(f"SIM_TUNED_GAINS lists {controller} `{key}`, but "
+                            f"{'rocko_controllers.yaml' if not hardware else 'rocko_sim_controllers.yaml'} "
+                            "has no such gain: remove the entry or restore the gain")
+            continue
+        for dof, value in hardware:
+            if repr(value) != repr(pinned):
+                problems.append(
+                    f"rocko_controllers.yaml changed {controller} `{key}` for {dof}: {value!r}, but the "
+                    f"sim gains were tuned against {pinned!r} (SIM_TUNED_GAINS). A hardware gain change "
+                    "is a human decision in a proposal; if it was made on purpose, update the pinned "
+                    "value and re-run the sim scenarios")
+        bad = [(dof, value) for dof, value in sim if not is_number(value)]
+        for dof, value in bad:
+            problems.append(f"rocko_sim_controllers.yaml: {controller} `{key}` for {dof} is {value!r}, "
+                            "not a finite number")
+        if not bad and len({repr(value) for _, value in sim}) != 1:
+            problems.append(f"rocko_sim_controllers.yaml: {controller} `{key}` differs between joints "
+                            f"({', '.join(f'{dof}: {value!r}' for dof, value in sim)}); one loop, one gain")
+    differing = sorted(f"{c} {k}" for (c, k), pinned in SIM_TUNED_GAINS.items()
+                       if any(repr(v) != repr(pinned) for _, v in tuned["rocko_sim_controllers.yaml"].get((c, k), [])))
     return problems, ("each controller's `gains` keys are its dof_names in both files; every gains "
-                      "key except the tunable numbers is equal")
+                      f"number is equal except the {len(SIM_TUNED_GAINS)} in SIM_TUNED_GAINS (hardware "
+                      f"values as pinned); sim differs from hardware in: {', '.join(differing) or 'none'}")
 
 
 # ---- 3. defaults ---------------------------------------------------------------------------------

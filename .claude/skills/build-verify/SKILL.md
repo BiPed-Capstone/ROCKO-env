@@ -129,8 +129,8 @@ result, **and asserts what is inside**: `mock=false` holds the real plugins
 no `mock_components`; `mock=true` holds exactly one `MockRocko` system and no real motor plugin;
 `sim=true` holds exactly one `SimPlant` (`SimRocko`) and nothing else, with the mock on or off; tank
 mode ignores `use_sim_plant` by design and must still hold the two real motor plugins and no `SimPlant`.
-It also runs `sim/check_sim_config.py`, which fails when the sim controller YAML's wiring or a
-simulator setting's default drifts from the hardware YAML or from the other places it is written
+It also runs `sim/check_sim_config.py`, which fails when the sim controller YAML's wiring, a gain
+not listed in its `SIM_TUNED_GAINS`, or a simulator setting's default drifts from the hardware YAML or from the other places it is written
 (its exit 1 is drift, exit 2 is "could not run"; the script says which).
 Success is twelve `ok` lines at the left margin (seven expansions, four interface-parity lines against
 the real hardware, and the config check, which prints four more, indented) and `PASS`. The assertions are the point: `check_urdf` alone passes

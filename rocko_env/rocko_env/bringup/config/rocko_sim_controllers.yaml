@@ -7,12 +7,13 @@
 # to rocko_controllers.yaml is a human decision, made in a proposal and checked by a tethered test
 # (.claude/skills/tune-gains/SKILL.md).
 #
-# Starting point: a copy of rocko_controllers.yaml with the same controller names, types, wiring and,
-# for now, the same gain values as the hardware file on 2026-10-31. The WIRING must stay identical:
+# Starting point: a copy of rocko_controllers.yaml with the same controller names, types, wiring and
+# gain values as the hardware file on 2026-10-31. The WIRING must stay identical:
 # sim/check_sim_config.py (run by verify_urdf.sh) fails if anything except the `gains` maps differs
 # from rocko_controllers.yaml, apart from the one difference it lists by name
 # (INTENTIONAL_WIRING_DIFFERENCES: pitch_pid_controller's D term from the gyro rate, finding H-6).
-# The gains may differ once someone tunes against the simulator.
+# The GAINS must be identical too, except the ones listed in SIM_TUNED_GAINS in that script: only
+# those may be tuned here, and the script also fails if their hardware values change.
 # ==================================================================================================
 controller_manager:
   ros__parameters:

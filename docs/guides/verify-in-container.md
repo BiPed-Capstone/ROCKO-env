@@ -142,7 +142,8 @@ off, exactly one `MockRocko` system when it is on, exactly one `SimPlant` system
 for the sim. Finally it checks the mock, and the sim, export **exactly the same interfaces** (joints,
 sensors and gpio, duplicates included) as the real hardware, so neither can quietly drift from the
 robot. A last step runs `sim/check_sim_config.py`, which fails if `rocko_sim_controllers.yaml` differs
-from `rocko_controllers.yaml` in anything but the gain numbers, or if a simulator setting's default is
+from `rocko_controllers.yaml` in anything but the few gains listed in its `SIM_TUNED_GAINS` (the
+gains tuned against the simulator; it also fails if their hardware values change), or if a simulator setting's default is
 not the same in `SimPlantModel.hpp`, `rocko.urdf.xacro` and `rocko_sim.launch.py` (it also checks that
 every `<param>` is wired to the xacro arg of its own name). Exit 1 from it is drift; exit 2 means it
 could not run (for example PyYAML is missing), and `verify_urdf.sh` says which. The
