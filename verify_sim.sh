@@ -109,6 +109,12 @@
 # Scenarios exit status: 0 only if U, I and V pass AND S2b and AB are ok; 1 if any is not; 2 if a run
 # could not be judged and nothing failed. While SCENARIOS_EXPECTED_RED=1 a failing U, I or V is
 # printed "FAIL (expected until the sim gains are tuned)", but it still counts: the exit status is 1.
+# Two environment variables, both empty by default and read only in scenarios mode, exist for the
+# robustness sweep (sim/parameter_sweep.py, sim-plant.md §4.3). Neither changes a threshold:
+#   SIM_PLANT_OVERRIDES="body_mass_kg:=1.4 imu_delay_ms:=26"  added to every scenario launch. Only
+#        the four estimates the sweep varies (SWEEPABLE below) may be named, with a plain number, so
+#        an override cannot change a scenario's own settings (encoder_sign, initial_pitch_deg, ...).
+#   SCENARIO_METRICS_DIR=<dir>  each scenario's metrics.json is copied there as <name>.json.
 #
 # No `set -e`: grep and timeout are EXPECTED to "fail" while we wait for things to come up.
 set -uo pipefail
@@ -125,6 +131,20 @@ for c in $selected; do
   [[ " $known " == *" $c "* ]] || { echo "ERROR: unknown $mode name '$c' (known: $known)" >&2; exit 2; }
 done
 wants() { [[ " $selected " == *" $1 "* ]]; }
+
+# SIM_PLANT_OVERRIDES (see the header): checked before anything starts.
+SWEEPABLE="body_mass_kg com_height_m motor_stall_torque_Nm imu_delay_ms"
+read -r -a overrides <<<"${SIM_PLANT_OVERRIDES:-}"
+if [ ${#overrides[@]} -ne 0 ] && [ "$mode" != scenarios ]; then
+  echo "ERROR: SIM_PLANT_OVERRIDES is only for 'verify_sim.sh scenarios'; the default checks' limits assume the default model." >&2
+  exit 2
+fi
+for o in ${overrides[@]+"${overrides[@]}"}; do
+  if ! [[ "$o" =~ ^([A-Za-z_]+):=[0-9]+(\.[0-9]+)?$ ]] || [[ " $SWEEPABLE " != *" ${BASH_REMATCH[1]} "* ]]; then
+    echo "ERROR: SIM_PLANT_OVERRIDES entry '$o' is not name:=number with a name from: $SWEEPABLE" >&2
+    exit 2
+  fi
+done
 
 # --- Timing. Generous bounds, as in verify_mock.sh; bring-up time in the container is not measured.
 STARTUP_TIMEOUT=45   # s to wait for every controller to become active
@@ -399,9 +419,11 @@ could_not=0
 # new_run <label>: the run's name ($label) and its directory ($dir), for everything below.
 new_run() { label="$1"; dir="$out/$label"; mkdir -p "$dir"; }
 # launch <launch args...>: announce the run and start rocko_sim.launch.py.
+# SIM_PLANT_OVERRIDES (scenarios mode only, checked above) come after the run's own arguments.
 launch() {
-  echo "=== $label: rocko_sim.launch.py $*"
-  start_group "$dir/launch.log" ros2 launch rocko_env rocko_sim.launch.py "$@"
+  local args=("$@" ${overrides[@]+"${overrides[@]}"})
+  echo "=== $label: rocko_sim.launch.py ${args[*]}"
+  start_group "$dir/launch.log" ros2 launch rocko_env rocko_sim.launch.py "${args[@]}"
 }
 # zero_reference: a velocity reference of 0, so velocity_pid_controller (and so the whole cascade)
 # computes. Published at 20 Hz, not once: a single message sent before the controller subscribes
@@ -768,6 +790,9 @@ scenario_report() {
   esac
   scenario_line[$name]="SCENARIO $name: $verdict$suffix: $text"
   echo "  ${scenario_line[$name]}"
+  if [ -n "${SCENARIO_METRICS_DIR:-}" ] && [ -f "$dir/metrics.json" ]; then
+    cp "$dir/metrics.json" "$SCENARIO_METRICS_DIR/$name.json"
+  fi
 }
 # rounded: a number on stdin to 3 decimals (seconds to the ms); anything else (None, empty) unchanged.
 rounded() { awk '/^-?[0-9.]+([eE][-+]?[0-9]+)?$/ {printf "%.3f\n", $1; next} {print}'; }
@@ -894,6 +919,7 @@ verdict_of() { case "$1" in 0) echo PASS ;; 1) echo FAIL ;; *) echo "COULD NOT J
 if [ "$mode" = scenarios ]; then
   echo "SCENARIOS ($selected). ASSUMPTION for U, I, V, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN (not checked on"
   echo "the robot; proposal 0006). Gains: rocko_sim_controllers.yaml as it is. A model with ESTIMATED parameters."
+  [ ${#overrides[@]} -ne 0 ] && echo "MODEL CHANGED for this run (SIM_PLANT_OVERRIDES): ${overrides[*]}"
   wants U && scenario_upright
   wants I && scenario_impulse
   wants V && scenario_velocity_step

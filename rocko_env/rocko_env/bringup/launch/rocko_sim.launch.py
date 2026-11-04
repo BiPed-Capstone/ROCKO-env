@@ -31,7 +31,8 @@ from launch_ros.substitutions import FindPackageShare
 # description/urdf/rocko.urdf.xacro (verify_urdf.sh runs sim/check_sim_config.py, which fails if
 # one differs). Scenario and fault settings are all OFF by default; times count
 # from the moment the robot is released (when the controllers first command both wheels).
-# The physical estimates (masses, motor figures, ...) are not listed here: change them in the xacro.
+# Of the physical estimates, only the four the robustness sweep varies (sim-plant.md §4.3,
+# sim/parameter_sweep.py) are listed, with today's values as defaults; change the others in the xacro.
 SIM_ARGUMENTS = {
     # name: (default, description)
     "initial_pitch_deg": ("0.0", "Starting lean [deg], as the controllers will read it."),
@@ -43,6 +44,9 @@ SIM_ARGUMENTS = {
     "pitch_sign": ("-1", "Assumption: -1 = a positive wheel command makes the pitch go up."),
     "encoder_sign": ("1", "Assumption: 1 = the encoder reads positive when a positive command drives the robot."),
     "imu_delay_ms": ("20", "IMU delay [ms] (an estimate)."),
+    "body_mass_kg": ("2.0", "Body mass without the wheels [kg] (an estimate)."),
+    "com_height_m": ("0.20", "Axle to body centre of mass [m] (an estimate)."),
+    "motor_stall_torque_Nm": ("0.774725", "Each motor's stall torque at 12 V [N m] (an estimate; scales the motor gain)."),
     "model_encoder_node": ("true", "true: copy QuadEncoders.py, including its halved speed (finding U-2)."),
 }
 

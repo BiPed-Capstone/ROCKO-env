@@ -74,16 +74,25 @@ I_stall, I_nl = 9.2, 0.25  # [A]
 V_bat = V_rated = 12.0  # [V]
 MAX_CODE = (1150 // 60) * 2.0 * math.pi  # [rad/s] 119.381, Motor12VoltQuadEncoder.hpp's integer division (U-3)
 
-I_w = 2 * 0.5 * m_w * r ** 2  # [kg m^2] both wheels, solid discs
-I_b = m_b * (h_b ** 2 + d_b ** 2) / 12.0  # [kg m^2] uniform box about its centre
-a11 = (2 * m_w + m_b) * r ** 2 + I_w
-a12 = m_b * r * l
-a22 = m_b * l ** 2 + I_b
-D = a11 * a22 - a12 ** 2
-K_u = 2 * N_b * tau_stall * V_bat / (V_rated * MAX_CODE)  # [N m per rad/s of command], both motors
-K_w = 2 * N_b ** 2 * tau_stall / w_noload  # [N m s/rad] back-EMF, both motors
-b = 2 * N_b ** 2 * (tau_stall / I_stall) * I_nl / w_noload  # [N m s/rad] viscous friction, both
-c = K_w + b  # [N m s/rad]
+
+def derive_plant():
+    """Everything that follows from the estimates above, as module-level names. A function only so
+    that set_plant() (the robustness sweep, sim/parameter_sweep.py) can change m_b, l or tau_stall
+    and recompute; it runs once, right here, with the defaults."""
+    global I_w, I_b, a11, a12, a22, D, K_u, K_w, b, c
+    I_w = 2 * 0.5 * m_w * r ** 2  # [kg m^2] both wheels, solid discs
+    I_b = m_b * (h_b ** 2 + d_b ** 2) / 12.0  # [kg m^2] uniform box about its centre
+    a11 = (2 * m_w + m_b) * r ** 2 + I_w
+    a12 = m_b * r * l
+    a22 = m_b * l ** 2 + I_b
+    D = a11 * a22 - a12 ** 2
+    K_u = 2 * N_b * tau_stall * V_bat / (V_rated * MAX_CODE)  # [N m per rad/s of command], both motors
+    K_w = 2 * N_b ** 2 * tau_stall / w_noload  # [N m s/rad] back-EMF, both motors
+    b = 2 * N_b ** 2 * (tau_stall / I_stall) * I_nl / w_noload  # [N m s/rad] viscous friction, both
+    c = K_w + b  # [N m s/rad]
+
+
+derive_plant()
 
 # Encoder replica constants, copied from QuadEncoders.py (:39 alpha, :71 the assumed 0.01 s).
 ENC_ALPHA = 0.05
@@ -271,6 +280,19 @@ def zoh(tau):
     if tau not in _ZOH_CACHE:
         _ZOH_CACHE[tau] = _zoh(tau)
     return _ZOH_CACHE[tau]
+
+
+def set_plant(body_mass_kg, com_height_m, motor_stall_torque_Nm):
+    """Replace three estimates (SimPlant's parameters of the same names) and recompute every number
+    derived from them, including the one-cycle plant matrices. For the +/-30 % robustness sweep
+    (sim-plant.md §4.3, sim/parameter_sweep.py). As in SimPlant, the body's inertia follows its mass
+    (uniform box) but not its centre-of-mass height, and the stall torque scales K_u, K_w and b
+    together. Call set_plant(2.0, 0.20, 0.774725) to go back to the defaults."""
+    global m_b, l, tau_stall, PHI, GAM
+    m_b, l, tau_stall = body_mass_kg, com_height_m, motor_stall_torque_Nm
+    derive_plant()
+    _ZOH_CACHE.clear()
+    PHI, GAM = zoh(T)
 
 
 def linear_write(u):
