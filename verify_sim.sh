@@ -73,13 +73,47 @@
 # On anything but PASS the run directory (launch logs, probe output for each run) is KEPT, and its
 # path inside the container is printed: it is the evidence of the failure.
 #
+# THE BALANCE SCENARIOS (bootstrap-sim step 7) are a SEPARATE MODE, never part of the default run:
+#   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
+#   ... verify_sim.sh scenarios U S2b      (only some, any of U I V S2b AB)
+# The default run above checks plumbing and safeguards and must stay green; the scenarios ask whether
+# the controllers HOLD the simulated robot, which with the current gains they do not. Kept apart so a
+# red scenario never hides a red plumbing check, and a green plumbing run never claims balance.
+#   U    hold upright: initial_pitch_deg:=U_START_DEG, zero velocity reference, U_RECORD_S. PASS if
+#        |pitch| never reaches TIPOVER_DEG and, from U_SETTLE_FROM_S on, |pitch| <= U_SETTLED_DEG and
+#        the mean measured wheel speed <= U_MAX_SPEED_M_S.
+#   I    recover from a push: upright start, SimPlant's impulse (I_IMPULSE_DEG_S added to the lean rate
+#        at I_IMPULSE_AT_S after release). PASS if the push shows in pitch_rate, |pitch| never reaches
+#        TIPOVER_DEG, and |pitch| is back under I_SETTLED_DEG within I_SETTLE_S and stays there.
+#   V    follow a velocity step: teleop:=true, a fake gamepad (the C3 path) sends linear.x = 0, then
+#        V_STEP_M_S. PASS if the mean measured wheel velocity reaches V_RISE_FRACTION of the step
+#        within V_RISE_S, overshoots by at most V_OVERSHOOT_PCT, and |pitch| stays under V_PITCH_DEG.
+#   S2b  the verifier's own check: U again with pitch_sign:=+1 (the pitch loop's sign flipped). U must
+#        FAIL, and for the right reason: the wiring is up and |pitch| reaches TIPOVER_DEG within
+#        S2B_FALL_S of release. S2b is "ok" only then.
+#   AB   characterisation, "as-built signs": U with encoder_sign:=+1 (the sim's default, the
+#        authors' intent) for AB_RECORD_S. EXPECTED TO FALL by the slow run-away of finding H-12 (the
+#        outer loop is positive feedback at DC for any positive velocity gains). "ok" if it falls no
+#        sooner than AB_MIN_FALL_S; the time to fall is printed. A run that does NOT fall is a FAIL:
+#        the signs or the gains changed, and finding H-12's docs must be revisited.
+# U, I, V and S2b run with encoder_sign:=SCENARIO_ENCODER_SIGN, an ASSUMPTION (see its comment).
+# Scenarios exit status: 0 only if U, I and V pass AND S2b and AB are ok; 1 if any is not; 2 if a run
+# could not be judged and nothing failed. While SCENARIOS_EXPECTED_RED=1 a failing U, I or V is
+# printed "FAIL (expected until the sim gains are tuned)", but it still counts: the exit status is 1.
+#
 # No `set -e`: grep and timeout are EXPECTED to "fail" while we wait for things to come up.
 set -uo pipefail
 
 ALL_CHECKS="S1 S2a H4 C3 C2 H6 FF"
-selected="${*:-$ALL_CHECKS}"
+ALL_SCENARIOS="U I V S2b AB"
+mode=checks
+known="$ALL_CHECKS"
+if [ "${1:-}" = scenarios ]; then
+  mode=scenarios; known="$ALL_SCENARIOS"; shift
+fi
+selected="${*:-$known}"
 for c in $selected; do
-  [[ " $ALL_CHECKS " == *" $c "* ]] || { echo "ERROR: unknown check '$c' (known: $ALL_CHECKS)" >&2; exit 2; }
+  [[ " $known " == *" $c "* ]] || { echo "ERROR: unknown $mode name '$c' (known: $known)" >&2; exit 2; }
 done
 wants() { [[ " $selected " == *" $1 "* ]]; }
 
@@ -147,6 +181,64 @@ FF_MARGIN_S=0.3        # [s] allowed lateness after FF_AGE_S: one 10 ms cycle, p
 FF_LOG_GAP_S=1.0       # [s] kTimeoutLogMinCycles (100) at update_rate 100: after a logged time-out,
                        #   the next one is counted but not logged for this long. A delivery gap
                        #   this close before the kill can hide the kill's line: FF cannot judge then
+
+# --- Scenario thresholds (`verify_sim.sh scenarios`): the ONE place they are written. COMMITTED
+# BEFORE ANY TUNING (stage 5 journal, docs/journal/2026-11-03-stage5-balance-in-sim.md): change one
+# only with a reason written here and in the journal, never to make a run pass. Frames and signs:
+# pitch [deg] is the EXPORTED pitch the controllers read (0 = upright; the sign convention of
+# sim-plant.md §2.4; limits are on |pitch|, so either sign). "Measured wheel velocity" [m/s] is the
+# exported `velocity` state the velocity loop reads, averaged over both wheels: about HALF the true
+# speed (finding U-2) and signed by encoder_sign. Times [s] count from SimPlant's release (its
+# "releasing the simulated robot" log line), the zero its own impulse time uses. Sizes were checked
+# against sim/cascade_linearisation.py's linear model at one stable point of its C3 map (pitch d 0.3,
+# velocity p 8; NOT a gain recommendation): they are reachable by a working loop, not tailored to one.
+SCENARIOS_EXPECTED_RED=1  # 1 until the commit that first makes U, I and V pass; set it to 0 there.
+                          #   Only changes the wording of a FAIL; the exit status is 1 either way
+SCENARIO_ENCODER_SIGN=-1  # ASSUMPTION, NOT CHECKED ON THE ROBOT: the encoder reads NEGATIVE when a
+                          #   positive wheel command drives the robot. Chosen because with every gain
+                          #   positive it is the only encoder sign under which the outer loop can be
+                          #   negative feedback (finding H-12; sim-plant.md §2.4); the sim default (+1,
+                          #   the authors' intent) is kept in AB. Every scenario result carries this
+                          #   label. Proposal 0006 asks a human to settle the real sign
+U_START_DEG=2.0        # [deg] U's initial pitch: small, the size used by C2 and H6; from exactly 0 the
+                       #   model's equilibrium is exact (unit test #10) and nothing would happen
+U_RECORD_S=10          # [s] "hold upright for 10 s" (bootstrap-sim step 7)
+U_SETTLE_FROM_S=5      # [s] U judges its last 5 s: a working loop settles a 2 deg offset well inside
+                       #   5 s (the linear model's stable point: < 0.02 deg after 5 s), while the
+                       #   slow run-aways seen so far (time constants 1-10 s) are large by then
+U_SETTLED_DEG=2.0      # [deg] after settling the robot may lean no more than it started: a loop that
+                       #   ends up leaning further than its 2 deg start is not holding it
+U_MAX_SPEED_M_S=0.05   # [m/s, measured, so ~0.1 m/s true] told to stand still, it must not roll off.
+                       #   Half V's step; a stage 3 run with the as-built signs read -2.0 m/s at 10 s
+TIPOVER_SCENARIO_DEG=$TIPOVER_DEG  # [deg] a fall: H-4's cutoff angle (35), the point of no return
+I_IMPULSE_AT_S=2.0     # [s] the push comes 2 s after release, with the robot standing still at
+                       #   exactly upright (no other disturbance in I)
+I_IMPULSE_DEG_S=100    # [deg/s] added once to the lean rate (sim-plant.md §5: exported pitch_rate
+                       #   jumps by +100). The linear model's stable point peaks at 3.4 deg, so it
+                       #   is large enough that "back under 2 deg" means something, and far from 35
+I_SETTLED_DEG=2.0      # [deg] the same "settled" lean as U
+I_SETTLE_S=3.0         # [s after the push] back under I_SETTLED_DEG this soon (and stays): the linear
+                       #   model's stable point needs 0.6 s, so 3 s is a generous bound
+I_RECORD_S=8           # [s after release] 6 s after the push: twice I_SETTLE_S, to see it stay
+V_STEP_M_S=0.1         # [m/s] linear.x of the step, a slow walk. DiffDriveController makes it the
+                       #   velocity reference of both wheels (and a feedforward of 0.1/r rad/s); the
+                       #   loop drives the MEASURED velocity to it, so the true speed is ~0.2 m/s (U-2)
+V_BEFORE_S=1.0         # [s after release] linear.x = 0 this long, then the step
+V_STEP_S=8.0           # [s] the step is held this long (the gamepad keeps sending, 20 Hz, so the
+                       #   C-3 watchdog never fires)
+V_RISE_FRACTION=0.9    # 90 % of the step
+V_RISE_S=3.0           # [s after the step] to reach 90 %. A balancing robot must first lean the
+                       #   other way, then accelerate; 3 s to reach a slow walk is the slowest that
+                       #   still reads as "following" (a 10 s slow mode would take ~20 s and fail)
+V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x the step
+V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degree in steady state; 10
+                       #   deg is far below the 35 deg trip and equals the re-arm band (H-4)
+S2B_FALL_S=1.0         # [s] with the pitch loop's sign flipped the linear model diverges at ~20 /s
+                       #   (1.218 per cycle, sim-plant.md §7.2): 2 -> 35 deg in ~0.2 s. 1.0 s is
+                       #   generous and far below AB_MIN_FALL_S, so a slow drift cannot pass for it
+AB_RECORD_S=20         # [s] long enough to see the as-built fall (9.3-10.0 s observed so far)
+AB_MIN_FALL_S=3.0      # [s] AB must fall by a slow run-away (linear model: a real pole at +0.82 /s),
+                       #   not at once: a fall before 3 s would be a different fault
 
 WS="${ROS2_WS:-$HOME/ros2_ws}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -625,6 +717,160 @@ check_feedforward_age() {
   note_tipover
   judge "$status" "${failures[@]}"
 }
+
+# ---- The balance scenarios (mode `scenarios`) ----------------------------------------------------
+scenario_failed=0
+scenario_could_not=0
+declare -A scenario_line  # name -> one-line result, printed again at the end
+# scenario_report <name> <ok|FAIL|COULD NOT JUDGE> <text>: print and remember one scenario result.
+scenario_report() {
+  local name="$1" verdict="$2" text="$3" suffix=""
+  case "$verdict" in
+    FAIL) scenario_failed=1
+          if [ "$SCENARIOS_EXPECTED_RED" -eq 1 ] && [[ " U I V " == *" $name "* ]]; then
+            suffix=" (expected until the sim gains are tuned)"
+          fi ;;
+    "COULD NOT JUDGE") scenario_could_not=1 ;;
+  esac
+  scenario_line[$name]="SCENARIO $name: $verdict$suffix: $text"
+  echo "  ${scenario_line[$name]}"
+}
+# scenario_reason: the check's one-line reason from metrics.json.
+scenario_reason() { metric "$dir/metrics.json" reason; }
+
+# scenario_launch_problems: what is wrong with the run itself (not the robot's behaviour): the wiring
+# before the check ended, and the release. Fills `failures`.
+scenario_launch_problems() {
+  [ ${#problems[@]} -ne 0 ] && failures+=("the wiring was not right: ${problems[*]}")
+  grep -q "releasing the simulated robot" "$dir/launch.log" \
+    || failures+=("SimPlant never released the robot")
+}
+
+# run_upright <label> <record s> <launch args...>: one launch with the U check. Sets $check_status.
+run_upright() {
+  new_run "$1"; local record="$2"; shift 2
+  start_check upright --launch-log "$dir/launch.log" --record "$record" \
+    --tipover-deg "$TIPOVER_SCENARIO_DEG" --settle-from "$U_SETTLE_FROM_S" \
+    --settled-pitch-deg "$U_SETTLED_DEG" --max-speed-m-s "$U_MAX_SPEED_M_S"
+  local pid="$check_pid"
+  launch teleop:=false initial_pitch_deg:="$U_START_DEG" "$@"
+  zero_reference
+  wait_for_wiring
+  wait "$pid"; check_status=$?
+  sed 's/^/    /' "$dir/check.log"
+  note_tipover
+}
+
+scenario_upright() {
+  run_upright "U-upright" "$U_RECORD_S" encoder_sign:="$SCENARIO_ENCODER_SIGN"
+  local failures=(); scenario_launch_problems
+  if [ ${#failures[@]} -ne 0 ]; then scenario_report U "COULD NOT JUDGE" "${failures[*]}"
+  else scenario_report U "$(verdict_of "$check_status")" "$(scenario_reason)"; fi
+  end_run
+}
+
+scenario_impulse() {
+  new_run "I-impulse"
+  start_check impulse --launch-log "$dir/launch.log" --record "$I_RECORD_S" \
+    --tipover-deg "$TIPOVER_SCENARIO_DEG" --impulse-time-s "$I_IMPULSE_AT_S" \
+    --impulse-deg-s "$I_IMPULSE_DEG_S" --settle-within-s "$I_SETTLE_S" \
+    --settled-pitch-deg "$I_SETTLED_DEG"
+  local pid="$check_pid"
+  launch teleop:=false encoder_sign:="$SCENARIO_ENCODER_SIGN" \
+    impulse_time_s:="$I_IMPULSE_AT_S" impulse_angular_velocity_deg_per_s:="$I_IMPULSE_DEG_S"
+  zero_reference
+  wait_for_wiring
+  wait "$pid"; local status=$?
+  sed 's/^/    /' "$dir/check.log"
+  note_tipover
+  local failures=(); scenario_launch_problems
+  if [ ${#failures[@]} -ne 0 ]; then scenario_report I "COULD NOT JUDGE" "${failures[*]}"
+  else scenario_report I "$(verdict_of "$status")" "$(scenario_reason)"; fi
+  end_run
+}
+
+scenario_velocity_step() {
+  new_run "V-velocity-step"
+  start_check velocity-step --launch-log "$dir/launch.log" --tipover-deg "$TIPOVER_SCENARIO_DEG" \
+    --speed-m-s "$V_STEP_M_S" --before-s "$V_BEFORE_S" --step-s "$V_STEP_S" \
+    --rise-fraction "$V_RISE_FRACTION" --rise-within-s "$V_RISE_S" \
+    --max-overshoot-pct "$V_OVERSHOOT_PCT" --max-pitch-deg "$V_PITCH_DEG"
+  local pid="$check_pid"
+  # teleop:=true: the real DiffDriveController.py turns the fake gamepad into the velocity reference
+  # and the feedforwards, as on the robot (no zero_reference here).
+  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN"
+  wait_for_wiring
+  wait "$pid"; local status=$?
+  sed 's/^/    /' "$dir/check.log"
+  note_tipover
+  local failures=(); scenario_launch_problems
+  if [ ${#failures[@]} -ne 0 ]; then scenario_report V "COULD NOT JUDGE" "${failures[*]}"
+  else scenario_report V "$(verdict_of "$status")" "$(scenario_reason)"; fi
+  end_run
+}
+
+# S2b: U with the pitch loop's sign flipped (pitch_sign:=+1 flips the sign of the pitch the
+# controllers read, which is the same as negating both pitch gains, without a second gain file).
+scenario_s2b() {
+  run_upright "S2b-sign-flipped" "$U_RECORD_S" encoder_sign:="$SCENARIO_ENCODER_SIGN" pitch_sign:=1
+  local failures=(); scenario_launch_problems
+  local fell; fell="$(metric "$dir/metrics.json" fell_at_s)"
+  if [ ${#failures[@]} -ne 0 ]; then
+    scenario_report S2b "COULD NOT JUDGE" "${failures[*]}"
+  elif [ "$check_status" -eq 0 ]; then
+    scenario_report S2b FAIL "U PASSED with the pitch loop's sign flipped: the scenario cannot see a sign error"
+  elif [ "$check_status" -ne 1 ]; then
+    scenario_report S2b "COULD NOT JUDGE" "U could not judge: $(scenario_reason)"
+  elif [ -z "$fell" ] || [ "$fell" = None ] || ! awk -v f="$fell" -v m="$S2B_FALL_S" 'BEGIN {exit !(f <= m)}'; then
+    scenario_report S2b FAIL "U failed, but not by a fast fall within $S2B_FALL_S s (fell_at_s: ${fell:-none}): $(scenario_reason)"
+  else
+    scenario_report S2b ok "U failed for the right reason: the pitch diverged, |pitch| reached $TIPOVER_SCENARIO_DEG deg $fell s after release (limit $S2B_FALL_S s)"
+  fi
+  end_run
+}
+
+# AB: the as-built signs (encoder_sign:=+1, the sim's default), expected to fall slowly.
+scenario_as_built() {
+  run_upright "AB-as-built-signs" "$AB_RECORD_S" encoder_sign:=1
+  local failures=(); scenario_launch_problems
+  local fell; fell="$(metric "$dir/metrics.json" fell_at_s)"
+  if [ ${#failures[@]} -ne 0 ]; then
+    scenario_report AB "COULD NOT JUDGE" "${failures[*]}"
+  elif [ -z "$fell" ] || [ "$fell" = None ]; then
+    if [ "$check_status" -eq 2 ]; then
+      scenario_report AB "COULD NOT JUDGE" "$(scenario_reason)"
+    else
+      scenario_report AB FAIL "did NOT fall in $AB_RECORD_S s, but finding H-12 predicts it must: the signs or gains changed; revisit H-12 and this expectation"
+    fi
+  elif ! awk -v f="$fell" -v m="$AB_MIN_FALL_S" 'BEGIN {exit !(f >= m)}'; then
+    scenario_report AB FAIL "fell $fell s after release, sooner than $AB_MIN_FALL_S s: not the slow run-away of H-12"
+  else
+    scenario_report AB ok "fell as expected (finding H-12): |pitch| reached $TIPOVER_SCENARIO_DEG deg $fell s after release"
+  fi
+  end_run
+}
+
+# verdict_of <check exit status>: the word scenario_report takes.
+verdict_of() { case "$1" in 0) echo PASS ;; 1) echo FAIL ;; *) echo "COULD NOT JUDGE" ;; esac; }
+
+if [ "$mode" = scenarios ]; then
+  echo "SCENARIOS ($selected). ASSUMPTION for U, I, V, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN (not checked on"
+  echo "the robot; proposal 0006). Gains: rocko_sim_controllers.yaml as it is. A model with ESTIMATED parameters."
+  wants U && scenario_upright
+  wants I && scenario_impulse
+  wants V && scenario_velocity_step
+  wants S2b && scenario_s2b
+  wants AB && scenario_as_built
+  echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN assumed for U, I, V, S2b; AB uses +1):"
+  for s in $selected; do echo "  ${scenario_line[$s]}"; done
+  echo "  A pass would mean: the model, with its estimated parameters and the assumed signs, is held up by"
+  echo "  these gains. It would say nothing about the real robot."
+  if [ "$scenario_failed" -ne 0 ]; then echo "SCENARIOS: FAIL (exit 1)"; exit 1; fi
+  if [ "$scenario_could_not" -ne 0 ]; then echo "SCENARIOS: COULD NOT JUDGE (exit 2)"; exit 2; fi
+  passed=1
+  echo "SCENARIOS: PASS (exit 0)"
+  exit 0
+fi
 
 wants S1 && run "S1-baseline" - still "$S1_STILL_DEG"
 wants S1 && run "S1-command" "$FEEDFORWARD_RAD_S" change "$S1_CHANGE_DEG"

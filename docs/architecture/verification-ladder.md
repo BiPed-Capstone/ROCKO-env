@@ -59,7 +59,7 @@ The exact commands, expected output and failure modes are in the
 | 0 | Static | `verify_urdf.sh` (container); `.claude/hooks/test-guard-protected-files.sh`, `.githooks/test-git-hooks.sh` (laptop) | **Works.** Needs a Tier 1 build first (`verify_urdf.sh`), which now checks seven expansions and the sim config's drift. The git hooks it tests are not installed in this clone until [proposal 0002](../proposals/0002-unattended-run-settings.md) item E |
 | 1 | Build | `build_ros.sh` (container) | **Works** off-Pi, *without* the motor plugin (which only the [compile-only check](#the-compile-only-check-for-the-motor-plugin-not-a-tier) looks at); exits 1 when the build fails. **The Pi build (flag `OFF`) has not been run** since the CMake change |
 | 2 | Mock | `verify_mock.sh`, `verify_mock.sh tank` (container) | **Works**; shown to fail on deliberate breaks |
-| 3 | Simulation | `verify_sim.sh` (container; needs a Tier 1 build first). The plant is `rocko_env/SimPlant`, described in [sim-plant.md](sim-plant.md) | **Partly built. Tier 3 is NOT called built.** Two of the checks that define "built" exist and pass: S1 (the real cascade runs against the simulated robot and pitch responds to the wheels) and S2a (with no motor torque the simulated robot falls). Four checks of the stage 4 safeguards also exist and pass: H4 (the tipover cutoff), C3 (the teleop watchdog), C2 (an IMU outage, and what `controller_manager` does after the resulting `ERROR`) and H6 (the pitch PID's D term reads the gyro rate). S2b (a copy of the upright scenario with one sign flipped must fail) and the upright, impulse and velocity-step scenarios **do not exist yet**. The plant's parameters are estimates, not measurements, so every result is about the model and says nothing about the robot. [ADR 0003](../decisions/0003-simulation-target.md) is still `Proposed` (it names Gazebo; `SimPlant` was built first) |
+| 3 | Simulation | `verify_sim.sh` (container; needs a Tier 1 build first). The plant is `rocko_env/SimPlant`, described in [sim-plant.md](sim-plant.md) | **Partly built. Tier 3 is NOT called built.** Two of the checks that define "built" exist and pass: S1 (the real cascade runs against the simulated robot and pitch responds to the wheels) and S2a (with no motor torque the simulated robot falls). Four checks of the stage 4 safeguards also exist and pass: H4 (the tipover cutoff), C3 (the teleop watchdog), C2 (an IMU outage, and what `controller_manager` does after the resulting `ERROR`) and H6 (the pitch PID's D term reads the gyro rate). The upright, impulse and velocity-step scenarios and S2b (the upright scenario with the pitch loop's sign flipped must fail) **exist since stage 5 (2026-11-03)**, in a separate mode, `verify_sim.sh scenarios`, with thresholds committed before any tuning; **with the gains as they are, the three scenarios are expected to fail** (the linear model says the hardware gains hold the model with neither encoder sign; results in the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md)), so Tier 3 is still not called built. A fifth scenario, AB, keeps finding H-12 (the outer loop's sign problem under the as-built signs) visible as an expected fall. The plant's parameters are estimates, not measurements, so every result is about the model and says nothing about the robot. [ADR 0003](../decisions/0003-simulation-target.md) is still `Proposed` (it names Gazebo; `SimPlant` was built first) |
 | 4 | Robot | A person, tethered | **Human only.** Not something an agent can run or observe |
 
 Before any tier that uses the container, `check_container_mount.sh` (run on the laptop) says whether
@@ -138,6 +138,36 @@ wheel commands claimed. The robot is held still until the cascade first commands
 *release hold* blind spot below), so the clock of a run starts there. In S1 command and S2a the robot
 falls past 35 deg, so the tipover cutoff trips; the run prints a note, and neither check depends on it,
 because the fall is already under way when it trips.
+
+#### The balance scenarios: `verify_sim.sh scenarios` (a separate mode, expected red for now)
+
+The checks above ask whether the plumbing and the safeguards work. The scenarios ask whether the
+controllers **hold the simulated robot up** (`bootstrap-sim` step 7). They are a separate mode, never
+part of the default run, so a red scenario cannot hide a red plumbing check and a green default run
+never claims balance:
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios U S2b   # only some
+```
+
+Five launches: **U** (hold upright 10 s from a 2 deg start), **I** (recover from a 100 deg/s push to the
+lean rate), **V** (follow a 0.1 m/s velocity step sent through the real `DiffDriveController.py`), **S2b**
+(U with the pitch loop's sign flipped, `pitch_sign:=1`: it must fail by the pitch diverging within 1 s)
+and **AB** (U with the as-built signs, `encoder_sign:=1`: a characterisation of finding H-12, expected to
+fall by the slow run-away, no sooner than 3 s; its time to fall is printed). U, I, V and S2b run with
+`encoder_sign:=-1`, an **assumption** printed with every result (proposal 0006 asks a human for the real
+sign). The thresholds, and why each is what it is, are in one place, the scenario block at the top of
+`verify_sim.sh`; the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md) has them as a
+table, committed before any tuning. Each run writes `samples.csv` (pitch, pitch rate and mean measured
+velocity against time since release) and `metrics.json`.
+
+Each scenario prints `SCENARIO <name>: PASS`, `FAIL` or `COULD NOT JUDGE` (S2b and AB print `ok` when they
+behave as expected). Exit 0 only if U, I and V pass and S2b and AB are `ok`; 1 if any is not; 2 if a run
+could not be judged and none failed. Until the sim gains are tuned, a failing U, I or V prints
+`FAIL (expected until the sim gains are tuned)` (the switch is `SCENARIOS_EXPECTED_RED` in the script), and
+the exit status is still 1. **With the gains as they are, U, I and V are expected to fail**: that is the
+starting point the thresholds were written against, not a broken check. Results: the stage 5 journal.
 
 ### The host unit test of the plant model (not a tier)
 

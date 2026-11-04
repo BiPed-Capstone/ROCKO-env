@@ -21,14 +21,37 @@ Each subcommand is one check. It listens (and, for `teleop`, publishes), writes 
                 uses) is finite, clearly non-zero, equal to the plant's exported pitch_rate in the
                 same control cycle, and error_dot == -feedback_dot.
 
+The three balance scenarios (`verify_sim.sh scenarios`, bootstrap-sim step 7). Each records
+/dynamic_joint_states from the moment SimPlant releases the robot (the stamp of its "releasing the
+simulated robot" line in --launch-log; t = 0 there, the same zero SimPlant's own impulse time uses)
+and writes samples.csv as well as metrics.json:
+    upright        U. PASS if, for --record s after release, |pitch| never reaches --tipover-deg,
+                   and from --settle-from s to the end |pitch| <= --settled-pitch-deg and the mean
+                   measured wheel speed |v| <= --max-speed-m-s. verify_sim.sh also uses it for S2b
+                   and AB, judging metrics.json's fell_at_s itself.
+    impulse        I. PASS if the push SimPlant applies at --impulse-time-s shows as a jump of at
+                   least 80 % of --impulse-deg-s in the exported pitch_rate, |pitch| never reaches
+                   --tipover-deg, and within --settle-within-s of the push |pitch| is back under
+                   --settled-pitch-deg and stays there to the end of --record.
+    velocity-step  V. Plays the gamepad (as `teleop` does) through the real DiffDriveController:
+                   linear.x = 0 for --before-s, then a step to --speed-m-s held for --step-s. PASS if
+                   the mean measured wheel velocity reaches --rise-fraction of the step within
+                   --rise-within-s, overshoots it by at most --max-overshoot-pct, |pitch| stays
+                   under --max-pitch-deg, and never reaches --tipover-deg.
+"Measured wheel velocity" is the exported `velocity` state [m/s] the velocity loop itself reads (the
+mean of the two wheels). With model_encoder_node it is about HALF the true speed (finding U-2), and
+its sign is encoder_sign times the direction a positive command drives the robot (sim-plant.md §2.4).
+
 The thresholds are passed in by verify_sim.sh, which says why each one is what it is. These are
 results about a MODEL with ESTIMATED parameters. They say nothing about the real robot.
 """
 
 import argparse
+import csv
 import json
 import math
 import os
+import re
 import sys
 import time
 
@@ -394,6 +417,288 @@ def check_pitch_rate(args):
                   f"|feedback_dot| {max_rate:.3g} deg/s) and error_dot == -feedback_dot")
 
 
+# ---- The balance scenarios: U, I, V (bootstrap-sim step 7) -------------------------------------
+# SimPlant's log line when it releases the robot, e.g.
+#   "[ros2_control_node-1] [INFO] [1793667068.42] [SimRocko]: SimPlant: ... releasing the simulated robot"
+RELEASE_LINE = re.compile(r"\[INFO\] \[(\d+\.\d+)\].*releasing the simulated robot")
+
+
+def release_stamp(launch_log):
+    """The epoch-seconds stamp of SimPlant's release line, or None if it is not in the log yet."""
+    try:
+        with open(launch_log, errors="replace") as f:
+            for line in f:
+                m = RELEASE_LINE.search(line)
+                if m:
+                    return float(m.group(1))
+    except OSError:
+        pass
+    return None
+
+
+def record_from_release(rec, args, topic="/dynamic_joint_states", during=None):
+    """Spin until --record s of plant samples after the release have arrived. Returns (release
+    stamp or None, samples), samples = [(t_s after release, pitch_deg, pitch_rate_deg_s,
+    mean measured wheel velocity m/s)]; pitch and rate are left_wheel_joint's (one IMU feeds both
+    joints). during(t_s) is called while spinning with the latest sample's time (for publishing)."""
+    deadline = time.monotonic() + args.wait
+    release = None
+    while release is None and time.monotonic() < deadline:
+        rec.spin_for(0.1)
+        release = release_stamp(args.launch_log)
+        if during:
+            during(None)
+    if release is None:
+        return None, []
+    samples = []
+
+    def collect_new():
+        while rec.received[topic]:
+            _, msg = rec.received[topic].pop(0)
+            left, right = joint_values(msg, JOINTS[0]), joint_values(msg, JOINTS[1])
+            v = 0.5 * (left.get("velocity", math.nan) + right.get("velocity", math.nan))
+            samples.append((stamp_s(msg) - release, left.get("pitch", math.nan),
+                            left.get("pitch_rate", math.nan), v))
+
+    end = time.monotonic() + args.record + args.wait
+    while time.monotonic() < end:
+        rec.spin_for(0.02)
+        collect_new()
+        if during:
+            during(samples[-1][0] if samples else None)
+        if samples and samples[-1][0] >= args.record:
+            break
+    return release, [s for s in samples if s[0] >= 0.0]
+
+
+def write_samples(out_dir, samples):
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "samples.csv"), "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["t_after_release_s", "pitch_deg", "pitch_rate_deg_s", "mean_velocity_m_s"])
+        for s in samples:
+            writer.writerow([f"{s[0]:.4f}", repr(s[1]), repr(s[2]), repr(s[3])])
+
+
+def coverage_problem(samples, args):
+    """Why the samples cannot be judged (they must start within 0.5 s of the release and reach
+    --record), or None."""
+    if len(samples) < args.min_samples:
+        return f"only {len(samples)} plant samples after the release (need {args.min_samples})"
+    if samples[0][0] > 0.5:
+        return f"the first sample came {samples[0][0]:.2f} s after the release (need <= 0.5 s)"
+    if samples[-1][0] < args.record - 0.05:
+        return f"the samples stop {samples[-1][0]:.2f} s after the release (need {args.record} s)"
+    return None
+
+
+def fell_at(samples, tipover_deg):
+    """The first time [s after release] |pitch| reached tipover_deg, or None."""
+    return next((s[0] for s in samples if abs(s[1]) >= tipover_deg), None)
+
+
+def scenario_start(args, extra_subscriptions=()):
+    return Recorder([("/dynamic_joint_states", DynamicJointState, DEPTH), *extra_subscriptions])
+
+
+def check_upright(args):
+    rec = scenario_start(args)
+    release, samples = record_from_release(rec, args)
+    rec.destroy_node()
+    if release is None:
+        return finish(args.out, {}, COULD_NOT_JUDGE,
+                      f"no 'releasing the simulated robot' line in the launch log within {args.wait} s")
+    write_samples(args.out, samples)
+    fell = fell_at(samples, args.tipover_deg)
+    settled = [s for s in samples if s[0] >= args.settle_from]
+    metrics = {
+        "samples": len(samples), "release_stamp_s": release,
+        "start_pitch_deg": samples[0][1] if samples else None,
+        "fell_at_s": fell,
+        "max_abs_pitch_deg": max((abs(s[1]) for s in samples), default=math.nan),
+        "max_abs_pitch_after_settle_from_deg": max((abs(s[1]) for s in settled), default=math.nan),
+        "max_abs_speed_after_settle_from_m_s": max((abs(s[3]) for s in settled), default=math.nan),
+        "pitch_at_1s_intervals_deg": [round(s[1], 3) for s in samples
+                                      if abs(s[0] - round(s[0])) < 0.005],
+        "record_s": args.record, "settle_from_s": args.settle_from,
+        "settled_pitch_deg": args.settled_pitch_deg, "max_speed_m_s": args.max_speed_m_s,
+        "tipover_deg": args.tipover_deg,
+        "last_stamp_s": release + samples[-1][0] if samples else None,
+    }
+    print(f"scenario_checks: {len(samples)} samples after release; start pitch "
+          f"{metrics['start_pitch_deg']} deg; max |pitch| {metrics['max_abs_pitch_deg']:.3f} deg; "
+          f"|pitch| >= {args.tipover_deg} deg at {fell if fell is None else round(fell, 3)} s; "
+          f"pitch each second: {metrics['pitch_at_1s_intervals_deg']}")
+    if fell is not None:
+        # A fall ends the scenario whatever the coverage: there is nothing left to hold.
+        return finish(args.out, metrics, FAIL,
+                      f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s "
+                      f"after release (the robot fell)")
+    problem = coverage_problem(samples, args)
+    if problem:
+        return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
+    worst_pitch = metrics["max_abs_pitch_after_settle_from_deg"]
+    worst_speed = metrics["max_abs_speed_after_settle_from_m_s"]
+    if worst_pitch > args.settled_pitch_deg:
+        return finish(args.out, metrics, FAIL,
+                      f"|pitch| reached {worst_pitch:.3f} deg between {args.settle_from} and "
+                      f"{args.record} s (limit {args.settled_pitch_deg} deg)")
+    if worst_speed > args.max_speed_m_s:
+        return finish(args.out, metrics, FAIL,
+                      f"the measured wheel speed reached {worst_speed:.4f} m/s between "
+                      f"{args.settle_from} and {args.record} s (limit {args.max_speed_m_s} m/s)")
+    return finish(args.out, metrics, PASS,
+                  f"held for {args.record} s: |pitch| <= {worst_pitch:.3f} deg and |v| <= "
+                  f"{worst_speed:.4f} m/s from {args.settle_from} s on")
+
+
+def check_impulse(args):
+    rec = scenario_start(args)
+    release, samples = record_from_release(rec, args)
+    rec.destroy_node()
+    if release is None:
+        return finish(args.out, {}, COULD_NOT_JUDGE,
+                      f"no 'releasing the simulated robot' line in the launch log within {args.wait} s")
+    write_samples(args.out, samples)
+    # The push: the largest one-sample jump in the exported pitch_rate (undelayed, sim-plant.md
+    # §3.7) near the push time. Exported rate jumps by +impulse_deg_s whatever pitch_sign is (§5).
+    near = [(b[0], b[2] - a[2]) for a, b in zip(samples, samples[1:])
+            if args.impulse_time_s - 0.05 <= b[0] <= args.impulse_time_s + 0.1]
+    jump_t, jump = max(near, key=lambda x: x[1], default=(None, math.nan))
+    fell = fell_at(samples, args.tipover_deg)
+    after = [s for s in samples if s[0] >= args.impulse_time_s]
+    # The last time after the push that |pitch| was above the settled limit.
+    last_out = max((s[0] for s in after if abs(s[1]) > args.settled_pitch_deg), default=None)
+    settle_s = (last_out - args.impulse_time_s) if last_out is not None else 0.0
+    metrics = {
+        "samples": len(samples), "release_stamp_s": release,
+        "impulse_seen_at_s": jump_t, "impulse_rate_jump_deg_s": jump,
+        "fell_at_s": fell,
+        "peak_abs_pitch_after_impulse_deg": max((abs(s[1]) for s in after), default=math.nan),
+        "max_abs_pitch_before_impulse_deg": max((abs(s[1]) for s in samples
+                                                 if s[0] < args.impulse_time_s), default=math.nan),
+        "settle_time_after_impulse_s": settle_s,
+        "record_s": args.record, "impulse_time_s": args.impulse_time_s,
+        "impulse_deg_s": args.impulse_deg_s, "settle_within_s": args.settle_within_s,
+        "settled_pitch_deg": args.settled_pitch_deg, "tipover_deg": args.tipover_deg,
+        "last_stamp_s": release + samples[-1][0] if samples else None,
+    }
+    print(f"scenario_checks: {len(samples)} samples after release; rate jump {jump:.1f} deg/s at "
+          f"{jump_t} s (push {args.impulse_deg_s} deg/s at {args.impulse_time_s} s); peak |pitch| "
+          f"after it {metrics['peak_abs_pitch_after_impulse_deg']:.3f} deg; last |pitch| > "
+          f"{args.settled_pitch_deg} deg {settle_s:.3f} s after the push; |pitch| >= "
+          f"{args.tipover_deg} deg at {fell if fell is None else round(fell, 3)} s")
+    if fell is not None and fell < args.impulse_time_s:
+        return finish(args.out, metrics, FAIL,
+                      f"the pitch diverged before the push: |pitch| reached {args.tipover_deg} deg "
+                      f"{fell:.3f} s after release")
+    if not jump >= 0.8 * args.impulse_deg_s:
+        if fell is None and coverage_problem(samples, args):
+            return finish(args.out, metrics, COULD_NOT_JUDGE, coverage_problem(samples, args))
+        return finish(args.out, metrics, FAIL,
+                      f"no push seen: the largest pitch_rate jump near {args.impulse_time_s} s was "
+                      f"{jump:.1f} deg/s (need >= {0.8 * args.impulse_deg_s:g})")
+    if fell is not None:
+        return finish(args.out, metrics, FAIL,
+                      f"the pitch diverged after the push: |pitch| reached {args.tipover_deg} deg "
+                      f"{fell - args.impulse_time_s:.3f} s after it (the robot fell)")
+    problem = coverage_problem(samples, args)
+    if problem:
+        return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
+    if settle_s > args.settle_within_s:
+        return finish(args.out, metrics, FAIL,
+                      f"|pitch| was still above {args.settled_pitch_deg} deg {settle_s:.3f} s after "
+                      f"the push (limit {args.settle_within_s} s)")
+    return finish(args.out, metrics, PASS,
+                  f"recovered: |pitch| back under {args.settled_pitch_deg} deg {settle_s:.3f} s after "
+                  f"a {args.impulse_deg_s} deg/s push (peak "
+                  f"{metrics['peak_abs_pitch_after_impulse_deg']:.3f} deg) and stayed there")
+
+
+def check_velocity_step(args):
+    flag_topic = "/diff_drive_controller/command_timed_out"
+    latched = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+    rec = scenario_start(args, [(flag_topic, Bool, latched)])
+    gamepad = rec.create_publisher(TwistStamped, "/diffbot_base_controller/cmd_vel", 10)
+    command = TwistStamped()
+    state = {"next": time.monotonic(), "step_wall_s": None, "published": 0}
+
+    def publish(t_after_release):
+        """Keep the gamepad going at --rate-hz (DiffDriveController's watchdog needs it): 0 until
+        --before-s after release, then the step. Before release (None) it sends 0."""
+        now = time.monotonic()
+        if now < state["next"]:
+            return
+        state["next"] = now + 1.0 / args.rate_hz
+        stepping = t_after_release is not None and t_after_release >= args.before_s
+        if stepping and state["step_wall_s"] is None:
+            state["step_wall_s"] = time.time()  # system clock: the same clock as the stamps
+        command.twist.linear.x = args.speed_m_s if stepping else 0.0
+        command.header.stamp = rec.get_clock().now().to_msg()
+        gamepad.publish(command)
+        state["published"] += 1
+
+    args.record = args.before_s + args.step_s
+    release, samples = record_from_release(rec, args, during=publish)
+    flags = [m.data for _, m in rec.received[flag_topic]]
+    rec.destroy_node()
+    if release is None:
+        return finish(args.out, {}, COULD_NOT_JUDGE,
+                      f"no 'releasing the simulated robot' line in the launch log within {args.wait} s")
+    write_samples(args.out, samples)
+    if state["step_wall_s"] is None:
+        return finish(args.out, {"samples": len(samples)}, COULD_NOT_JUDGE, "the step never started")
+    step_t = state["step_wall_s"] - release  # [s after release] the first step command left
+    after = [s for s in samples if s[0] >= step_t]
+    target = args.rise_fraction * args.speed_m_s
+    rise_at = next((s[0] for s in after if s[3] >= target), None)
+    rise_s = rise_at - step_t if rise_at is not None else None
+    peak_v = max((s[3] for s in after), default=math.nan)
+    overshoot_pct = 100.0 * (peak_v - args.speed_m_s) / args.speed_m_s
+    peak_pitch = max((abs(s[1]) for s in samples), default=math.nan)
+    fell = fell_at(samples, args.tipover_deg)
+    metrics = {
+        "samples": len(samples), "release_stamp_s": release, "gamepad_messages": state["published"],
+        "timed_out_flags_seen": flags, "step_at_s": step_t, "rise_time_s": rise_s,
+        "peak_mean_velocity_m_s": peak_v, "overshoot_pct": overshoot_pct,
+        "min_mean_velocity_after_step_m_s": min((s[3] for s in after), default=math.nan),
+        "final_mean_velocity_m_s": samples[-1][3] if samples else None,
+        "peak_abs_pitch_deg": peak_pitch, "fell_at_s": fell,
+        "speed_m_s": args.speed_m_s, "rise_fraction": args.rise_fraction,
+        "rise_within_s": args.rise_within_s, "max_overshoot_pct": args.max_overshoot_pct,
+        "max_pitch_deg": args.max_pitch_deg, "tipover_deg": args.tipover_deg,
+        "last_stamp_s": release + samples[-1][0] if samples else None,
+    }
+    print(f"scenario_checks: step to {args.speed_m_s} m/s at {step_t:.3f} s after release; "
+          f"{args.rise_fraction:.0%} reached after {rise_s if rise_s is None else round(rise_s, 3)} s; "
+          f"peak mean v {peak_v:.4f} m/s (overshoot {overshoot_pct:.1f} %), lowest "
+          f"{metrics['min_mean_velocity_after_step_m_s']:.4f} m/s; peak |pitch| {peak_pitch:.3f} deg; "
+          f"|pitch| >= {args.tipover_deg} deg at {fell if fell is None else round(fell, 3)} s")
+    if False in flags and True in flags[flags.index(False) + 1:]:
+        print("scenario_checks: note: command_timed_out went True while the gamepad was driving "
+              "(a delivery gap longer than the watchdog's timeout)")
+    if fell is not None:
+        return finish(args.out, metrics, FAIL,
+                      f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s after "
+                      f"release ({fell - step_t:.3f} s after the step; the robot fell)")
+    problem = coverage_problem(samples, args)
+    if problem:
+        return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
+    if rise_s is None or rise_s > args.rise_within_s:
+        return finish(args.out, metrics, FAIL,
+                      f"the mean measured velocity did not reach {target:g} m/s within "
+                      f"{args.rise_within_s} s of the step (reached after {rise_s} s)")
+    if overshoot_pct > args.max_overshoot_pct:
+        return finish(args.out, metrics, FAIL,
+                      f"overshoot {overshoot_pct:.1f} % (limit {args.max_overshoot_pct} %)")
+    if peak_pitch > args.max_pitch_deg:
+        return finish(args.out, metrics, FAIL,
+                      f"|pitch| reached {peak_pitch:.3f} deg (limit {args.max_pitch_deg} deg)")
+    return finish(args.out, metrics, PASS,
+                  f"followed the step: {args.rise_fraction:.0%} in {rise_s:.3f} s, overshoot "
+                  f"{overshoot_pct:.1f} %, peak |pitch| {peak_pitch:.3f} deg")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="check", required=True)
@@ -428,6 +733,40 @@ def main():
                    help="allowed |feedback_dot - pitch_rate| and |error_dot + feedback_dot| [deg/s]")
     p.add_argument("--pair-window-s", type=float, default=0.003,
                    help="max stamp difference for two messages to count as one cycle [s]")
+
+    # The balance scenarios. Every threshold is required: verify_sim.sh holds the numbers and why.
+    def scenario(name, function, record_help):
+        p = add(name, function, record_help)
+        p.add_argument("--launch-log", required=True,
+                       help="rocko_sim.launch.py's log, for SimPlant's release stamp (t = 0)")
+        p.add_argument("--tipover-deg", type=float, required=True,
+                       help="|pitch| at or past this [deg] counts as a fall")
+        return p
+
+    p = scenario("upright", check_upright, "seconds to record after release")
+    p.add_argument("--settle-from", type=float, required=True,
+                   help="judge pitch and speed from this many seconds after release [s]")
+    p.add_argument("--settled-pitch-deg", type=float, required=True, help="limit on |pitch| [deg]")
+    p.add_argument("--max-speed-m-s", type=float, required=True,
+                   help="limit on the mean measured wheel speed [m/s]")
+    p = scenario("impulse", check_impulse, "seconds to record after release")
+    p.add_argument("--impulse-time-s", type=float, required=True,
+                   help="the launch's impulse_time_s [s after release]")
+    p.add_argument("--impulse-deg-s", type=float, required=True,
+                   help="the launch's impulse_angular_velocity_deg_per_s [deg/s]")
+    p.add_argument("--settle-within-s", type=float, required=True,
+                   help="|pitch| must be back under --settled-pitch-deg this soon after the push [s]")
+    p.add_argument("--settled-pitch-deg", type=float, required=True, help="limit on |pitch| [deg]")
+    p = scenario("velocity-step", check_velocity_step, None)  # its timing is --before-s, --step-s
+    p.add_argument("--speed-m-s", type=float, required=True, help="the step's linear.x [m/s]")
+    p.add_argument("--rate-hz", type=float, default=20.0, help="fake gamepad rate [Hz]")
+    p.add_argument("--before-s", type=float, required=True,
+                   help="linear.x = 0 this long after release, then the step [s]")
+    p.add_argument("--step-s", type=float, required=True, help="how long the step is held [s]")
+    p.add_argument("--rise-fraction", type=float, required=True, help="e.g. 0.9 for 90 %%")
+    p.add_argument("--rise-within-s", type=float, required=True, help="[s after the step]")
+    p.add_argument("--max-overshoot-pct", type=float, required=True, help="[%% of the step]")
+    p.add_argument("--max-pitch-deg", type=float, required=True, help="limit on |pitch| [deg]")
     args = parser.parse_args()
 
     rclpy.init()
