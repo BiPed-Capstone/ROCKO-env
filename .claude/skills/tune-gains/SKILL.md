@@ -21,14 +21,15 @@ number tuned against a model; it is a *candidate* for the hardware file, never a
 Check the [verification ladder](../../../docs/architecture/verification-ladder.md) for how much of
 Tier 3 (a physics simulation) exists. A simulator now exists, but it is a model with estimated,
 unmeasured parameters ([`sim-plant.md`](../../../docs/architecture/sim-plant.md)). Its balance
-scenarios (`verify_sim.sh scenarios`, thresholds committed 2026-11-03 before any tuning) all fail with
-the current gains, and they assume an encoder sign nobody has checked on the robot (finding H-12,
+scenarios (`verify_sim.sh scenarios`, thresholds committed 2026-11-03 before any tuning) fail with
+the hardware gains and pass with the sim gains tuned in stage 5c-1 (V narrowly), and they assume an encoder sign nobody has checked on the robot (finding H-12,
 proposal 0006), so any gain found against it is a candidate and never a result. The mock
 hardware, which always exists, echoes commands and holds pitch at 0.0, so a balance controller always
 looks fine against it and tuning against it teaches nothing. Do not invent a number or a pass
 threshold (the scenario thresholds are in `verify_sim.sh`, and change only with a written reason).
-Sim gains are tuned against those scenarios (*Tuning in simulation*, below). For the **hardware** gains,
-until a sim gain set passes them, the work is:
+Sim gains are tuned against those scenarios (*Tuning in simulation*, below; the first tuning run is
+`docs/journal/2026-11-03-stage5c1-sim-gain-tuning.md`). For the **hardware** gains, until a human has
+tested a candidate from a candidate-gains proposal (*Promoting a gain to the robot*), the work is:
 
 - explain the loop and predict the direction of a change,
 - find which loop a symptom implicates (table below),

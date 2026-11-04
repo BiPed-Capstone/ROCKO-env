@@ -61,9 +61,13 @@ pitch_pid_controller:
     # Units: the error is in degrees of pitch and the output is a wheel velocity in rad/s, so
     # p is [(rad/s) per deg of pitch error] and i_clamp_min/max are limits in rad/s. d is
     # [(rad/s) per deg/s of pitch rate], the same unit as before H-6.
+    # SIM-TUNED 2026-11-03 (stage 5c-1), against the MODEL with encoder_sign:=-1 ASSUMED (proposal
+    # 0006) and the estimated 20 ms IMU delay: p 10.0 -> 15.0, d 0.1 -> 1.0 (hardware: p 10.0, d 0.1).
+    # d does most of the work: at 0.1 the 20 ms IMU delay leaves the pitch loop unstable in the model.
+    # Candidates, not results: docs/journal/2026-11-03-stage5c1-sim-gain-tuning.md.
     gains:
-      left_add_feedforward_controller/left_wheel_joint:   {p: 10.0, i: 0.0, d: 0.1, i_clamp_max: 150.0, i_clamp_min: -150.0}
-      right_add_feedforward_controller/right_wheel_joint:   {p: 10.0, i: 0.0, d: 0.1, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      left_add_feedforward_controller/left_wheel_joint:   {p: 15.0, i: 0.0, d: 1.0, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      right_add_feedforward_controller/right_wheel_joint:   {p: 15.0, i: 0.0, d: 1.0, i_clamp_max: 150.0, i_clamp_min: -150.0}
 
 # OUTER loop: measured wheel velocity -> target pitch (the inversion that makes the robot lean
 # before it can speed up; docs/architecture/control-cascade.md).
@@ -85,6 +89,11 @@ velocity_pid_controller:
     # p is [deg of target pitch per m/s of velocity error] and i_clamp_min/max are limits in deg.
     # A 150 deg clamp is far past the 35 deg tipover angle (finding H-4): it never limits anything
     # that matters here.
+    # SIM-TUNED 2026-11-03 (stage 5c-1), same conditions as the pitch loop above: p 2.0 -> 25.0,
+    # i 5.0 -> 0.0 (hardware: p 2.0, i 5.0, d 0.2; d unchanged). A large p because the loop must beat
+    # the motor's back-EMF and friction (sim-plant.md §2.4: stable only if k*p > c) and because, with
+    # no integral, the steady speed overshoots the reference by about c / (k*p - c). i = 0 because in
+    # the model the integral only added to scenario V's overshoot.
     gains:
-      pitch_pid_controller/left_wheel_joint:   {p: 2.0, i: 5.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
-      pitch_pid_controller/right_wheel_joint:   {p: 2.0, i: 5.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      pitch_pid_controller/left_wheel_joint:   {p: 25.0, i: 0.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      pitch_pid_controller/right_wheel_joint:   {p: 25.0, i: 0.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}

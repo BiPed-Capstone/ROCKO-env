@@ -205,7 +205,8 @@ FF_LOG_GAP_S=1.0       # [s] kTimeoutLogMinCycles (100) at update_rate 100: afte
 # "releasing the simulated robot" log line), the zero its own impulse time uses. Sizes were checked
 # against sim/cascade_linearisation.py's linear model at one stable point of its C3 map (pitch d 0.3,
 # velocity p 8; NOT a gain recommendation): they are reachable by a working loop, not tailored to one.
-SCENARIOS_EXPECTED_RED=1  # 1 until the commit that first makes U, I and V pass; set it to 0 there.
+SCENARIOS_EXPECTED_RED=0  # was 1 until the commit that first made U, I and V pass (stage 5c-1, sim
+                          #   gains tuned; docs/journal/2026-11-03-stage5c1-sim-gain-tuning.md).
                           #   Only changes the wording of a FAIL; the exit status is 1 either way
 SCENARIO_ENCODER_SIGN=-1  # ASSUMPTION, NOT CHECKED ON THE ROBOT: the encoder reads NEGATIVE when a
                           #   positive wheel command drives the robot. Chosen because with every gain

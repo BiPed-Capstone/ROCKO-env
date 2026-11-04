@@ -281,4 +281,6 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 **Why the run stopped here:** the stage's task list is done (scenarios first, no tuning). Next, for
 whoever picks it up: the reviewers listed under *Review rounds*; the C3 flake; then tuning the **sim**
 gains against U, I, V under the labelled `encoder_sign:=-1` assumption, inner loop first
-(`tune-gains`), with the ±30 % sweep and held-out scenarios before any claim.
+(`tune-gains`), with the ±30 % sweep and held-out scenarios before any claim. The tuning was done in
+[stage 5c-1](2026-11-03-stage5c1-sim-gain-tuning.md): U, I and V pass with sim gains, thresholds unchanged; the
+held-out runs in the sim are still to do.

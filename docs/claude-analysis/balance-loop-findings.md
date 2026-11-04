@@ -54,7 +54,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
 | M-3 | Medium | PWM value is never clamped to its valid range — **clamped on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31) |
-| M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi — **partly fixed on `ai-forward`** (wiring mock and off-Pi build exist; a `SimPlant` physics model exists with estimated parameters; its balance scenarios exist since 2026-11-03 and fail with the current gains) |
+| M-4 | Medium | `use_mock_hardware` is dead; the project cannot be built or tested off the Pi — **partly fixed on `ai-forward`** (wiring mock and off-Pi build exist; a `SimPlant` physics model exists with estimated parameters; its balance scenarios exist since 2026-11-03; they fail with the hardware gains and pass with sim gains tuned against the model, stage 5c-1) |
 | M-5 | Medium | `AddFeedforwardController` ignores the result of `set_value()`, so a failed command write is silently dropped — **fixed on `ai-forward`, awaiting robot** (2026-10-31) |
 | M-6 | Medium | `AddFeedforwardController`'s feedforward value was uninitialised and shared between two threads without synchronisation (found 2026-10-31) — **fixed on `ai-forward`** |
 | M-7 | Medium | The IMU node read the gyro (a second I2C transaction) inside the blocking service call every cycle although no real controller uses the rate (found 2026-11-03; called M-A in the round-3 review) — **fixed on `ai-forward`, awaiting robot**: `read_pitch_rate`, default false; one gap left |
@@ -1239,7 +1239,7 @@ Ordered by risk removed per unit of effort.
 4. **C-1 (encoders)** — same treatment for the encoder reads.
 5. **H-2, M-1, M-3** — fix the `write()` path. Small, mechanical, low risk. (Code written ahead of
    this position on `ai-forward`, 2026-10-31, compile-checked only; see H-2.)
-6. **M-4** — CMake guard (done on `ai-forward`) plus the `SimPlant` plugin (a model with estimated parameters exists, 2026-10-31; balance scenarios since 2026-11-03, failing with the current gains), so the rest can be developed and tested on a
+6. **M-4** — CMake guard (done on `ai-forward`) plus the `SimPlant` plugin (a model with estimated parameters exists, 2026-10-31; balance scenarios since 2026-11-03, failing with the hardware gains and passing with sim gains tuned against the model), so the rest can be developed and tested on a
    laptop.
 7. **C-3, H-4** — watchdog and tipover cutoff, developed against `SimPlant`.
 8. **H-5** — real-time scheduling and core isolation; measure the period histogram before and

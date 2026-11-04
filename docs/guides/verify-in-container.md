@@ -303,7 +303,7 @@ and it certainly does not mean the real robot balances or that any gain is good.
 [verification ladder](../architecture/verification-ladder.md) says what is and is not built, and
 [the model's specification](../architecture/sim-plant.md) says what it leaves out.
 
-### The balance scenarios (`scenarios`): expected red today
+### The balance scenarios (`scenarios`)
 
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
@@ -313,11 +313,13 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 Run it from the repo root on the laptop, after the build (step 2). It is a separate mode, never part of
 the default run, and makes five launches (U upright, I impulse, V velocity step, S2b, AB), which take a
 few minutes. Exit status: **0** only if U, I and V pass and S2b and AB print `ok`; **1** if any scenario
-fails; **2** if a run could not be judged and none failed. **Today it exits 1, and that is expected:**
-with the current sim gains U, I and V fail (S2b and AB should print `ok`). A red S2b or AB is *not*
-expected. What each scenario asks, its thresholds, and the results of the first run: the
-[verification ladder](../architecture/verification-ladder.md#the-balance-scenarios-verify_simsh-scenarios-a-separate-mode-expected-red-for-now)
-and the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md). The results are about a model with
+fails; **2** if a run could not be judged and none failed. **Today it should exit 0:** with the
+sim gains tuned in stage 5c-1 U, I and V pass and S2b and AB print `ok`. V passes narrowly (overshoot
+23.5 to 29.1 % against a 30 % limit in six runs), so an occasional V failure on a slow or busy laptop is
+possible and is not a broken check; a red S2b or AB is never expected. What each scenario asks, its thresholds, and the results of the first run: the
+[verification ladder](../architecture/verification-ladder.md#the-balance-scenarios-verify_simsh-scenarios-a-separate-mode),
+the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md) and, for the tuning, the
+[stage 5c-1 journal](../journal/2026-11-03-stage5c1-sim-gain-tuning.md). The results are about a model with
 estimated parameters and an assumed encoder sign (`encoder_sign:=-1`, proposal 0006), not the robot.
 
 To run the plant's own unit test (no ROS, any machine with a C++17 compiler; from the repo root):
