@@ -179,7 +179,7 @@ must not touch `rocko_sim_controllers.yaml`.
 
 **Thresholds committed before tuning: commit `0b0e39b`** (b). No scenario had been run when it was
 made. One later commit touched the runner, `9101fc0`, and only its printouts (the per-second pitch list
-skipped seconds; fall times printed with 16 decimals); no threshold or pass rule changed (`git diff
+skipped seconds; fall times printed with 16 decimals); no threshold or pass rule changed, except that fall times are compared after rounding to 1 ms (`git diff
 0b0e39b 9101fc0`). No gain was changed in this stage; `rocko_sim_controllers.yaml` and
 `rocko_controllers.yaml` are as they were at `23c1117`.
 

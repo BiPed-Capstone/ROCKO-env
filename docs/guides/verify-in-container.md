@@ -261,10 +261,10 @@ not a promise; each wait in the script is bounded):
 | `S1` (2 launches) | The four cascade controllers and `joint_state_broadcaster` go active with all 14 interfaces; the simulated pitch does not move when nothing pushes it (baseline) and does move when the wheels get a command |
 | `S2a` | With the motors producing no torque the robot passes 35 deg within 0.48 s |
 | `H4` | The tipover cutoff (finding H-4): started 5 deg past the limit, both wheel controllers trip in their first cycle, every command written past the limit is exactly 0.0, one `/tipover_rearm` message sent while still past the limit is refused by **both** wheel controllers, and the controllers stay active |
-| `C3` | The teleop watchdog (finding C-3): when a fake gamepad goes silent, the velocity reference becomes exactly `[0, 0]` between 0.2 s and 0.3 s later and the balance loop keeps running; the log must show `teleop commands resumed` before the first `teleop command timed out` |
+| `C3` | The teleop watchdog (finding C-3): when a fake gamepad goes silent, the velocity reference becomes exactly `[0, 0]` between 0.2 s and 0.3 s later and the balance loop keeps running; the log must show `teleop commands resumed` before the first `teleop command timed out`. Times are *send* times (message timestamps), not when the checker read them, because the checking process sometimes stalls for about 0.3 s (found 2026-11-03, [journal](../journal/2026-11-03-c3-ff-flaky-checks.md); 20 of 20 green runs since) |
 | `C2` (2 launches) | An IMU outage (finding C-2): a 0.03 s one causes no `ERROR`; a 0.2 s one makes `read()` return `ERROR` and `controller_manager` deactivate the hardware; the pitch is never exported as 0.0 or NaN |
 | `H6` | The pitch PID's D term reads the exported gyro `pitch_rate` (finding H-6) |
-| `FF` | The feedforward age limit (finding H-11): a script publishes a feedforward on both wheels at 100 Hz, then is killed; each wheel's controller must log the time-out once, 0.1 s to 0.5 s later, and stay active. A time-out logged while the publisher was still running is printed as a note (seen in the container; cause not established), not a failure |
+| `FF` | The feedforward age limit (finding H-11): a script publishes a feedforward on both wheels at 100 Hz, then is killed; each wheel's controller must log the time-out once, 0.19 s to 0.5 s after that wheel's last message was *sent*, and stay active. A time-out logged while the publisher was still running is printed as a note (the checking processes sometimes stall for about 0.3 s, see the journal above), not a failure; 20 of 20 green runs since that fix |
 
 To run only some, name them, in any order (the names are `S1 S2a H4 C3 C2 H6 FF`):
 
@@ -278,7 +278,9 @@ whole script before you report.
 It needs step 2 first (the build).
 
 Success: with no arguments it ends with `PASS (simulation: S1 S2a H4 C3 C2 H6 FF)` and exit status 0,
-followed by one line per check (with only some checks, the names that ran are listed instead). A failure
+followed by one line per check (with only some checks, the names that ran are listed instead). `C3` and
+`FF` are no longer flaky (20 of 20 green each after the 2026-11-03 fix); a red one is worth reading, not
+re-running until it passes. A failure
 prints `FAIL` with the run that failed and why, and exits 1; exit 2 means it could not run or could not
 judge (`COULD NOT JUDGE`: a probe saw no messages or no movement; read its reason and the kept run
 directory) — e.g. no build yet, or a controller manager is already running: restart the container as in
@@ -293,12 +295,29 @@ logs, `samples.csv` and `metrics.json` per run) and prints its path inside the c
 deletes it.
 
 **What a pass does not tell you.** Every physical number in the model (masses, inertia, motor
-constants, the IMU delay) is an estimate; nothing was measured on the robot. No scenario that checks
-the controllers *hold* the model upright exists yet (the safeguard checks above run for a few seconds
-and look at the safeguard, not at balance), so a pass does not mean the cascade balances,
+constants, the IMU delay) is an estimate; nothing was measured on the robot. The scenarios that ask whether
+the controllers *hold* the model upright are a separate mode (below) and fail today; the safeguard checks
+above run for a few seconds and look at the safeguard, not at balance, so a pass does not mean the cascade balances,
 and it certainly does not mean the real robot balances or that any gain is good. The
 [verification ladder](../architecture/verification-ladder.md) says what is and is not built, and
 [the model's specification](../architecture/sim-plant.md) says what it leaves out.
+
+### The balance scenarios (`scenarios`): expected red today
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios U S2b   # only some
+```
+
+Run it from the repo root on the laptop, after the build (step 2). It is a separate mode, never part of
+the default run, and makes five launches (U upright, I impulse, V velocity step, S2b, AB), which take a
+few minutes. Exit status: **0** only if U, I and V pass and S2b and AB print `ok`; **1** if any scenario
+fails; **2** if a run could not be judged and none failed. **Today it exits 1, and that is expected:**
+with the current sim gains U, I and V fail (S2b and AB should print `ok`). A red S2b or AB is *not*
+expected. What each scenario asks, its thresholds, and the results of the first run: the
+[verification ladder](../architecture/verification-ladder.md#the-balance-scenarios-verify_simsh-scenarios-a-separate-mode-expected-red-for-now)
+and the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md). The results are about a model with
+estimated parameters and an assumed encoder sign (`encoder_sign:=-1`, proposal 0006), not the robot.
 
 To run the plant's own unit test (no ROS, any machine with a C++17 compiler; from the repo root):
 

@@ -20,14 +20,14 @@ stand, and writes the two answers here under *Decision*:
 **Step 2, only if `s_v` is positive** (the encoder agrees with the command, which is what the code's
 authors intended): flip **one** sign. A human chooses which; do not do both, or the two cancel.
 
-- **Option A, the gains.** In `rocko_env/rocko_env/bringup/config/rocko_controllers.yaml`, lines 55-56:
+- **Option A, the gains.** In `rocko_env/rocko_env/bringup/config/rocko_controllers.yaml`, lines 55-56 (these two lines are the `velocity_pid_controller` gains, the block starting at line 38; the key names the interface it chains to, `pitch_pid_controller/...`, not the controller the gains belong to):
 
   ```yaml
   pitch_pid_controller/left_wheel_joint:   {p: 2.0, i: 5.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0} # 2.0, 0.1, 0.0
   pitch_pid_controller/right_wheel_joint:   {p: 2.0, i: 5.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
   ```
 
-  becomes
+  becomes (again, these are the `velocity_pid_controller` gains; the key names the interface it chains to, not the controller):
 
   ```yaml
   pitch_pid_controller/left_wheel_joint:   {p: -2.0, i: -5.0, d: -0.2, i_clamp_max: 150.0, i_clamp_min: -150.0} # sign flipped 2026-MM-DD, proposal 0006 (was 2.0, 5.0, 0.2)
