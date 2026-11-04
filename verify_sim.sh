@@ -43,7 +43,11 @@
 #        straight to diffbot_base_controller/cmd_vel at 20 Hz for 2 s, then stops. command_timed_out must go False while it
 #        drives and True TELEOP_TIMEOUT_S to TELEOP_TIMEOUT_S + TELEOP_MARGIN_S after the last
 #        command; the velocity reference must be exactly [0, 0] after that; the controllers must
-#        stay active and the plant keep publishing. DiffDriveController's log must show 'teleop
+#        stay active and the plant keep publishing. Every time is a SEND time (DDS source
+#        timestamps), so a stall of the checking script cannot shift what it sees. If the script
+#        stalls and sends a command late, the watchdog must also fire in that gap: it is judged on
+#        every gap (never sooner than the timeout after a command; within the window in every gap
+#        longer than TELEOP_TIMEOUT_S + TELEOP_MARGIN_S). DiffDriveController's log must show 'teleop
 #        commands resumed' BEFORE its first 'teleop command timed out' (a time-out logged before
 #        any command arrived would not be evidence of the watchdog firing).
 #   C2   IMU fault, two runs. initial_pitch_deg:=2.0 (so a true pitch of exactly 0.0 cannot happen)
@@ -57,13 +61,18 @@
 #        be finite, reach H6_MIN_RATE_DEG_S, equal the exported pitch_rate of the same cycle within
 #        H6_TOLERANCE_DEG_S, and error_dot must be -feedback_dot (rate reference 0).
 #   FF   feedforward age limit (finding H-11). A script publishes FEEDFORWARD_RAD_S on both
-#        /left_feedforward and /right_feedforward at FF_RATE_HZ for FF_PUBLISH_S, then is killed (the
-#        stand-in for DiffDriveController.py dying). Each of left_ and right_add_feedforward_controller
-#        must log 'Feedforward on ... ms old' exactly once after the kill, between FF_EARLIEST_S and
-#        FF_AGE_S + FF_MARGIN_S after it, never before the publisher started, and the controllers
-#        must stay active (only the feedforward term goes to 0.0). A time-out WHILE the publisher
-#        runs is printed as a note, not judged: it is a real delivery gap (if it came less than
-#        FF_LOG_GAP_S before the kill and no line follows the kill, FF exits 2, could not judge,
+#        /left_feedforward and /right_feedforward at FF_RATE_HZ for FF_PUBLISH_S (longer, up to
+#        FF_EXTEND_MAX_S, until FF_LOG_GAP_S has passed since the last time-out line), then is killed
+#        (the stand-in for DiffDriveController.py dying). A listener (scenario_checks.py
+#        feedforward-sends) records when each message was really sent. Each of left_ and
+#        right_add_feedforward_controller must log 'Feedforward on ... ms old' exactly once after
+#        its wheel's LAST MESSAGE SENT, between FF_AGE_S - 0.01 and FF_AGE_S + FF_MARGIN_S after it,
+#        never before the publisher started, and the controllers must stay active (only the
+#        feedforward term goes to 0.0). Timing from the last message sent, not from the kill, is what
+#        makes FF immune to the publisher stalling just before the kill. A time-out WHILE the
+#        publisher runs is printed as a note, not judged: it is a real gap in what reached the
+#        controller, and the note says whether the publisher itself stopped sending (if it came less
+#        than FF_LOG_GAP_S before the last message and no line follows, FF exits 2, could not judge,
 #        because the controller rate-limits these lines). What the wheel command
 #        then is, is not judged here: the host test tools/feedforward_timeout_test.cpp checks the value.
 #
@@ -172,12 +181,16 @@ FF_RATE_HZ=100         # [Hz] the rate DiffDriveController.py publishes at (time
                        #   20 Hz one run (2026-11-03) saw a 202 ms gap in delivery to one controller
                        #   while the publisher was running, a false time-out; at the real node's rate
                        #   a 200 ms gap needs 20 lost messages, not 4
-FF_EARLIEST_S=0.1      # [s] the time-out must not be logged sooner than this after the kill. The last
-                       #   message left at most one 10 ms publish period before it, so a correct
-                       #   200 ms limit logs about 0.19-0.21 s after; a limit of about 100 ms or less,
-                       #   or a time-out while messages were still arriving, logs before 0.1 s
-FF_MARGIN_S=0.3        # [s] allowed lateness after FF_AGE_S: one 10 ms cycle, plus the kill and DDS
-                       #   in the container (generous, as TELEOP_MARGIN_S)
+FF_EXTEND_MAX_S=5      # [s] FF keeps publishing up to this much longer than FF_PUBLISH_S, until
+                       #   FF_LOG_GAP_S has passed since the last time-out line (see the function)
+FF_LISTEN_S=$((FF_PUBLISH_S + FF_EXTEND_MAX_S + 1))  # [s] FF's listener records the send times this
+                       #   long: it starts before the publishers and must still be listening after
+                       #   the kill, however late the kill comes
+FF_MARGIN_S=0.3        # [s] allowed lateness after FF_AGE_S, counted from the last message SENT: one
+                       #   10 ms cycle, plus DDS delivery in the container (generous, as
+                       #   TELEOP_MARGIN_S). The time-out may not come sooner than FF_AGE_S - 0.01 s
+                       #   after that message (one 10 ms cycle of rounding): a correct 200 ms limit
+                       #   logs about 0.20-0.21 s after it, a shorter limit logs sooner
 FF_LOG_GAP_S=1.0       # [s] kTimeoutLogMinCycles (100) at update_rate 100: after a logged time-out,
                        #   the next one is counted but not logged for this long. A delivery gap
                        #   this close before the kill can hide the kill's line: FF cannot judge then
@@ -643,8 +656,13 @@ check_feedforward_age() {
   wait_for_wiring
   local failures=() side log="$dir/launch.log" ff_pids=() pid
   [ ${#problems[@]} -ne 0 ] && failures+=("before the feedforward: ${problems[*]}")
-  # Stamps on the same system clock as the ROS log stamps.
-  local started killed
+  # A listener records when every feedforward message was really sent (its DDS source timestamp,
+  # on the same system clock as the ROS log stamps). Each time-out is timed from the LAST MESSAGE
+  # SENT on that wheel, not from the kill: a publisher that stalls just before the kill sent its last
+  # message earlier than the kill, and the time-out then comes "early" by the length of the stall.
+  start_check feedforward-sends --record "$FF_LISTEN_S" --gap-s "$FF_AGE_S"
+  local listener="$check_pid"
+  local started
   started="$(date +%s.%N)"
   for side in left right; do
     # Unbuffered, so its 'publishing #' lines reach the log before the SIGKILL below.
@@ -653,28 +671,46 @@ check_feedforward_age() {
     ff_pids+=("$!")
   done
   sleep "$FF_PUBLISH_S"
-  # The kill is the stand-in for DiffDriveController.py dying: SIGKILL, so no message goes out after
-  # it. The time is taken just before.
-  killed="$(date +%s.%N)"
+  # The controller logs at most one time-out line per FF_LOG_GAP_S. If a publisher stalled just now
+  # (a time-out while it runs; seen in the container), killing it at once could hide the line this
+  # check is waiting for. So keep publishing until FF_LOG_GAP_S has passed since the last time-out
+  # line, for at most FF_EXTEND_MAX_S more. One run, no retry: what happened is still all judged.
+  local quiet_from extend_until=$((SECONDS + FF_EXTEND_MAX_S)) now planned_kill
+  planned_kill="$(date +%s.%N)"
+  while [ $SECONDS -lt $extend_until ]; do
+    quiet_from="$(grep -E "_add_feedforward_controller\]: Feedforward on .* ms old" "$log" | tail -1 \
+      | sed -n 's/.*\[\(INFO\|WARN\|ERROR\)\] \[\([0-9]*\.[0-9]*\)\].*/\2/p')"
+    now="$(date +%s.%N)"
+    [ -z "$quiet_from" ] || seconds_between "$quiet_from" "$now" "$FF_LOG_GAP_S" && break
+    sleep 0.1
+  done
+  awk -v a="$planned_kill" -v b="$(date +%s.%N)" \
+    'BEGIN {if (b - a > 0.15) printf "    kept publishing %.1f s past FF_PUBLISH_S (a recent time-out line)\n", b - a}'
+  # The kill is the stand-in for DiffDriveController.py dying: SIGKILL, so no message goes out after it.
   for pid in "${ff_pids[@]}"; do kill -KILL -- "-$pid" 2>/dev/null; wait "$pid" 2>/dev/null; done
-  local status=0 deadline
+  # The listener runs FF_LISTEN_S (longer than FF_PUBLISH_S), so it has heard the last message.
+  wait "$listener"; local status=$?
+  [ "$status" -eq 0 ] || echo "    the listener could not record the send times (see above)"
+  local deadline last_sent
   for side in left right; do
+    [ "$status" -eq 0 ] || break
+    last_sent="$(metric "$dir/metrics.json" "${side}_last_sent_s")"
     local pattern="\[${side}_add_feedforward_controller\]: Feedforward on .* ms old"
     local stamps=() after=() during=0 before=0 stamp last_during=""
-    # Wait (for log flushing) until a time-out line stamped after the kill appears, or give up.
+    # Wait (for log flushing) until a time-out line stamped after the last message appears, or give up.
     deadline=$((SECONDS + REARM_REPLY_WAIT_S))
     while :; do
       mapfile -t stamps < <(grep -E "$pattern" "$log" \
         | sed -n 's/.*\[\(INFO\|WARN\|ERROR\)\] \[\([0-9]*\.[0-9]*\)\].*/\2/p')
       after=()
-      for stamp in "${stamps[@]}"; do seconds_between "$killed" "$stamp" 0 && after+=("$stamp"); done
+      for stamp in "${stamps[@]}"; do seconds_between "$last_sent" "$stamp" 0 && after+=("$stamp"); done
       [ ${#after[@]} -gt 0 ] || [ $SECONDS -ge $deadline ] && break
       sleep 0.5
     done
     for stamp in "${stamps[@]}"; do
       if ! seconds_between "$started" "$stamp" 0; then
         before=$((before + 1))
-      elif ! seconds_between "$killed" "$stamp" 0; then
+      elif ! seconds_between "$last_sent" "$stamp" 0; then
         during=$((during + 1))
         last_during="$stamp"
       fi
@@ -682,33 +718,30 @@ check_feedforward_age() {
     # Before any feedforward was sent there is nothing to age out (the "never arrived" rule).
     [ "$before" -eq 0 ] \
       || failures+=("${side}_add_feedforward_controller logged a time-out $before time(s) before any feedforward was sent")
-    # While the publisher ran, a time-out means a real delivery gap of more than FF_AGE_S (the
-    # publisher is a Python process sharing the container's CPUs; seen once at 20 Hz and once at
-    # 100 Hz, always on one wheel only, so not a stall of the controller's executor, which serves
-    # both). Reported, not judged: it is what the limit is for.
-    [ "$during" -gt 0 ] \
-      && echo "    note: ${side}: $during time-out(s) while the publisher was running (a delivery gap > $FF_AGE_S s)"
+    # While the publisher ran, a time-out means a real gap of more than FF_AGE_S in what reached the
+    # controller. Reported, not judged: it is what the limit is for. The listener says whether the
+    # PUBLISHER stopped sending for that long (a stall of that Python process in the container) or
+    # whether it kept sending and the gap was in delivery.
+    if [ "$during" -gt 0 ]; then
+      echo "    note: ${side}: $during time-out(s) while the publisher was running; send gaps > $FF_AGE_S s the listener saw: $(metric "$dir/metrics.json" "${side}_send_gaps") (it hears nothing before it has discovered the publisher)"
+    fi
     if [ ${#after[@]} -ge 1 ]; then
       stamp="${after[0]}"
-      echo "    ${side}: time-out logged $(awk -v a="$killed" -v b="$stamp" 'BEGIN {printf "%.3f", b - a}') s after the kill (${#after[@]} line(s) after it)"
-      if ! seconds_between "$killed" "$stamp" "$FF_EARLIEST_S"; then
-        failures+=("${side}_add_feedforward_controller logged the time-out less than $FF_EARLIEST_S s after the kill (killed $killed, logged $stamp): the limit is shorter than $FF_AGE_S s")
-      elif seconds_between "$killed" "$stamp" "$(awk -v a="$FF_AGE_S" -v b="$FF_MARGIN_S" 'BEGIN {print a + b}')"; then
-        failures+=("${side}_add_feedforward_controller logged the time-out more than $FF_AGE_S + $FF_MARGIN_S s after the kill (killed $killed, logged $stamp)")
+      echo "    ${side}: time-out logged $(awk -v a="$last_sent" -v b="$stamp" 'BEGIN {printf "%.3f", b - a}') s after the last message was sent (${#after[@]} line(s) after it)"
+      if ! seconds_between "$last_sent" "$stamp" "$(awk -v a="$FF_AGE_S" 'BEGIN {print a - 0.01}')"; then
+        failures+=("${side}_add_feedforward_controller logged the time-out less than $FF_AGE_S s after the last message was sent (sent $last_sent, logged $stamp): the limit is shorter than $FF_AGE_S s")
+      elif seconds_between "$last_sent" "$stamp" "$(awk -v a="$FF_AGE_S" -v b="$FF_MARGIN_S" 'BEGIN {print a + b}')"; then
+        failures+=("${side}_add_feedforward_controller logged the time-out more than $FF_AGE_S + $FF_MARGIN_S s after the last message was sent (sent $last_sent, logged $stamp)")
       fi
       [ ${#after[@]} -eq 1 ] \
-        || failures+=("${side}_add_feedforward_controller logged the time-out ${#after[@]} times after the kill, expected once")
-    elif [ -n "$last_during" ] && ! seconds_between "$last_during" "$killed" "$FF_LOG_GAP_S"; then
-      # The controller logs at most one time-out line per FF_LOG_GAP_S, so the kill's time-out may
+        || failures+=("${side}_add_feedforward_controller logged the time-out ${#after[@]} times after the last message, expected once")
+    elif [ -n "$last_during" ] && ! seconds_between "$last_during" "$last_sent" "$FF_LOG_GAP_S"; then
+      # The controller logs at most one time-out line per FF_LOG_GAP_S, so the final time-out may
       # have been counted but not logged. Not the controller's fault, and not a pass either.
-      echo "    ${side}: a time-out was logged less than $FF_LOG_GAP_S s before the kill, so the kill's line may be suppressed: cannot judge"
+      echo "    ${side}: a time-out was logged less than $FF_LOG_GAP_S s before the last message, so the final line may be suppressed: cannot judge"
       status=2
-    elif grep -q "publishing #" "$dir/ff_$side.log"; then
-      failures+=("${side}_add_feedforward_controller never logged 'Feedforward on ... ms old' after its publisher was killed")
     else
-      # Nothing was ever sent, so there was nothing to age out: not the controller's fault.
-      echo "    ${side}: the publisher never logged 'publishing #' (see $dir/ff_$side.log)"
-      status=2
+      failures+=("${side}_add_feedforward_controller never logged 'Feedforward on ... ms old' after its last message")
     fi
   done
   # Only the feedforward term goes to 0.0: nothing may be deactivated.
@@ -904,8 +937,8 @@ wants C3 && echo "  C3: when the fake gamepad went silent the velocity reference
 wants C2 && echo "  C2: a $IMU_FAULT_SHORT_S s IMU outage gave no ERROR; a $IMU_FAULT_LONG_S s one made read() return ERROR and
     controller_manager deactivate the hardware; the exported pitch was never 0.0 or NaN."
 wants H6 && echo "  H6: pitch_pid_controller's D term reads the exported pitch_rate (gyro), not a differentiated angle."
-wants FF && echo "  FF: when the feedforward publisher died, both controllers timed it out once, $FF_EARLIEST_S to
-    $FF_AGE_S + $FF_MARGIN_S s later, and stayed active."
+wants FF && echo "  FF: when the feedforward publisher died, both controllers timed it out once, $FF_AGE_S to
+    $FF_AGE_S + $FF_MARGIN_S s after the last message sent, and stayed active."
 echo "  This is a MODEL WITH ESTIMATED, UNMEASURED PARAMETERS. It does not show that the real robot"
 echo "  balances, or that any gain is good."
 exit 0

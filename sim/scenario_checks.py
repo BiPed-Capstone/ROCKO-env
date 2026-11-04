@@ -14,7 +14,12 @@ Each subcommand is one check. It listens (and, for `teleop`, publishes), writes 
                 DiffDriveController's command_timed_out goes False while driven and True between
                 --timeout-s and --timeout-s + --margin-s after the last command, the velocity
                 reference was non-zero while driven and is exactly [0, 0] after the timeout, and
-                /dynamic_joint_states keeps arriving (the plant is still being simulated).
+                /dynamic_joint_states keeps arriving (the plant is still being simulated). All
+                times are SEND times (DDS source timestamps), and the watchdog is judged on every
+                gap between commands, because this script itself can stall and send one late.
+    feedforward-sends  for check FF (finding H-11): records when each /left_feedforward and
+                /right_feedforward message was sent, so verify_sim.sh can time each controller's
+                time-out from the last one. Exit 0 if both wheels were heard.
     imu-hold    finding C-2. Watches the exported pitch through an injected IMU outage. PASS if,
                 after the first finite pitch, no sample has pitch exactly 0.0 or NaN.
     pitch-rate  finding H-6. PASS if pitch_pid_controller's feedback_dot (the derivative its D term
@@ -61,7 +66,7 @@ from geometry_msgs.msg import TwistStamped
 from pal_statistics_msgs.msg import Statistics
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64
 
 JOINTS = ("left_wheel_joint", "right_wheel_joint")
 PASS, FAIL, COULD_NOT_JUDGE = 0, 1, 2
@@ -71,16 +76,29 @@ DEPTH = 200
 
 class Recorder(Node):
     """Subscribes to the topics it is given and keeps every message with the time it ARRIVED
-    (time.monotonic(), seconds; the same clock this script uses for anything it publishes)."""
+    (time.monotonic(), seconds; the same clock this script uses for anything it publishes).
+
+    It also keeps, in sent_s[topic], the time each message was SENT: the DDS source timestamp the
+    publisher's middleware puts on it, in seconds on the system clock (time.time()). Arrival times
+    are taken by this script, so if this process stalls (a Python garbage collection, a slow
+    moment in the container) every message that came in meanwhile gets the same late arrival time.
+    The sent time does not move. (Only check_teleop reads sent_s. The checks that pop messages
+    off received[topic] as they go leave sent_s alone, so for them the two lists do not line up.)"""
 
     def __init__(self, subscriptions):
         super().__init__("verify_sim_scenario_checks")
         self.received = {}
+        self.sent_s = {}
         for topic, msg_type, qos in subscriptions:
             self.received[topic] = []
+            self.sent_s[topic] = []
+            # Two parameters, so rclpy passes the message info (with source_timestamp) as well.
             self.create_subscription(
-                msg_type, topic, lambda msg, t=topic: self.received[t].append((time.monotonic(), msg)),
-                qos)
+                msg_type, topic, lambda msg, info, t=topic: self._keep(t, msg, info), qos)
+
+    def _keep(self, topic, msg, info):
+        self.received[topic].append((time.monotonic(), msg))
+        self.sent_s[topic].append(info["source_timestamp"] * 1e-9)  # [ns] -> [s]
 
     def spin_for(self, seconds):
         end = time.monotonic() + seconds
@@ -191,15 +209,19 @@ def check_teleop(args):
     flag_topic = "/diff_drive_controller/command_timed_out"
     reference_topic = "/velocity_pid_controller/reference"
     plant_topic = "/dynamic_joint_states"
+    gamepad_topic = "/diffbot_base_controller/cmd_vel"
     # transient_local, as the publisher: the current state arrives even though we start late.
     latched = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+    # This script also listens to its own gamepad topic, for the source timestamp of each command:
+    # the moment the middleware actually sent it (see Recorder).
     rec = Recorder([(flag_topic, Bool, latched), (reference_topic, MultiDOFCommand, DEPTH),
-                    (plant_topic, DynamicJointState, DEPTH)])
-    gamepad = rec.create_publisher(TwistStamped, "/diffbot_base_controller/cmd_vel", 10)
+                    (plant_topic, DynamicJointState, DEPTH), (gamepad_topic, TwistStamped, DEPTH)])
+    gamepad = rec.create_publisher(TwistStamped, gamepad_topic, 10)
 
-    # Wait for DiffDriveController: its flag has arrived and it subscribes to the gamepad topic.
+    # Wait for DiffDriveController: its flag has arrived and it subscribes to the gamepad topic
+    # (2 subscribers: it, and this script's own).
     ready = rec.spin_until(
-        lambda: rec.received[flag_topic] and gamepad.get_subscription_count() > 0, args.wait)
+        lambda: rec.received[flag_topic] and gamepad.get_subscription_count() >= 2, args.wait)
     if not ready:
         rec.destroy_node()
         return finish(args.out, {}, COULD_NOT_JUDGE,
@@ -209,26 +231,53 @@ def check_teleop(args):
     # Play the gamepad: the same command every 1/rate s, for drive_s seconds.
     command = TwistStamped()
     command.twist.linear.x = args.speed_m_s
-    publish_times = []
+    commands = round(args.drive_s * args.rate_hz)
     next_publish = time.monotonic()
-    for _ in range(round(args.drive_s * args.rate_hz)):
+    for _ in range(commands):
         rec.spin_until(lambda: time.monotonic() >= next_publish, 1.0)
         command.header.stamp = rec.get_clock().now().to_msg()
         gamepad.publish(command)
-        publish_times.append(time.monotonic())
         next_publish += 1.0 / args.rate_hz
     rec.spin_for(args.after_s)  # ... and then the gamepad goes silent
+    end_s = time.time()
     rec.destroy_node()
+    # When each command was really sent, from its source timestamp (system clock, seconds).
+    publish_times = sorted(rec.sent_s[gamepad_topic])
+    if len(publish_times) != commands:
+        return finish(args.out, {"commands_published": commands, "commands_heard": len(publish_times)},
+                      COULD_NOT_JUDGE, f"sent {commands} gamepad commands but heard "
+                      f"{len(publish_times)} of them back, so their send times are not all known")
 
+    # Every time from here on is when a message was SENT (system clock, seconds): the source
+    # timestamps of our commands and of what DiffDriveController and the controller manager
+    # published. Not arrival times: this process can stall (0.35 s seen in the container,
+    # 2026-11-03), and everything that arrives during a stall would get the same late time.
+    def sent(topic):
+        return list(zip(rec.sent_s[topic], (m for _, m in rec.received[topic])))
+    flags, references, plant = sent(flag_topic), sent(reference_topic), sent(plant_topic)
     first_pub, last_pub = publish_times[0], publish_times[-1]
-    flags = rec.received[flag_topic]  # (arrival time, Bool)
-    references = rec.received[reference_topic]
-    plant = rec.received[plant_topic]
     settled = last_pub + args.timeout_s + args.margin_s  # by now the reference must be zero
+    early_s = args.timeout_s - 0.01  # less one 10 ms timer period of rounding
+    late_s = args.timeout_s + args.margin_s
+
+    # The same stall can hold back one of OUR commands, so a gap between two commands can be longer
+    # than the timeout. Then the watchdog SHOULD fire in the middle of the drive. So the rule is
+    # judged on every silence, the gaps between commands and the silence after the last one:
+    #   - it must never fire sooner than the timeout after the latest command sent before it;
+    #   - in every silence longer than timeout + margin it must fire within [timeout, timeout +
+    #     margin] of the silence starting. The final silence is always one (after_s is 2 s).
+    gaps = [b - a for a, b in zip(publish_times, publish_times[1:])]
+    early = []  # [s after the latest command] for each True sent too soon
+    for t, m in flags:
+        if m.data and t > first_pub:
+            age = t - max(p for p in publish_times if p <= t)
+            if age < early_s:
+                early.append(round(age, 4))
+    stalls = [(a, b) for a, b in zip(publish_times, publish_times[1:]) if b - a > late_s]
+    missed = [round(a - first_pub, 3) for a, b in stalls
+              if not any(m.data and a + early_s <= t <= a + late_s for t, m in flags)]
 
     went_false = [t for t, m in flags if not m.data and first_pub <= t <= last_pub]
-    true_while_driven = [t for t, m in flags
-                         if m.data and went_false and went_false[0] < t <= last_pub]
     went_true = [t for t, m in flags if m.data and t > last_pub]
     latency = went_true[0] - last_pub if went_true else None
     driven_values = [list(m.values) for t, m in references if first_pub < t <= last_pub]
@@ -237,22 +286,31 @@ def check_teleop(args):
     metrics = {
         "commands_published": len(publish_times),
         "drive_s": last_pub - first_pub,
+        "largest_command_gap_s": max(gaps, default=None),
+        "command_gaps_longer_than_timeout_plus_margin": len(stalls),
         "flag_messages": [(round(t - first_pub, 4), m.data) for t, m in flags],
         "timeout_latency_s": latency,
         "timeout_s": args.timeout_s,
         "margin_s": args.margin_s,
+        "timed_out_too_early_s": early,
+        "stalls_without_a_timeout_s": missed,
         "references_while_driven": len(driven_values),
         "references_while_driven_equal_to_command": sum(
             v == [args.speed_m_s] * 2 for v in driven_values),
         "references_after_timeout": len(after_values),
         "nonzero_references_after_timeout": sum(v != [0.0, 0.0] for v in after_values),
         "plant_samples_after_timeout": len(plant_after),
-        "after_window_s": last_pub + args.after_s - settled,
+        "after_window_s": end_s - settled,
     }
-    print(f"scenario_checks: {len(publish_times)} gamepad commands over {metrics['drive_s']:.2f} s; "
+    print(f"scenario_checks: {len(publish_times)} gamepad commands over {metrics['drive_s']:.2f} s "
+          f"(largest gap {max(gaps, default=0.0):.3f} s); "
           f"flag (s after first command, value): {metrics['flag_messages']}")
+    if stalls:
+        print(f"scenario_checks: note: this script sent {len(stalls)} command(s) more than "
+              f"{late_s:g} s after the one before (a stall of this process, not of the node under "
+              f"test); the watchdog must time out in each gap, and it is judged so")
     print(f"scenario_checks: timed out {latency if latency is None else round(latency, 4)} s after "
-          f"the last command (need {args.timeout_s:g} to {args.timeout_s + args.margin_s:g} s); "
+          f"the last command (need {args.timeout_s:g} to {late_s:g} s); "
           f"references while driven {len(driven_values)} "
           f"({metrics['references_while_driven_equal_to_command']} equal to the command), after "
           f"the timeout {len(after_values)} ({metrics['nonzero_references_after_timeout']} "
@@ -260,19 +318,23 @@ def check_teleop(args):
 
     if not went_false:
         return finish(args.out, metrics, FAIL, "command_timed_out never went False while driven")
-    if true_while_driven:
+    if early:
         return finish(args.out, metrics, FAIL,
-                      "command_timed_out went True while commands were still arriving")
+                      f"command_timed_out went True only {early} s after a command, sooner than "
+                      f"the {args.timeout_s:g} s timeout")
+    if missed:
+        return finish(args.out, metrics, FAIL,
+                      f"the gamepad went silent for longer than {late_s:g} s at {missed} s into the "
+                      f"drive and command_timed_out did not go True within [{args.timeout_s:g}, "
+                      f"{late_s:g}] s of it")
     if latency is None:
         return finish(args.out, metrics, FAIL,
                       f"command_timed_out never went True in the {args.after_s} s after the last "
                       "command")
-    # Never earlier than the timeout (less one 10 ms timer period of rounding), never later than
-    # timeout + margin.
-    if not (args.timeout_s - 0.01 <= latency <= args.timeout_s + args.margin_s):
+    if not (early_s <= latency <= late_s):
         return finish(args.out, metrics, FAIL,
                       f"command_timed_out went True {latency:.3f} s after the last command, outside "
-                      f"[{args.timeout_s:g}, {args.timeout_s + args.margin_s:g}] s")
+                      f"[{args.timeout_s:g}, {late_s:g}] s")
     if metrics["references_while_driven_equal_to_command"] == 0:
         return finish(args.out, metrics, FAIL,
                       f"no velocity reference equal to the command [{args.speed_m_s}] * 2 while "
@@ -289,6 +351,33 @@ def check_teleop(args):
                   f"timed out {latency:.3f} s after the last command, the velocity reference went "
                   f"from [{args.speed_m_s}] * 2 to exactly [0, 0] ({len(after_values)} messages), "
                   f"and {len(plant_after)} plant samples arrived after the timeout")
+
+
+# ---- H-11: when the feedforward messages were really sent ---------------------------------------
+def check_feedforward_sends(args):
+    """Not a judgement of its own: records the source timestamp of every message on
+    /left_feedforward and /right_feedforward for --record s, for verify_sim.sh's check FF. FF times
+    each controller's time-out from the LAST MESSAGE REALLY SENT on that wheel. Timing it from the
+    moment the publisher was killed is wrong whenever the publisher stalled just before the kill: its
+    last message then left earlier than the kill, and a correct 200 ms limit looks too short."""
+    topics = {side: f"/{side}_feedforward" for side in ("left", "right")}
+    rec = Recorder([(topic, Float64, DEPTH) for topic in topics.values()])
+    rec.spin_for(args.record)
+    rec.destroy_node()
+    metrics = {"gap_s": args.gap_s}
+    for side, topic in topics.items():
+        sent = sorted(rec.sent_s[topic])
+        # Sender-side gaps: the publisher itself sent nothing for longer than --gap-s.
+        gaps = [(round(a, 3), round(b - a, 3)) for a, b in zip(sent, sent[1:]) if b - a > args.gap_s]
+        metrics[f"{side}_messages"] = len(sent)
+        metrics[f"{side}_last_sent_s"] = sent[-1] if sent else None
+        metrics[f"{side}_send_gaps"] = gaps  # (start [s, system clock], length [s])
+        print(f"scenario_checks: {side}: {len(sent)} feedforward messages heard, "
+              f"{len(gaps)} send gap(s) longer than {args.gap_s:g} s {gaps}")
+    if min(metrics["left_messages"], metrics["right_messages"]) < args.min_samples:
+        return finish(args.out, metrics, COULD_NOT_JUDGE,
+                      f"fewer than {args.min_samples} feedforward messages heard on a wheel")
+    return finish(args.out, metrics, PASS, "recorded the send time of every feedforward message")
 
 
 # ---- C-2: the exported pitch during an IMU outage -----------------------------------------------
@@ -726,6 +815,9 @@ def main():
     p.add_argument("--rate-hz", type=float, default=20.0, help="fake gamepad rate [Hz]")
     p.add_argument("--drive-s", type=float, default=2.0, help="how long the fake gamepad drives [s]")
     p.add_argument("--after-s", type=float, default=2.0, help="how long to listen after it stops [s]")
+    p = add("feedforward-sends", check_feedforward_sends, "seconds to record")
+    p.add_argument("--gap-s", type=float, required=True,
+                   help="report send gaps longer than this [s] (FF_AGE_S)")
     add("imu-hold", check_imu_hold, "seconds to record after the pitch starts moving")
     p = add("pitch-rate", check_pitch_rate, "seconds to record after the first controller_state")
     p.add_argument("--min-rate-deg-s", type=float, required=True,

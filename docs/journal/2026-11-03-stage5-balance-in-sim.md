@@ -248,7 +248,7 @@ critical-path file changed, so `realtime-auditor` is not required.
 - Everything the model omits (sim-plant.md §6) and every estimated parameter (§4).
 - The pass branches of scenarios I and V (only U's was seen, from an exactly upright start), and the
   scenarios mode's `COULD NOT JUDGE` / exit 2 path.
-- Why `C3` is flaky in the container (2 of 4 runs failed on 2026-11-03).
+- Why `C3` is flaky in the container (2 of 4 runs failed on 2026-11-03). Found and fixed later the same day: [2026-11-03-c3-ff-flaky-checks.md](2026-11-03-c3-ff-flaky-checks.md).
 
 ## Reproduce
 
