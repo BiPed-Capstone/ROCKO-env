@@ -735,6 +735,8 @@ scenario_report() {
   scenario_line[$name]="SCENARIO $name: $verdict$suffix: $text"
   echo "  ${scenario_line[$name]}"
 }
+# rounded: a number on stdin to 3 decimals (seconds to the ms); anything else (None, empty) unchanged.
+rounded() { awk '/^-?[0-9.]+([eE][-+]?[0-9]+)?$/ {printf "%.3f\n", $1; next} {print}'; }
 # scenario_reason: the check's one-line reason from metrics.json.
 scenario_reason() { metric "$dir/metrics.json" reason; }
 
@@ -814,7 +816,7 @@ scenario_velocity_step() {
 scenario_s2b() {
   run_upright "S2b-sign-flipped" "$U_RECORD_S" encoder_sign:="$SCENARIO_ENCODER_SIGN" pitch_sign:=1
   local failures=(); scenario_launch_problems
-  local fell; fell="$(metric "$dir/metrics.json" fell_at_s)"
+  local fell; fell="$(metric "$dir/metrics.json" fell_at_s | rounded)"
   if [ ${#failures[@]} -ne 0 ]; then
     scenario_report S2b "COULD NOT JUDGE" "${failures[*]}"
   elif [ "$check_status" -eq 0 ]; then
@@ -833,7 +835,7 @@ scenario_s2b() {
 scenario_as_built() {
   run_upright "AB-as-built-signs" "$AB_RECORD_S" encoder_sign:=1
   local failures=(); scenario_launch_problems
-  local fell; fell="$(metric "$dir/metrics.json" fell_at_s)"
+  local fell; fell="$(metric "$dir/metrics.json" fell_at_s | rounded)"
   if [ ${#failures[@]} -ne 0 ]; then
     scenario_report AB "COULD NOT JUDGE" "${failures[*]}"
   elif [ -z "$fell" ] || [ "$fell" = None ]; then

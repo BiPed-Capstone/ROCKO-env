@@ -518,8 +518,9 @@ def check_upright(args):
         "max_abs_pitch_deg": max((abs(s[1]) for s in samples), default=math.nan),
         "max_abs_pitch_after_settle_from_deg": max((abs(s[1]) for s in settled), default=math.nan),
         "max_abs_speed_after_settle_from_m_s": max((abs(s[3]) for s in settled), default=math.nan),
-        "pitch_at_1s_intervals_deg": [round(s[1], 3) for s in samples
-                                      if abs(s[0] - round(s[0])) < 0.005],
+        # The sample nearest each whole second (1, 2, ...), for a quick look at the trend.
+        "pitch_at_1s_intervals_deg": [round(min(samples, key=lambda s: abs(s[0] - k))[1], 3)
+                                      for k in range(1, int(args.record) + 1)] if samples else [],
         "record_s": args.record, "settle_from_s": args.settle_from,
         "settled_pitch_deg": args.settled_pitch_deg, "max_speed_m_s": args.max_speed_m_s,
         "tipover_deg": args.tipover_deg,
