@@ -67,6 +67,9 @@ Stages, each: implement → verify up the ladder → parallel review → fix →
 ## Stage log
 
 Each stage is added below when it completes. Rows 0.x are in [`docs/next-steps.md`](../next-steps.md).
+**Stage 5 has its own entry:** [2026-11-03-stage5-balance-in-sim.md](2026-11-03-stage5-balance-in-sim.md)
+(why the model drifts off, finding H-12 and proposal 0006; the balance scenarios, thresholds committed
+before tuning).
 
 ### Stage 2 — foundations (rows 0.2, 0.1, 0.3, 0.4, 0.5, 0.6, and the motor `write()` part of 1.4)
 

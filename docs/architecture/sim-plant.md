@@ -836,6 +836,14 @@ model **sooner**. Neither holds the model up. This is a slow run-away, like the 
 note above, and it is consistent with the outer velocity loop's sign problem of §2.4 (equation (1)), **but that has not been shown**: no run isolated it, and it is **not
 yet explained**. Stage 5 is to investigate. It is not evidence that the D term from the gyro is bad or good, and it says nothing about the real robot.
 
+**Explained, in the model (stage 5, 2026-11-03): finding H-12.** The slow drift is the outer loop's
+run-away of §2.4: with the default signs it has a real closed-loop pole at +0.82 /s (discrete, as the sim
+runs), and more velocity gain moves it further right. With `encoder_sign = −1` that pole goes, but the
+fast pair predicted in the second bullet above grows instead (|z| = 1.018 per cycle with H-6), so the
+hardware gains do not hold the model with either sign. Reproduce: `python3 -I sim/cascade_linearisation.py`
+on the laptop. Numbers and confidence: [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md);
+the robot check: [proposal 0006](../proposals/0006-velocity-loop-sign-check.md).
+
 ---
 
 ## Further reading

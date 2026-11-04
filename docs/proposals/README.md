@@ -85,3 +85,4 @@ Record: commit SHA, launch file and config, battery voltage, surface, where the 
 | [0003](0003-finish-tipover-refactor-and-guard-new-keys.md) | Finish the tipover refactor (a hook-refused edit) and guard the new safety keys | safety behavior / guardrail | Open |
 | [0004](0004-safety-thresholds.md) | Confirm the proposed safety thresholds (watchdog, tipover, IMU faults, motor) | hardware limits | Open |
 | [0005](0005-amend-adr-0003-simulpant-first.md) | Amend ADR 0003: `SimPlant` first, Gazebo later | decision | Open |
+| [0006](0006-velocity-loop-sign-check.md) | Check the robot's velocity-loop sign on a stand (finding H-12), then flip one sign if it is wrong | on-robot step / hardware gains | Open |

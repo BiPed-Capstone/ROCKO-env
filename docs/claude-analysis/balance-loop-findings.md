@@ -50,6 +50,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | H-9 | High (not fixed) | A frozen or reset BNO055 that still reads valid-looking numbers is undetectable (found 2026-10-31); one variant, an all-equal Euler triple, is now rejected in the node |
 | H-10 | High (not fixed; unmeasured) | Upstream PID integrators keep winding while the tipover cutoff is latched, so a re-arm can produce a large command (found 2026-11-02) |
 | H-11 | High | Nothing aged out the feedforward: if `DiffDriveController.py` died mid-turn, the wheels kept opposite biases and the gamepad could not stop them (found 2026-11-03; called H-A in the round-3 review and in code comments) — **fixed on `ai-forward`, awaiting robot** (2026-11-03; checked in the sim; the 200 ms limit is proposed) |
+| H-12 | High (shown in the model; unknown on the robot) | With every gain positive, the outer velocity loop is positive feedback unless the encoder reads negative when a positive wheel command drives the robot; under the sim's default signs it runs away and tips the model in about 10 s (found 2026-11-03, stage 5) — **not fixed**: the robot sign check is [proposal 0006](../proposals/0006-velocity-loop-sign-check.md) |
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
 | M-3 | Medium | PWM value is never clamped to its valid range — **clamped on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31) |
@@ -774,6 +775,60 @@ feedforward would drop out for a moment and come back; nobody has measured that.
 a robot, that 200 ms is a good limit, DDS delivery on the Pi, and the zeroing step's effect on a leaning
 robot (it is a step, no ramp). Related and **unconfirmed**: `pid_controller` may also hold its last
 reference forever if the node that sets it dies. Journal: *Stage 4, review round 4*.
+
+---
+
+### H-12 — The outer velocity loop is positive feedback unless the encoder's sign is the "wrong" one
+
+**Found** 2026-11-03, stage 5, by a linear analysis of the simulated cascade
+(`sim/cascade_linearisation.py`; [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md)). The
+sign question itself was written down in [sim-plant.md §2.4](../architecture/sim-plant.md) on 2026-10-31;
+this finding shows it is what tips the model. **Not fixed. Shown in the model only**: whether the robot
+has it depends on encoder wiring nobody has checked.
+
+**Where** `velocity_pid_controller` in `rocko_controllers.yaml` (lines 55-56: `p: 2.0, i: 5.0, d: 0.2`,
+all positive) together with the sign of the velocity that `QuadEncoders.py` reports, relative to the
+direction a positive wheel command drives the robot. No file is wrong on its own; the fault is in how
+their signs combine.
+
+**What**
+
+`velocity_pid_controller` computes a target pitch from `reference − measured velocity` with positive
+gains, and `pitch_pid_controller` leans the robot to that target. Leaning makes the wheels drive the
+robot. For the loop to correct a speed error, the measured velocity has to grow in the direction that
+**reduces** the error. sim-plant.md §2.4 works it through: with every gain positive (and a working pitch
+loop), that holds only if the encoder reads **negative** when the robot rolls the way a **positive**
+command drives it. The authors evidently assumed the opposite (`DiffDriveController.py` sends `linear.x`
+as both the velocity reference and a positive wheel feedforward). Under their assumption the P and I terms
+both push the robot away from the reference: the loop is positive feedback at DC, for any positive gains.
+
+In the model (estimated parameters, sim default signs `pitch_sign = −1`, `encoder_sign = +1`, the
+hardware gains): a real closed-loop pole at **+0.82 /s** (discrete, as the sim runs; +0.85 /s in the
+closed-form reduction). Scaling the velocity gains up moves it further right (+2.07 /s at 8x), the
+signature of positive feedback. The simulated robot drifts off and falls 9.3 to 10 s after release from a
+2 deg start, as stages 3 and 4 saw. With the other encoder sign the run-away at DC goes, but the model
+still does not hold with the hardware gains: the pitch loop's ~3.5 Hz oscillation is marginal at the
+estimated 20 ms IMU delay (a gain margin of about −1.1 dB) and the velocity loop's D term takes damping
+from it. That second part is about gain values and the unmeasured delay, not about a sign.
+
+**Why it matters**
+
+If the robot has the authors' intended encoder sign, its outer loop cannot hold a speed: it drifts and
+falls after some seconds whatever the velocity gains, and tuning them only changes how fast. That would
+fit "balancing is partially tuned and not reliable" (this page's header), but it is **not evidence** for
+it: a robot that falls for any of the other reasons on this page looks the same.
+
+**Fix direction**
+
+First the check, then one sign change. A human runs the two-step check of sim-plant.md §2.4 (tank mode on
+a stand, then a hand tilt of the IMU; about 15 minutes, the robot does not need to balance). If the
+encoder reads positive for a positive command, flip one sign: negate the three `velocity_pid_controller`
+gains in `rocko_controllers.yaml`, **or** negate the velocity `QuadEncoders.py` reports. A human chooses
+which ([proposal 0006](../proposals/0006-velocity-loop-sign-check.md) lists the trade-off). Then the gains
+themselves are a separate question for the sim scenarios (stage 5) and a tethered test. Until the check is
+done, the sim's balance scenarios run with `encoder_sign:=-1` as a labelled assumption, and the scenario
+`AB` keeps the as-built signs and is expected to fall, so this finding stays visible on the ladder
+(`verify_sim.sh scenarios`). Queue: [next-steps row 2.7](../next-steps.md).
 
 ---
 
