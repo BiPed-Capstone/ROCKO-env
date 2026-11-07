@@ -28,7 +28,8 @@ parameters. Nothing about the real robot.
 ## Risk
 
 A confident-looking simulator with invented inertia is worse than none (ADR 0003's own warning). Mitigation:
-the measurement guide (`docs/guides/measure-inertia.md`, not yet written), the `ESTIMATE, NOT MEASURED` labels, and
+the measurement guide ([`measure-inertia.md`](../guides/measure-inertia.md), with
+[proposal 0007](0007-measure-robot-parameters.md) asking a human to do it), the `ESTIMATE, NOT MEASURED` labels, and
 [the sim-to-real gap page](../architecture/sim-to-real-gap.md).
 
 ## Test for a human

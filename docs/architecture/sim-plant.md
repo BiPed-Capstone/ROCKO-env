@@ -578,8 +578,9 @@ that the gyro's real rate is as clean as this one, which is exact and undelayed.
 
 > **`ESTIMATE, NOT MEASURED`.** Every number in this table is invented or inferred. None was weighed,
 > measured or read off a part on ROCKO. Each is a named plugin parameter with the default below, so a
-> measured value replaces it without a code change. `docs/guides/measure-inertia.md` (to be written)
-> says how to measure them.
+> measured value replaces it without a code change (the body's inertia is the exception: it has no
+> parameter yet). [measure-inertia.md](../guides/measure-inertia.md) says how to measure them, and
+> [proposal 0007](../proposals/0007-measure-robot-parameters.md) asks a human to.
 
 | Parameter | Symbol | Unit | Estimate | Basis |
 | --- | --- | --- | --- | --- |
@@ -728,8 +729,8 @@ would keep its last duty (finding H-7). That remains a question for a Pi.
 ## 6. What the model leaves out
 
 Each omission, and which way it biases a gain found in the sim. "Optimistic" means the sim makes the
-gains look safer than they will be on the robot. A separate `sim-to-real-gap.md` (`bootstrap-sim` step 8)
-will grow from this list.
+gains look safer than they will be on the robot. The longer version, with the loop each omission hits
+and why, is [sim-to-real-gap.md](sim-to-real-gap.md).
 
 | Omitted | Effect on a sim-tuned gain |
 | --- | --- |
