@@ -7,6 +7,7 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 | --- | --- |
 | [`reproducing-results.md`](reproducing-results.md) | Recording a result so someone else gets the same number |
 | [`verify-in-container.md`](verify-in-container.md) | Building and checking a change on your laptop with no robot: build, static checks, the mock, and the simulated robot (`verify_sim.sh`) |
+| [`measure-inertia.md`](measure-inertia.md) | Measuring the robot (mass, centre of mass, inertia, wheel radius, motor constants, IMU delay, encoder scale) to replace the simulator's estimates |
 
 Building and running the robot code, and the Docker dev container, are in the
 [root README](../../README.md) — the canonical copy, deliberately not duplicated here.
