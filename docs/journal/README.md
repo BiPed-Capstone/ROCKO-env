@@ -79,3 +79,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-03 | [Find why checks C3 and FF are flaky, and make them judge send times](2026-11-03-c3-ff-flaky-checks.md) |
 | 2026-11-03 | [Stage 5c-1: tune the sim gains until scenarios U, I, V pass (thresholds unchanged)](2026-11-03-stage5c1-sim-gain-tuning.md) |
 | 2026-11-03 | [Stage 5c-2: the ±30 % robustness sweep of the sim gains (mass, centre-of-mass height, motor gain, IMU delay)](2026-11-03-stage5c2-sweep.md) |
+| 2026-11-04 | [Final report, stages 4 to 6: tiers reached, failures, declined findings, proposals 0003 to 0009, what was not verified, the tethered procedure, the sim's omissions](2026-11-04-final-report-stage-4-6.md) |

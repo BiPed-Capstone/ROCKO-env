@@ -307,8 +307,8 @@ Without `-DROCKO_SKIP_WIRINGPI=ON` the build stops with "WiringPi not found", on
 
 | Where | What's in it |
 | --- | --- |
-| [`docs/architecture/`](docs/architecture/) | How a subsystem works and **why** — start with [the control cascade](docs/architecture/control-cascade.md) |
-| [`docs/guides/`](docs/guides/) | Procedures — including [how to record a result so it reproduces](docs/guides/reproducing-results.md) |
+| [`docs/architecture/`](docs/architecture/) | How a subsystem works and **why** — start with [the control cascade](docs/architecture/control-cascade.md); [what the simulator leaves out](docs/architecture/sim-to-real-gap.md) |
+| [`docs/guides/`](docs/guides/) | Procedures — including [how to record a result so it reproduces](docs/guides/reproducing-results.md) and [how to measure the robot](docs/guides/measure-inertia.md) (the simulator's numbers are estimates until someone does) |
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records: a choice, its alternatives, its cost |
 | [`docs/journal/`](docs/journal/README.md) | One entry per AI-written change: what was asked, what changed, which checks actually ran |
 | [`docs/proposals/`](docs/proposals/README.md) | Changes waiting on a human decision (gains, version pins, safety behavior) |
