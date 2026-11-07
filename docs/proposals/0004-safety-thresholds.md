@@ -26,6 +26,15 @@ the place named).
 | `read_pitch_rate` | `ICM20948.py` node parameter | false | whether the node reads the gyro at all (finding M-7); false because no real controller uses the rate. Turn it on together with the gated YAML change (H-6): both are needed |
 | `pitch_rate_axis` / `pitch_rate_sign` | `ICM20948.py` node parameters | 0 / +1 | **guesses**: which gyro axis is robot pitch and its sign (H-6); establish on the robot |
 
+**Checked 2026-11-04 against `77664f4`:** every safety constant in `AddFeedforwardController.hpp`,
+`ICM20948.hpp`, `ImuFaultTracker.hpp` and `Motor12VoltQuadEncoder.hpp` is in the table above. Left out
+on purpose, because they only throttle log lines and decide no behavior: `kRefusalLogMinCycles` and
+`kTimeoutLogMinCycles` (100 cycles each) and `kLogThrottleMs` (1000 ms). `kMaxFeedforwardAgeNs` was
+already listed. The sim-only values (`fallen_pitch_deg`, the scenario thresholds in `verify_sim.sh`)
+are not robot thresholds and are not proposed here. The candidate gains of
+[proposal 0008](0008-candidate-gains-and-tethered-test.md) depend on these thresholds being confirmed
+first.
+
 ## Why
 
 These values decide when a robot stops, when it gives up on its sensor and how fast it reacts to a lost

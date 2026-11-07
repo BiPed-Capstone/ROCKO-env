@@ -86,3 +86,6 @@ Record: commit SHA, launch file and config, battery voltage, surface, where the 
 | [0004](0004-safety-thresholds.md) | Confirm the proposed safety thresholds (watchdog, tipover, IMU faults, motor) | hardware limits | Open |
 | [0005](0005-amend-adr-0003-simulpant-first.md) | Amend ADR 0003: `SimPlant` first, Gazebo later | decision | Open |
 | [0006](0006-velocity-loop-sign-check.md) | Check the robot's velocity-loop sign on a stand (finding H-12), then flip one sign if it is wrong | on-robot step / hardware gains | Open |
+| [0007](0007-measure-robot-parameters.md) | Measure the robot's physical parameters (guide: [measure-inertia.md](../guides/measure-inertia.md)), then replace the model's estimates | on-robot step | Open |
+| [0008](0008-candidate-gains-and-tethered-test.md) | Sim-tuned candidate gains for `rocko_controllers.yaml`, with preconditions and a tethered test (nothing tested on a robot) | hardware gains / on-robot step | Open |
+| [0009](0009-controller-manager-minimum-version.md) | What minimum `controller_manager` version should `find_package` require? | version pin | Open |
