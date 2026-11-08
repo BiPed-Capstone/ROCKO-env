@@ -42,3 +42,34 @@ Breaks, each on a fresh scratch copy of the files the check reads (`--root`):
 | the 12 breaks of the [stage 5c-1 journal](2026-11-03-stage5c1-sim-gain-tuning.md#1-the-drift-check-only-the-tuned-gains-may-differ), adapted to today's sim gains (the control now moves pitch `d` 1.0 to 0.8) | 11 red with the same lines as then, control green | — |
 
 Real tree: six `ok` lines, exit 0.
+
+## 2. The sim scripts, made easier to read (no behaviour change)
+
+What changed, finding by finding:
+
+| Finding | Change |
+| --- | --- |
+| `cascade_linearisation.simulate()` had bare thresholds (`0.09`, `30`, `35.0`, ...) with names only in comments | It reads them from `verify_sim.sh` by name (`scenario_thresholds()`, through `verify_sim_values()`, which follows `TIPOVER_SCENARIO_DEG=$TIPOVER_DEG`). `parameter_sweep.thresholds()` now calls the same function, so there is **one** copy of each number, in `verify_sim.sh`. No circular import: `parameter_sweep` already imported `cascade_linearisation`, not the other way. The feedforward's wheel radius is named (`DIFFDRIVE_WHEEL_RADIUS_M`) |
+| `(1 - a) ** (2 * cycles - 1)` in `velocity_from_true_periods()` unexplained | Comment: each cycle applies the filter twice (left call, right call); the last factor is the next line's right call |
+| Positional sample tuples (`s[3]`, `b[0]`) in `scenario_checks.py` | `Sample` namedtuple (`t_s pitch_deg pitch_rate_deg_s mean_velocity_m_s position_m right_velocity_m_s`, the order the code built them in), every use site in U, I, V and the metric; `write_samples` writes the same header and columns (`SAMPLES_CSV_HEADER`). Nothing outside the file reads the tuples (`verify_sim.sh` reads `metrics.json` only). The tipover and IMU-hold checks keep their own, differently shaped tuples (commented where they are built) |
+| Corner enumeration by bit masks | `itertools.product((+1, -1), repeat=4)`, the same order (the 25-case list is identical, checked) |
+| `report()` one long function; legend typed by hand; `CODE_SCENARIO_ARGS` said "read from" `verify_sim.sh` | `header_lines()` and `table_row()`; the legend is built from `NOMINAL`, `LETTER` and `UNIT`; the comment now says the launch arguments are copied by hand and checked by nothing |
+| `derive_plant`/`set_plant` reset with retyped literals | `reset_plant()` restores `DEFAULT_PLANT`, captured from the module's own estimates |
+| Low | C3: `command_sent_s`, `command_left_s`, `mid_drive_silences`; the "two cycles" reason written once, as a numbered chain, in `handled_by`; `record_from_release`'s docstring re-wrapped; `discrete_cascade` says `delay_cycles` is ignored when `delay_ms` is given; `number_` became `case_index`; the two files `run_verify` left open (and the YAML reader's) are closed with `with`; `MARGINAL_OVERSHOOT_PCT`'s comment |
+
+**`MARGINAL_OVERSHOOT_PCT = 27`:** the brief suggested "the 30 % limit minus a 3-point noise
+allowance". The [stage 5c-2 journal](2026-11-03-stage5c2-sweep.md) only states the rule ("above 27 % in
+some run"); no derivation of the 3 points was written. The comment now says so, and gives the scale it can
+be compared with: V's old metric spread over 23.5-29.1 % in 6 runs of one model (stage 5c-1), so 3 points is
+about half that spread.
+
+**Checks that the behaviour did not change** (laptop unless stated; "before" = a scratch worktree at `27e9788`):
+
+| Check | Result |
+| --- | --- |
+| `python3 -I sim/cascade_linearisation.py` (default report), `--candidate yaml`, `--hardware-gains` | each output identical to before (`diff`, no lines) |
+| `python3 -I sim/cascade_linearisation.py --sweep --top 15` (1 800 grid points, 15 time-simulated) | identical to before |
+| `parameter_sweep.all_cases("all")` | the same 25 cases in the same order |
+| `parameter_sweep.py report` on a copy of `stage5c2-sweep-vmetric2.csv` | the same verdicts and every table cell identical; two lines differ: the CSV's relative path (the copies were in different folders) and the legend's `0.20 m`, now `0.2 m` (built from `NOMINAL`) |
+| container: `velocity_from_true_periods()` at `27e9788` and now, on the 13 kept V `samples.csv` files in the container | identical output for all 13 (including the two refused `d+` runs) |
+| `python3 -I -m py_compile sim/*.py` | ok |

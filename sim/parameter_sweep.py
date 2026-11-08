@@ -39,6 +39,7 @@ about the robot.
 
 import argparse
 import csv
+import itertools
 import json
 import os
 import re
@@ -59,10 +60,17 @@ DEFAULT_STEM = os.path.join(REPO, "sim", "results", "stage5c2-sweep")
 # Today's values: the xacro defaults (sim/check_sim_config.py keeps the launch file's equal).
 NOMINAL = {"body_mass_kg": 2.0, "com_height_m": 0.20, "motor_stall_torque_Nm": 0.774725, "imu_delay_ms": 20}
 LETTER = {"body_mass_kg": "m", "com_height_m": "h", "motor_stall_torque_Nm": "k", "imu_delay_ms": "d"}
+UNIT = {"body_mass_kg": "kg", "com_height_m": "m", "motor_stall_torque_Nm": "N m", "imu_delay_ms": "ms"}
 SPREAD = 0.30  # +/-30 %, sim-plant.md §4.3
 V_REPEATS = 3
-MARGINAL_OVERSHOOT_PCT = 27.0  # [%] V passes at <= 30 %; above 27 % one noisy run from failing
-CODE_SCENARIO_ARGS = {  # what verify_sim.sh launches each scenario with (read from it, for the record)
+# [%] V passes at <= V_OVERSHOOT_PCT (30 %). A case whose largest V overshoot passed but was above
+# this is reported MARGINAL rather than PASS. Chosen with the sweep (stage 5c-2) as 3 points under
+# the limit; no derivation was written down. For scale: V's old metric spread over 23.5-29.1 % in 6
+# runs of one model (stage 5c-1), so 3 points is about half that run-to-run spread.
+MARGINAL_OVERSHOOT_PCT = 27.0
+# How verify_sim.sh launches each scenario, COPIED BY HAND from its scenario functions for the
+# report's record; nothing checks it. If verify_sim.sh changes a scenario's launch, change it here.
+CODE_SCENARIO_ARGS = {
     "U": "teleop:=false initial_pitch_deg:=2.0 encoder_sign:=-1",
     "I": "teleop:=false encoder_sign:=-1 impulse_time_s:=2.0 impulse_angular_velocity_deg_per_s:=100",
     "V": "teleop:=true encoder_sign:=-1 (fake gamepad: 0, then 0.1 m/s from 1 s)",
@@ -98,8 +106,9 @@ def all_cases(grid):
             for sign in (-1, +1):
                 cases.append(("one at a time", dict(NOMINAL, **{name: moved(name, sign)})))
     if grid in ("corners", "all"):
-        for bits in range(16):
-            signs = [-1 if bits & (8 >> i) else +1 for i in range(4)]  # "+" first, as in binary
+        # Every combination of +30 % and -30 %, "+" first and the last parameter changing fastest:
+        # m+h+k+d+, m+h+k+d-, m+h+k-d+, ... m-h-k-d-.
+        for signs in itertools.product((+1, -1), repeat=len(NOMINAL)):
             cases.append(("corner", {n: moved(n, s) for n, s in zip(NOMINAL, signs)}))
     return [(case_id(p), kind, p) for kind, p in cases]
 
@@ -157,13 +166,17 @@ def run_verify(scenarios, params, log_path):
                                     stderr=subprocess.STDOUT, env=env, timeout=900).returncode
         except subprocess.TimeoutExpired:
             status = "timeout"
-        text = open(log_path, encoding="utf-8").read()
+        with open(log_path, encoding="utf-8") as f:
+            text = f.read()
         results = {}
         for name in scenarios:
             # verify_sim.sh's own verdict line, which also counts the wiring and the release.
             found = re.search(rf"^\s*SCENARIO {name}: (PASS|FAIL|COULD NOT JUDGE)", text, re.MULTILINE)
             path = os.path.join(metrics_dir, f"{name}.json")
-            metrics = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
+            metrics = {}
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    metrics = json.load(f)
             verdict = found.group(1) if found else "COULD NOT JUDGE"
             reason = metrics.get("reason") or f"no verdict line (verify_sim.sh exit {status})"
             results[name] = (verdict, metrics, reason)
@@ -185,7 +198,7 @@ def run(args):
         writer = csv.DictWriter(f, fieldnames=COLUMNS)
         if new_file:
             writer.writeheader()
-        for number_, (case, kind, params) in enumerate(cases, 1):
+        for case_index, (case, kind, params) in enumerate(cases, 1):
             # First U, I and the first V in one verify_sim.sh call, then each further V on its own.
             calls = [[("U", 1), ("I", 1), ("V", 1)]] + [[("V", k)] for k in range(2, args.v_repeats + 1)]
             for call in calls:
@@ -199,7 +212,7 @@ def run(args):
                 for s, k in todo:
                     verdict, metrics, reason = results[s]
                     writer.writerow(row_of(case, kind, params, s, k, verdict, metrics, reason, commit, status, log))
-                    print(f"  [{number_}/{len(cases)}] {case:<9} {s}#{k}: {verdict}: {reason}", flush=True)
+                    print(f"  [{case_index}/{len(cases)}] {case:<9} {s}#{k}: {verdict}: {reason}", flush=True)
                 f.flush()
                 print(f"      ({time.monotonic() - started:.0f} s, verify_sim.sh exit {status})", flush=True)
     report(args)
@@ -207,8 +220,8 @@ def run(args):
 
 # ---- The report ----------------------------------------------------------------------------------
 def thresholds():
-    text = open(VERIFY_SIM, encoding="utf-8").read()
-    return {n: re.search(rf"^{n}=(\S+)", text, re.MULTILINE).group(1) for n in THRESHOLD_NAMES}
+    """THRESHOLD_NAMES as written in verify_sim.sh (text), read the same way the linear model reads them."""
+    return lin.verify_sim_values(THRESHOLD_NAMES)
 
 
 def linear_prediction(gains, params):
@@ -220,7 +233,7 @@ def linear_prediction(gains, params):
         rad = lin.radius(gains, delay_ms=delay)
         screen = {s: lin.simulate(gains, s, delay_ms=delay) for s in ("U", "I", "V")}
     finally:
-        lin.set_plant(NOMINAL["body_mass_kg"], NOMINAL["com_height_m"], NOMINAL["motor_stall_torque_Nm"])
+        lin.reset_plant()
     return rad, screen
 
 
@@ -311,16 +324,12 @@ def agreement(runs, rad, screen):
     return "; ".join(diffs) or "agree"
 
 
-def report(args):
-    stem = args.stem
-    rows = read_rows(stem + ".csv")
-    if not rows:
-        print(f"parameter_sweep: no results in {stem}.csv; nothing to report")
-        return 2
-    gains = lin.read_yaml(lin.SIM_YAML)
+def header_lines(stem, rows, gains):
+    """The report's title, warnings, reproducibility block, legend and table header."""
     th = thresholds()
     commits = sorted({r["commit"] for r in rows})
-    out = [f"# Robustness sweep of the sim gains (+/-30 %): results",
+    legend = ", ".join(f"{LETTER[n]} = {n} ({NOMINAL[n]} {UNIT[n]})" for n in NOMINAL)
+    return [f"# Robustness sweep of the sim gains (+/-30 %): results",
            "",
            "Written by `sim/parameter_sweep.py` from `" + os.path.relpath(stem + ".csv", REPO) + "`; do not "
            "edit by hand. Explained in [the stage 5c-2 journal](../../docs/journal/2026-11-03-stage5c2-sweep.md).",
@@ -345,32 +354,47 @@ def report(args):
            "Logs:           verify_sim.sh output per call, inside the dev container (column `log` of the CSV)",
            "```",
            "",
-           "m = body_mass_kg (2.0 kg), h = com_height_m (0.20 m), k = motor_stall_torque_Nm (0.774725 N m), "
-           "d = imu_delay_ms (20 ms); `-` = -30 %, `+` = +30 %. U: largest |pitch| and |v| from 5 s on. "
+           legend + "; `-` = -30 %, `+` = +30 %. U: largest |pitch| and |v| from 5 s on. "
            "I: settle time after the push (peak |pitch|). V: overshoot min-max over the repeats, rise to 90 %. "
            "Linear model: `cascade_linearisation.py` with the same four changes (largest \\|z\\| per 10 ms "
            "cycle, < 1 = stable; time screen with SimPlant's write quirks).",
            "",
            "| Case | Kind | m kg | h m | k N m | d ms | U | I | V | **Verdict** | Linear model | Linear vs sim |",
            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+
+
+def table_row(case, runs, gains):
+    """One case's line of the table, and one line for each of its runs that did not pass."""
+    first = runs[0]
+    params = {n: float(first[n]) for n in NOMINAL}
+    rad, screen = linear_prediction(gains, params)
+    verdict = case_verdict(runs, V_REPEATS)
+    line = (f"| `{case}` | {first['kind']} | {first['body_mass_kg']} | {first['com_height_m']} | "
+            f"{first['motor_stall_torque_Nm']} | {first['imu_delay_ms']} | {cell(runs, 'U')} | "
+            f"{cell(runs, 'I')} | {cell(runs, 'V')} | **{verdict}** | {linear_cell(rad, screen)} | "
+            f"{agreement(runs, rad, screen)} |")
+    failing = [f"- `{case}` {r['scenario']} run {r['repeat']}: {r['verdict']}: {r['reason']}"
+               for r in runs if r["verdict"] != "PASS"]
+    return line, failing
+
+
+def report(args):
+    stem = args.stem
+    rows = read_rows(stem + ".csv")
+    if not rows:
+        print(f"parameter_sweep: no results in {stem}.csv; nothing to report")
+        return 2
+    gains = lin.read_yaml(lin.SIM_YAML)
+    out = header_lines(stem, rows, gains)
     order = [c[0] for c in all_cases("all")]
     by_case = {}
     for r in rows:
         by_case.setdefault(r["case"], []).append(r)
     failing = []
     for case in sorted(by_case, key=lambda c: order.index(c) if c in order else len(order)):
-        runs = by_case[case]
-        first = runs[0]
-        params = {n: float(first[n]) for n in NOMINAL}
-        rad, screen = linear_prediction(gains, params)
-        verdict = case_verdict(runs, V_REPEATS)
-        out.append(f"| `{case}` | {first['kind']} | {first['body_mass_kg']} | {first['com_height_m']} | "
-                   f"{first['motor_stall_torque_Nm']} | {first['imu_delay_ms']} | {cell(runs, 'U')} | "
-                   f"{cell(runs, 'I')} | {cell(runs, 'V')} | **{verdict}** | {linear_cell(rad, screen)} | "
-                   f"{agreement(runs, rad, screen)} |")
-        for r in runs:
-            if r["verdict"] != "PASS":
-                failing.append(f"- `{case}` {r['scenario']} run {r['repeat']}: {r['verdict']}: {r['reason']}")
+        line, case_failing = table_row(case, by_case[case], gains)
+        out.append(line)
+        failing += case_failing
     counts = {}
     overshoot_only = 0
     for case, runs in by_case.items():

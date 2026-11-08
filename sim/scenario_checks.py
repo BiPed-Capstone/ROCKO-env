@@ -65,6 +65,7 @@ import os
 import re
 import sys
 import time
+from collections import namedtuple
 
 import rclpy
 from control_msgs.msg import DynamicJointState, MultiDOFCommand, MultiDOFStateStamped
@@ -212,8 +213,7 @@ def check_tipover(args):
 
 # ---- C-3: teleop watchdog ----------------------------------------------------------------------
 # A command counts as processed by DiffDriveController once the node has run this many of its 10 ms
-# timer cycles after the command left (see handled_by in check_teleop). Two, not one: on a cycle
-# where the timer and a waiting command are both ready, rclpy runs the timer first.
+# timer cycles after the command left. Why two: see handled_by in check_teleop.
 NODE_CYCLES_TO_HANDLE = 2
 
 
@@ -245,22 +245,22 @@ def check_teleop(args):
     command.twist.linear.x = args.speed_m_s
     commands = round(args.drive_s * args.rate_hz)
     next_publish = time.monotonic()
-    returned_s = []  # [system clock s] when each publish() call returned: the command had left
+    command_left_s = []  # [system clock s] when each publish() call returned: the command had left
     for _ in range(commands):
         rec.spin_until(lambda: time.monotonic() >= next_publish, 1.0)
         command.header.stamp = rec.get_clock().now().to_msg()
         gamepad.publish(command)
-        returned_s.append(time.time())
+        command_left_s.append(time.time())
         next_publish += 1.0 / args.rate_hz
     rec.spin_for(args.after_s)  # ... and then the gamepad goes silent
     end_s = time.time()
     rec.destroy_node()
-    # When each command was really sent, from its source timestamp (system clock, seconds).
-    publish_times = sorted(rec.sent_s[gamepad_topic])
-    if len(publish_times) != commands:
-        return finish(args.out, {"commands_published": commands, "commands_heard": len(publish_times)},
+    # [system clock s] when each command was stamped as sent: its DDS source timestamp, heard back.
+    command_sent_s = sorted(rec.sent_s[gamepad_topic])
+    if len(command_sent_s) != commands:
+        return finish(args.out, {"commands_published": commands, "commands_heard": len(command_sent_s)},
                       COULD_NOT_JUDGE, f"sent {commands} gamepad commands but heard "
-                      f"{len(publish_times)} of them back, so their send times are not all known")
+                      f"{len(command_sent_s)} of them back, so their send times are not all known")
 
     # Every time from here on is on the system clock, in seconds, and is a time a message was SENT
     # (its source timestamp), or the time one of our publish() calls returned. Not arrival times:
@@ -269,7 +269,7 @@ def check_teleop(args):
     def sent(topic):
         return list(zip(rec.sent_s[topic], (m for _, m in rec.received[topic])))
     flags, references, plant = sent(flag_topic), sent(reference_topic), sent(plant_topic)
-    first_pub, last_pub = publish_times[0], publish_times[-1]
+    first_pub, last_pub = command_sent_s[0], command_sent_s[-1]
     settled = last_pub + args.timeout_s + args.margin_s  # by now the reference must be zero
     early_s = args.timeout_s - 0.01  # less one 10 ms timer period of rounding
     late_s = args.timeout_s + args.margin_s
@@ -283,13 +283,17 @@ def check_teleop(args):
     # seen to block 0.30 s in between (2026-11-07). And the node can only take a command off its
     # queue while it runs: a DiffDriveController that is itself stalled processes nothing, and on
     # waking its timer may run before the waiting command (seen: True, then False 1.3 ms later).
-    # So a command counts as HANDLED by time t only if the node ran NODE_CYCLES_TO_HANDLE timer
-    # cycles after publish() returned and before t: the executor runs every callback that is
-    # ready before it waits again, so by its second cycle the command's callback has run.
+    # So a command counts as HANDLED by time t only if the node ran NODE_CYCLES_TO_HANDLE (two)
+    # timer cycles after publish() returned and before t. Why two, step by step:
+    #   1. the first cycle after the command left may run before the command is in the node's
+    #      queue, or together with it: when the timer and a waiting command are ready at once,
+    #      rclpy runs the timer first, so that cycle can still check the watchdog without it;
+    #   2. before the executor waits again it runs every callback that is ready, the command's too;
+    #   3. so by the second timer cycle the command's callback has run, and that cycle sees it.
     def handled_by(t):
         """Send stamps of the commands the node had certainly processed before time t."""
-        return [p for p, r in zip(publish_times, returned_s)
-                if sum(1 for c in node_cycles if r <= c < t) >= NODE_CYCLES_TO_HANDLE]
+        return [sent_s for sent_s, left_s in zip(command_sent_s, command_left_s)
+                if sum(1 for c in node_cycles if left_s <= c < t) >= NODE_CYCLES_TO_HANDLE]
 
     # The rule, judged on every silence (the gaps between commands and the silence after the
     # last one), because a stall can hold back a command and make a gap mid-drive:
@@ -299,21 +303,23 @@ def check_teleop(args):
     #   - in every certain silence longer than late_s (from the moment a command had certainly
     #     left to the earliest the next one could arrive) the node must be timed out by its first
     #     cycle late_s after the command had left. The final silence is always one (after_s 2 s).
-    gaps = [b - a for a, b in zip(publish_times, publish_times[1:])]
+    gaps = [b - a for a, b in zip(command_sent_s, command_sent_s[1:])]
     early = []  # [s after the latest handled command] for each True sent too soon
     for t, m in flags:
         if m.data and t > first_pub:
             handled = handled_by(t)
             if handled and t - handled[-1] < early_s:
                 early.append(round(t - handled[-1], 4))
-    silences = [(p, r) for p, r, next_p in zip(publish_times, returned_s, publish_times[1:] + [math.inf])
-                if next_p - r > late_s]
+    # (sent_s, left_s) of each command followed by a certain silence longer than late_s.
+    silences = [(sent_s, left_s) for sent_s, left_s, next_sent_s
+                in zip(command_sent_s, command_left_s, command_sent_s[1:] + [math.inf])
+                if next_sent_s - left_s > late_s]
     missed = []  # [s into the drive] for each silence the node did not time out in
-    for p, r in silences:
-        deadline = next((c for c in node_cycles if c >= r + late_s), None)
-        if deadline is None or not any(m.data and p < t <= deadline for t, m in flags):
-            missed.append(round(p - first_pub, 3))
-    stalls = [s for s in silences if s[0] != last_pub]  # the mid-drive ones, for the note
+    for sent_s, left_s in silences:
+        deadline = next((c for c in node_cycles if c >= left_s + late_s), None)
+        if deadline is None or not any(m.data and sent_s < t <= deadline for t, m in flags):
+            missed.append(round(sent_s - first_pub, 3))
+    mid_drive_silences = [s for s in silences if s[0] != last_pub]  # all but the final one, for the note
 
     went_false = [t for t, m in flags if not m.data and first_pub <= t <= last_pub]
     went_true = [t for t, m in flags if m.data and t > last_pub]
@@ -322,10 +328,10 @@ def check_teleop(args):
     after_values = [list(m.values) for t, m in references if t > settled]
     plant_after = [t for t, _ in plant if t > settled]
     metrics = {
-        "commands_published": len(publish_times),
+        "commands_published": len(command_sent_s),
         "drive_s": last_pub - first_pub,
         "largest_command_gap_s": max(gaps, default=None),
-        "command_gaps_longer_than_timeout_plus_margin": len(stalls),
+        "command_gaps_longer_than_timeout_plus_margin": len(mid_drive_silences),
         "flag_messages": [(round(t - first_pub, 4), m.data) for t, m in flags],
         "timeout_latency_s": latency,
         "timeout_s": args.timeout_s,
@@ -335,7 +341,8 @@ def check_teleop(args):
         # How long publish() took after the middleware stamped a command, and the longest the node
         # published nothing while it should have been running every 10 ms: the two delays the rules
         # allow for. Both are usually a few ms.
-        "longest_publish_call_s": max(r - p for p, r in zip(publish_times, returned_s)),
+        "longest_publish_call_s": max(left_s - sent_s
+                                      for sent_s, left_s in zip(command_sent_s, command_left_s)),
         "longest_node_cycle_gap_s": max(
             (b - a for a, b in zip(node_cycles, node_cycles[1:]) if first_pub - 0.5 < a < end_s),
             default=None),
@@ -347,13 +354,13 @@ def check_teleop(args):
         "plant_samples_after_timeout": len(plant_after),
         "after_window_s": end_s - settled,
     }
-    print(f"scenario_checks: {len(publish_times)} gamepad commands over {metrics['drive_s']:.2f} s "
+    print(f"scenario_checks: {len(command_sent_s)} gamepad commands over {metrics['drive_s']:.2f} s "
           f"(largest gap {max(gaps, default=0.0):.3f} s; longest publish() call "
           f"{metrics['longest_publish_call_s']:.4f} s; longest gap between the node's cycles "
           f"{metrics['longest_node_cycle_gap_s']:.3f} s); "
           f"flag (s after first command, value): {metrics['flag_messages']}")
-    if stalls:
-        print(f"scenario_checks: note: {len(stalls)} silence(s) longer than {late_s:g} s in the "
+    if mid_drive_silences:
+        print(f"scenario_checks: note: {len(mid_drive_silences)} silence(s) longer than {late_s:g} s in the "
               f"middle of the drive (this script stalled, or a publish() call blocked: not the node "
               f"under test); the watchdog must time out in each, and it is judged so")
     print(f"scenario_checks: timed out {latency if latency is None else round(latency, 4)} s after "
@@ -570,6 +577,20 @@ END_SLACK_S = 0.05
 # Copied from SimPlantModel.hpp (kEncoderAssumedPeriodS, kEncoderFilterAlpha); keep them equal.
 REPLICA_ASSUMED_PERIOD_S = 0.01
 REPLICA_FILTER_ALPHA = 0.05
+# One plant sample of the balance scenarios, from one /dynamic_joint_states message. pitch, its rate
+# and the wheel travel are left_wheel_joint's (one IMU and one encoder reply feed both joints).
+#   t_s                 [s after SimPlant's release] the message's header stamp minus the release stamp
+#   pitch_deg           exported pitch [deg], as the controllers read it
+#   pitch_rate_deg_s    exported pitch_rate [deg/s] (the gyro, not delayed)
+#   mean_velocity_m_s   the mean of the two wheels' exported `velocity` [m/s], what the velocity loop
+#                       reads (see the docstring above: about half the true speed, finding U-2)
+#   position_m          the exported `position` [m]: the wheel travel velocity_from_true_periods() needs
+#   right_velocity_m_s  the right wheel's exported `velocity` [m/s] (the replica's filter state)
+Sample = namedtuple("Sample", "t_s pitch_deg pitch_rate_deg_s mean_velocity_m_s position_m right_velocity_m_s")
+# The column names of samples.csv, in Sample's order (the first says what t_s counts from).
+SAMPLES_CSV_HEADER = ["t_after_release_s", "pitch_deg", "pitch_rate_deg_s", "mean_velocity_m_s",
+                      "position_m", "right_velocity_m_s"]
+
 # velocity_from_true_periods() replays one replica cycle from the previous sample; if that gives this
 # sample's exported velocity to within this [m/s], exactly one cycle lay between them. Doubles
 # arrive unchanged, so only float noise is allowed.
@@ -596,9 +617,8 @@ def release_stamp(launch_log):
 
 def record_from_release(rec, args, record_s, topic="/dynamic_joint_states", during=None):
     """Spin until record_s s of plant samples after the release have arrived. Returns (release
-    stamp or None, samples), samples = [(t_s after release, pitch_deg, pitch_rate_deg_s,
-    mean measured wheel velocity m/s, wheel travel m, right wheel velocity m/s)]; pitch, rate and
-    travel are left_wheel_joint's (one IMU and one encoder reply feed both joints). during(t_s) is called while spinning with the latest sample's time (for publishing)."""
+    stamp or None, [Sample, ...] from the release on). during(t_s) is called while spinning with
+    the latest sample's time, or None before the first (velocity-step publishes from it)."""
     deadline = time.monotonic() + args.wait
     release = None
     while release is None and time.monotonic() < deadline:
@@ -615,31 +635,31 @@ def record_from_release(rec, args, record_s, topic="/dynamic_joint_states", duri
             _, msg = rec.received[topic].pop(0)
             left, right = joint_values(msg, JOINTS[0]), joint_values(msg, JOINTS[1])
             v = 0.5 * (left.get("velocity", math.nan) + right.get("velocity", math.nan))
-            # The last two (wheel travel [m], right wheel velocity [m/s]) are only for
-            # velocity_from_true_periods(), used by V.
-            samples.append((stamp_s(msg) - release, left.get("pitch", math.nan),
-                            left.get("pitch_rate", math.nan), v,
-                            left.get("position", math.nan), right.get("velocity", math.nan)))
+            samples.append(Sample(
+                t_s=stamp_s(msg) - release, pitch_deg=left.get("pitch", math.nan),
+                pitch_rate_deg_s=left.get("pitch_rate", math.nan), mean_velocity_m_s=v,
+                position_m=left.get("position", math.nan),
+                right_velocity_m_s=right.get("velocity", math.nan)))
 
     end = time.monotonic() + record_s + args.wait
     while time.monotonic() < end:
         rec.spin_for(0.02)
         collect_new()
         if during:
-            during(samples[-1][0] if samples else None)
-        if samples and samples[-1][0] >= record_s:
+            during(samples[-1].t_s if samples else None)
+        if samples and samples[-1].t_s >= record_s:
             break
-    return release, [s for s in samples if s[0] >= 0.0]
+    return release, [s for s in samples if s.t_s >= 0.0]
 
 
 def write_samples(out_dir, samples):
+    """samples.csv: one row per Sample, the time to 0.1 ms, every other value exactly (repr)."""
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "samples.csv"), "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["t_after_release_s", "pitch_deg", "pitch_rate_deg_s", "mean_velocity_m_s",
-                         "position_m", "right_velocity_m_s"])
+        writer.writerow(SAMPLES_CSV_HEADER)
         for s in samples:
-            writer.writerow([f"{s[0]:.4f}"] + [repr(x) for x in s[1:]])
+            writer.writerow([f"{s.t_s:.4f}"] + [repr(x) for x in s[1:]])
 
 
 def coverage_problem(samples, args, record_s):
@@ -647,22 +667,22 @@ def coverage_problem(samples, args, record_s):
     and reach record_s), or None."""
     if len(samples) < args.min_samples:
         return f"only {len(samples)} plant samples after the release (need {args.min_samples})"
-    if samples[0][0] > MAX_FIRST_SAMPLE_S:
-        return (f"the first sample came {samples[0][0]:.2f} s after the release "
+    if samples[0].t_s > MAX_FIRST_SAMPLE_S:
+        return (f"the first sample came {samples[0].t_s:.2f} s after the release "
                 f"(need <= {MAX_FIRST_SAMPLE_S} s)")
-    if samples[-1][0] < record_s - END_SLACK_S:
-        return f"the samples stop {samples[-1][0]:.2f} s after the release (need {record_s} s)"
+    if samples[-1].t_s < record_s - END_SLACK_S:
+        return f"the samples stop {samples[-1].t_s:.2f} s after the release (need {record_s} s)"
     return None
 
 
 def fell_at(samples, tipover_deg):
     """The first time [s after release] |pitch| reached tipover_deg, or None."""
-    return next((s[0] for s in samples if abs(s[1]) >= tipover_deg), None)
+    return next((s.t_s for s in samples if abs(s.pitch_deg) >= tipover_deg), None)
 
 
 def nearest(samples, t_s):
     """The sample whose time is closest to t_s."""
-    return min(samples, key=lambda s: abs(s[0] - t_s))
+    return min(samples, key=lambda s: abs(s.t_s - t_s))
 
 
 def velocity_from_true_periods(samples):
@@ -691,23 +711,26 @@ def velocity_from_true_periods(samples):
     cycles and nothing else is removed, so any artefact inside the gap stays in (it can only make
     the overshoot look larger, never hide one)."""
     a = REPLICA_FILTER_ALPHA
-    if any(b[0] <= s[0] for s, b in zip(samples, samples[1:])):
+    if any(b.t_s <= s.t_s for s, b in zip(samples, samples[1:])):
         return [], "two plant samples have the same or decreasing stamps, so a period is unknown", 0
-    corrected = [samples[0][3]]
+    corrected = [samples[0].mean_velocity_m_s]
     error = 0.0  # [m/s] the replica's filter (its right-wheel output) minus the true-period one
     not_one_cycle = 0
     for before, s in zip(samples, samples[1:]):
-        travel_m, period_s = s[4] - before[4], s[0] - before[0]
+        travel_m, period_s = s.position_m - before.position_m, s.t_s - before.t_s
         # One replica cycle from the previous sample's state (its right velocity is the filter):
-        left = (1 - a) * before[5] + a * travel_m / REPLICA_ASSUMED_PERIOD_S
-        if abs(0.5 * (left + (1 - a) * left) - s[3]) <= REPLAY_TOLERANCE_M_S:
+        left = (1 - a) * before.right_velocity_m_s + a * travel_m / REPLICA_ASSUMED_PERIOD_S
+        if abs(0.5 * (left + (1 - a) * left) - s.mean_velocity_m_s) <= REPLAY_TOLERANCE_M_S:
             error_left = (1 - a) * error + a * travel_m * (1 / REPLICA_ASSUMED_PERIOD_S - 1 / period_s)
         else:  # samples dropped in between: about period_s / 0.01 cycles, at least two
             not_one_cycle += 1
             cycles = max(2, round(period_s / REPLICA_ASSUMED_PERIOD_S))
+            # Each cycle applies the filter twice (the left call, then the right), so `cycles`
+            # cycles decay the error by (1 - a) ** (2 * cycles). The last factor is the right call
+            # of the final cycle, applied by the line after this if/else, as for one cycle.
             error_left = error * (1 - a) ** (2 * cycles - 1)
         error = (1 - a) * error_left
-        corrected.append(s[3] - 0.5 * (error_left + error))
+        corrected.append(s.mean_velocity_m_s - 0.5 * (error_left + error))
     if not_one_cycle > MAX_NOT_ONE_CYCLE_FRACTION * (len(samples) - 1):
         return corrected, (f"{not_one_cycle} of {len(samples) - 1} sample pairs are not one encoder-"
                            f"replica cycle apart (allowed {MAX_NOT_ONE_CYCLE_FRACTION:.0%}): the "
@@ -724,21 +747,23 @@ def check_upright(args):
                       f"no 'releasing the simulated robot' line in the launch log within {args.wait} s")
     write_samples(args.out, samples)
     fell = fell_at(samples, args.tipover_deg)
-    settled = [s for s in samples if s[0] >= args.settle_from]
+    settled = [s for s in samples if s.t_s >= args.settle_from]
     metrics = {
         "samples": len(samples), "release_stamp_s": release,
-        "start_pitch_deg": samples[0][1] if samples else None,
+        "start_pitch_deg": samples[0].pitch_deg if samples else None,
         "fell_at_s": fell,
-        "max_abs_pitch_deg": max((abs(s[1]) for s in samples), default=math.nan),
-        "max_abs_pitch_after_settle_from_deg": max((abs(s[1]) for s in settled), default=math.nan),
-        "max_abs_speed_after_settle_from_m_s": max((abs(s[3]) for s in settled), default=math.nan),
+        "max_abs_pitch_deg": max((abs(s.pitch_deg) for s in samples), default=math.nan),
+        "max_abs_pitch_after_settle_from_deg": max((abs(s.pitch_deg) for s in settled),
+                                                   default=math.nan),
+        "max_abs_speed_after_settle_from_m_s": max((abs(s.mean_velocity_m_s) for s in settled),
+                                                   default=math.nan),
         # The sample nearest each whole second (1, 2, ...), for a quick look at the trend.
-        "pitch_at_1s_intervals_deg": [round(nearest(samples, k)[1], 3)
+        "pitch_at_1s_intervals_deg": [round(nearest(samples, k).pitch_deg, 3)
                                       for k in range(1, int(args.record) + 1)] if samples else [],
         "record_s": args.record, "settle_from_s": args.settle_from,
         "settled_pitch_deg": args.settled_pitch_deg, "max_speed_m_s": args.max_speed_m_s,
         "tipover_deg": args.tipover_deg,
-        "last_stamp_s": release + samples[-1][0] if samples else None,
+        "last_stamp_s": release + samples[-1].t_s if samples else None,
     }
     print(f"scenario_checks: {len(samples)} samples after release; start pitch "
           f"{metrics['start_pitch_deg']} deg; max |pitch| {metrics['max_abs_pitch_deg']:.3f} deg; "
@@ -777,26 +802,26 @@ def check_impulse(args):
     write_samples(args.out, samples)
     # The push: the largest one-sample jump in the exported pitch_rate (undelayed, sim-plant.md
     # §3.7) near the push time. Exported rate jumps by +impulse_deg_s whatever pitch_sign is (§5).
-    near = [(b[0], b[2] - a[2]) for a, b in zip(samples, samples[1:])
-            if args.impulse_time_s + PUSH_WINDOW_S[0] <= b[0] <= args.impulse_time_s + PUSH_WINDOW_S[1]]
+    near = [(b.t_s, b.pitch_rate_deg_s - a.pitch_rate_deg_s) for a, b in zip(samples, samples[1:])
+            if args.impulse_time_s + PUSH_WINDOW_S[0] <= b.t_s <= args.impulse_time_s + PUSH_WINDOW_S[1]]
     jump_t, jump = max(near, key=lambda x: x[1], default=(None, math.nan))
     fell = fell_at(samples, args.tipover_deg)
-    after = [s for s in samples if s[0] >= args.impulse_time_s]
+    after = [s for s in samples if s.t_s >= args.impulse_time_s]
     # The last time after the push that |pitch| was above the settled limit.
-    last_out = max((s[0] for s in after if abs(s[1]) > args.settled_pitch_deg), default=None)
+    last_out = max((s.t_s for s in after if abs(s.pitch_deg) > args.settled_pitch_deg), default=None)
     settle_s = (last_out - args.impulse_time_s) if last_out is not None else 0.0
     metrics = {
         "samples": len(samples), "release_stamp_s": release,
         "impulse_seen_at_s": jump_t, "impulse_rate_jump_deg_s": jump,
         "fell_at_s": fell,
-        "peak_abs_pitch_after_impulse_deg": max((abs(s[1]) for s in after), default=math.nan),
-        "max_abs_pitch_before_impulse_deg": max((abs(s[1]) for s in samples
-                                                 if s[0] < args.impulse_time_s), default=math.nan),
+        "peak_abs_pitch_after_impulse_deg": max((abs(s.pitch_deg) for s in after), default=math.nan),
+        "max_abs_pitch_before_impulse_deg": max((abs(s.pitch_deg) for s in samples
+                                                 if s.t_s < args.impulse_time_s), default=math.nan),
         "settle_time_after_impulse_s": settle_s,
         "record_s": args.record, "impulse_time_s": args.impulse_time_s,
         "impulse_deg_s": args.impulse_deg_s, "settle_within_s": args.settle_within_s,
         "settled_pitch_deg": args.settled_pitch_deg, "tipover_deg": args.tipover_deg,
-        "last_stamp_s": release + samples[-1][0] if samples else None,
+        "last_stamp_s": release + samples[-1].t_s if samples else None,
     }
     print(f"scenario_checks: {len(samples)} samples after release; rate jump {jump:.1f} deg/s at "
           f"{jump_t} s (push {args.impulse_deg_s} deg/s at {args.impulse_time_s} s); peak |pitch| "
@@ -865,19 +890,19 @@ def check_velocity_step(args):
     if state["step_wall_s"] is None:
         return finish(args.out, {"samples": len(samples)}, COULD_NOT_JUDGE, "the step never started")
     step_t = state["step_wall_s"] - release  # [s after release] the first step command left
-    after = [s for s in samples if s[0] >= step_t]
+    after = [s for s in samples if s.t_s >= step_t]
     target = args.rise_fraction * args.speed_m_s
-    rise_at = next((s[0] for s in after if s[3] >= target), None)
+    rise_at = next((s.t_s for s in after if s.mean_velocity_m_s >= target), None)
     rise_s = rise_at - step_t if rise_at is not None else None
     # Overshoot is judged on the replica's velocity with each cycle's real length (see
     # velocity_from_true_periods); the highest exported sample is kept for the record.
     corrected, replay_problem, sample_gaps = (velocity_from_true_periods(samples) if samples
                                               else ([], "no samples", 0))
-    peak_v = max((v for s, v in zip(samples, corrected) if s[0] >= step_t), default=math.nan)
+    peak_v = max((v for s, v in zip(samples, corrected) if s.t_s >= step_t), default=math.nan)
     overshoot_pct = 100.0 * (peak_v - args.speed_m_s) / args.speed_m_s
-    peak_exported_v = max((s[3] for s in after), default=math.nan)
+    peak_exported_v = max((s.mean_velocity_m_s for s in after), default=math.nan)
     exported_overshoot_pct = 100.0 * (peak_exported_v - args.speed_m_s) / args.speed_m_s
-    peak_pitch = max((abs(s[1]) for s in samples), default=math.nan)
+    peak_pitch = max((abs(s.pitch_deg) for s in samples), default=math.nan)
     fell = fell_at(samples, args.tipover_deg)
     metrics = {
         "samples": len(samples), "release_stamp_s": release, "gamepad_messages": state["published"],
@@ -886,13 +911,13 @@ def check_velocity_step(args):
         "peak_exported_mean_velocity_m_s": peak_exported_v,
         "exported_overshoot_pct": exported_overshoot_pct, "replay_problem": replay_problem,
         "sample_pairs_with_dropped_samples": sample_gaps,
-        "min_mean_velocity_after_step_m_s": min((s[3] for s in after), default=math.nan),
-        "final_mean_velocity_m_s": samples[-1][3] if samples else None,
+        "min_mean_velocity_after_step_m_s": min((s.mean_velocity_m_s for s in after), default=math.nan),
+        "final_mean_velocity_m_s": samples[-1].mean_velocity_m_s if samples else None,
         "peak_abs_pitch_deg": peak_pitch, "fell_at_s": fell,
         "speed_m_s": args.speed_m_s, "rise_fraction": args.rise_fraction,
         "rise_within_s": args.rise_within_s, "max_overshoot_pct": args.max_overshoot_pct,
         "max_pitch_deg": args.max_pitch_deg, "tipover_deg": args.tipover_deg,
-        "last_stamp_s": release + samples[-1][0] if samples else None,
+        "last_stamp_s": release + samples[-1].t_s if samples else None,
     }
     print(f"scenario_checks: step to {args.speed_m_s} m/s at {step_t:.3f} s after release; "
           f"{args.rise_fraction:.0%} reached after {rise_s if rise_s is None else round(rise_s, 3)} s; "

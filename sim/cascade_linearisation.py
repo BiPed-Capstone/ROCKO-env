@@ -54,6 +54,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(REPO, "rocko_env", "rocko_env", "bringup", "config")
 SIM_YAML = os.path.join(CONFIG, "rocko_sim_controllers.yaml")
 HW_YAML = os.path.join(CONFIG, "rocko_controllers.yaml")
+VERIFY_SIM = os.path.join(REPO, "verify_sim.sh")
 
 DEG = 180.0 / math.pi  # [deg per rad]
 T = 0.01  # [s] control period: update_rate 100 in both YAML files
@@ -93,6 +94,9 @@ def derive_plant():
 
 
 derive_plant()
+
+# The three estimates set_plant() can replace, as written above; reset_plant() puts them back.
+DEFAULT_PLANT = (m_b, l, tau_stall)  # (body_mass_kg, com_height_m, motor_stall_torque_Nm)
 
 # Encoder replica constants, copied from QuadEncoders.py (:39 alpha, :71 the assumed 0.01 s).
 ENC_ALPHA = 0.05
@@ -203,7 +207,8 @@ def fmt(z, digits=4):
 # ------------------------------------------------------------------------------------------------
 def read_yaml(path):
     # Drop comments first: the hardware YAML keeps old gain sets in commented-out lines.
-    lines = open(path, encoding="utf-8").read().split("\n")
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().split("\n")
     text = "\n".join(line.split("#")[0] for line in lines)
 
     def gains(key):
@@ -287,12 +292,17 @@ def set_plant(body_mass_kg, com_height_m, motor_stall_torque_Nm):
     derived from them, including the one-cycle plant matrices. For the +/-30 % robustness sweep
     (sim-plant.md §4.3, sim/parameter_sweep.py). As in SimPlant, the body's inertia follows its mass
     (uniform box) but not its centre-of-mass height, and the stall torque scales K_u, K_w and b
-    together. Call set_plant(2.0, 0.20, 0.774725) to go back to the defaults."""
+    together. reset_plant() goes back to the defaults."""
     global m_b, l, tau_stall, PHI, GAM
     m_b, l, tau_stall = body_mass_kg, com_height_m, motor_stall_torque_Nm
     derive_plant()
     _ZOH_CACHE.clear()
     PHI, GAM = zoh(T)
+
+
+def reset_plant():
+    """Undo set_plant(): the estimates at the top of this file (DEFAULT_PLANT) again."""
+    set_plant(*DEFAULT_PLANT)
 
 
 def linear_write(u):
@@ -389,8 +399,9 @@ def discrete_step(gains, pitch_sign, encoder_sign, delay_ms, *, outer=True, gyro
 
 
 def discrete_cascade(gains, pitch_sign, encoder_sign, delay_cycles, *, delay_ms=None, **kwargs):
-    """The closed-loop matrix of one control cycle (the linear model). delay_ms, if given, replaces
-    delay_cycles and may be any whole number of milliseconds, as SimPlant's imu_delay_ms."""
+    """The closed-loop matrix of one control cycle (the linear model), with an IMU delay of
+    delay_cycles 10 ms cycles. delay_ms, if given, is used instead (delay_cycles is then ignored;
+    callers pass 0) and may be any whole number of milliseconds, as SimPlant's imu_delay_ms."""
     n, step = discrete_step(gains, pitch_sign, encoder_sign,
                             10 * delay_cycles if delay_ms is None else delay_ms, **kwargs)
     return matrix_of(step, n)
@@ -432,6 +443,43 @@ def slow_and_fast(z_list):
 #    nonlinear sim (verify_sim.sh scenarios) before anyone believes it.
 # ------------------------------------------------------------------------------------------------
 SCEN_PITCH_SIGN, SCEN_ENCODER_SIGN, SCEN_DELAY_MS = -1, -1, 20
+DIFFDRIVE_WHEEL_RADIUS_M = 0.06  # [m] DiffDriveController.py's wheel_radius_meters (its feedforward)
+
+
+def verify_sim_values(names):
+    """{name: value as written} for lines `NAME=value` in verify_sim.sh, the one place the scenario
+    thresholds are decided. A value written `$OTHER` is followed to OTHER's value. Also used by
+    sim/parameter_sweep.py, so the two scripts cannot read different numbers."""
+    with open(VERIFY_SIM, encoding="utf-8") as f:
+        text = f.read()
+
+    def value(name):
+        found = re.search(rf"^{name}=(\S+)", text, re.MULTILINE)
+        if found is None:
+            raise ValueError(f"{name}= not found in {VERIFY_SIM}")
+        written = found.group(1)
+        return value(written[1:]) if written.startswith("$") else written
+
+    return {name: value(name) for name in names}
+
+
+# The verify_sim.sh numbers simulate() uses, by the name verify_sim.sh gives them (units there).
+SCENARIO_THRESHOLD_NAMES = (
+    "TIPOVER_SCENARIO_DEG",
+    "U_START_DEG", "U_RECORD_S", "U_SETTLE_FROM_S", "U_SETTLED_DEG", "U_MAX_SPEED_M_S",
+    "I_IMPULSE_AT_S", "I_IMPULSE_DEG_S", "I_SETTLED_DEG", "I_SETTLE_S", "I_RECORD_S",
+    "V_STEP_M_S", "V_BEFORE_S", "V_STEP_S", "V_RISE_FRACTION", "V_RISE_S", "V_OVERSHOOT_PCT",
+    "V_PITCH_DEG",
+)
+_scenario_thresholds = {}  # filled on first use: simulate() runs thousands of times in --sweep
+
+
+def scenario_thresholds():
+    """SCENARIO_THRESHOLD_NAMES as floats, read from verify_sim.sh once."""
+    if not _scenario_thresholds:
+        _scenario_thresholds.update(
+            {name: float(text) for name, text in verify_sim_values(SCENARIO_THRESHOLD_NAMES).items()})
+    return _scenario_thresholds
 
 
 def radius(gains, delay_ms=SCEN_DELAY_MS, **kwargs):
@@ -476,13 +524,15 @@ def db(x):
 
 def simulate(gains, scenario, *, write=quirks_write, delay_ms=SCEN_DELAY_MS):
     """Scenario U, I or V on the discrete model, with the write path (default: SimPlant's quirks)
-    and the clamp, judged with the same thresholds as verify_sim.sh's scenario block (copied below
-    by name; verify_sim.sh is the one place they are decided). Linear plant: no large-angle
-    physics, no open-loop gap after release, no DDS or executor jitter. A screen, not a verdict."""
+    and the clamp, judged with verify_sim.sh's own scenario thresholds (read from it by
+    scenario_thresholds(): verify_sim.sh is the one place they are decided). Linear plant: no
+    large-angle physics, no open-loop gap after release, no DDS or executor jitter. A screen, not a
+    verdict."""
+    th = scenario_thresholds()
     n, step = discrete_step(gains, SCEN_PITCH_SIGN, SCEN_ENCODER_SIGN, delay_ms)
     j, f_ms = divmod(delay_ms, 10)
     z = [0.0] * n
-    psi0 = math.radians(2.0) * SCEN_PITCH_SIGN if scenario == "U" else 0.0  # U_START_DEG
+    psi0 = math.radians(th["U_START_DEG"]) * SCEN_PITCH_SIGN if scenario == "U" else 0.0  # [rad]
     # The ring buffer starts full of the initial lean (sim-plant.md §3.6, on_activate).
     nd = max(j, 1) if f_ms == 0 else 1
     z[0] = psi0
@@ -490,42 +540,46 @@ def simulate(gains, scenario, *, write=quirks_write, delay_ms=SCEN_DELAY_MS):
         z[k] = psi0
     for k in range(8 + nd, n):
         z[k] = psi0
-    seconds = {"U": 10.0, "I": 8.0, "V": 9.0}[scenario]  # U_RECORD_S, I_RECORD_S, V_BEFORE_S + V_STEP_S
+    seconds = {"U": th["U_RECORD_S"], "I": th["I_RECORD_S"],
+               "V": th["V_BEFORE_S"] + th["V_STEP_S"]}[scenario]  # [s after release]
     rows = []  # (t [s after release], pitch [deg], v_meas [m/s], u [rad/s])
     for k in range(int(round(seconds / T)) + 1):
         t = k * T
-        if scenario == "I" and k == int(round(2.0 / T)):  # I_IMPULSE_AT_S, I_IMPULSE_DEG_S
-            z[2] += math.radians(100.0) * SCEN_PITCH_SIGN
-        stepping = scenario == "V" and t >= 1.0  # V_BEFORE_S
-        v_ref = 0.1 if stepping else 0.0  # V_STEP_M_S
-        u_ff = v_ref / 0.06  # DiffDriveController.py: wheel_radius_meters = 0.06
+        if scenario == "I" and k == int(round(th["I_IMPULSE_AT_S"] / T)):  # the push, as SimPlant's
+            z[2] += math.radians(th["I_IMPULSE_DEG_S"]) * SCEN_PITCH_SIGN
+        stepping = scenario == "V" and t >= th["V_BEFORE_S"]
+        v_ref = th["V_STEP_M_S"] if stepping else 0.0  # [m/s]
+        u_ff = v_ref / DIFFDRIVE_WHEEL_RADIUS_M  # [rad/s]
         log = {}
         z = step(z, v_ref, u_ff, write, log)
         rows.append((t, log["pitch"], log["v_meas"], log["u"]))
-    TIP = 35.0
-    fell = next((t for t, p, _, _ in rows if abs(p) >= TIP), None)
+    fell = next((t for t, p, _, _ in rows if abs(p) >= th["TIPOVER_SCENARIO_DEG"]), None)
     out = {"fell_at_s": fell, "max_abs_u": max(abs(u) for *_, u in rows),
            "saturated_cycles": sum(1 for *_, u in rows if abs(u) >= MAX_CODE)}
     if scenario == "U":
-        late = [row for row in rows if row[0] >= 5.0]  # U_SETTLE_FROM_S
+        late = [row for row in rows if row[0] >= th["U_SETTLE_FROM_S"]]
         out["late_pitch"] = max(abs(p) for _, p, _, _ in late)
         out["late_speed"] = max(abs(v) for _, _, v, _ in late)
-        out["pass"] = fell is None and out["late_pitch"] <= 2.0 and out["late_speed"] <= 0.05
+        out["pass"] = (fell is None and out["late_pitch"] <= th["U_SETTLED_DEG"]
+                       and out["late_speed"] <= th["U_MAX_SPEED_M_S"])
     elif scenario == "I":
-        after = [row for row in rows if row[0] >= 2.0]
-        last_out = max((t for t, p, _, _ in after if abs(p) > 2.0), default=None)
+        push_s = th["I_IMPULSE_AT_S"]
+        after = [row for row in rows if row[0] >= push_s]
+        last_out = max((t for t, p, _, _ in after if abs(p) > th["I_SETTLED_DEG"]), default=None)
         out["peak_pitch"] = max(abs(p) for _, p, _, _ in after)
-        out["settle_s"] = (last_out - 2.0) if last_out is not None else 0.0
-        out["pass"] = fell is None and out["settle_s"] <= 3.0  # I_SETTLED_DEG, I_SETTLE_S
+        out["settle_s"] = (last_out - push_s) if last_out is not None else 0.0
+        out["pass"] = fell is None and out["settle_s"] <= th["I_SETTLE_S"]
     else:
-        after = [row for row in rows if row[0] >= 1.0]
-        rise = next((t for t, _, v, _ in after if v >= 0.09), None)
-        out["rise_s"] = rise - 1.0 if rise is not None else None
-        out["overshoot_pct"] = 100.0 * (max(v for _, _, v, _ in after) - 0.1) / 0.1
+        step_s, speed = th["V_BEFORE_S"], th["V_STEP_M_S"]
+        after = [row for row in rows if row[0] >= step_s]
+        rise = next((t for t, _, v, _ in after if v >= th["V_RISE_FRACTION"] * speed), None)
+        out["rise_s"] = rise - step_s if rise is not None else None
+        out["overshoot_pct"] = 100.0 * (max(v for _, _, v, _ in after) - speed) / speed
         out["peak_pitch"] = max(abs(p) for _, p, _, _ in rows)
         out["final_v"] = rows[-1][2]
-        out["pass"] = (fell is None and out["rise_s"] is not None and out["rise_s"] <= 3.0
-                       and out["overshoot_pct"] <= 30 and out["peak_pitch"] < 10.0)
+        out["pass"] = (fell is None and out["rise_s"] is not None and out["rise_s"] <= th["V_RISE_S"]
+                       and out["overshoot_pct"] <= th["V_OVERSHOOT_PCT"]
+                       and out["peak_pitch"] < th["V_PITCH_DEG"])
     return out
 
 
