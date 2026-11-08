@@ -23,7 +23,8 @@ something that falls over.
 Whether Tier 3 counts as built is recorded only in the [verification ladder](verification-ladder.md).
 [ADR 0003](../decisions/0003-simulation-target.md) (still `Proposed`) chose Gazebo; the 2026-10-31 run
 ([journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md)) builds `SimPlant` first, as finding
-**M-4** recommends. The proposal to amend the ADR is still to be written (row 2.1 of
+**M-4** recommends. The proposal to amend the ADR is
+[proposal 0005](../proposals/0005-amend-adr-0003-simulpant-first.md) (Open; row 2.1 of
 [next-steps.md](../next-steps.md)).
 
 **Code this page reads:** `bringup/config/rocko_controllers.yaml`, `DiffDriveController.py`,

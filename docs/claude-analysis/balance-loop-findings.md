@@ -539,7 +539,7 @@ interfaces now); `SimPlant` exports `pitch_sign * degrees(psi_dot)` with no IMU 
 YAML (only) sets `pitch_pid_controller`'s `reference_and_state_interfaces` to `["pitch", "pitch_rate"]`. That
 is the one wiring difference `sim/check_sim_config.py` allows. *Not done:* the real `rocko_controllers.yaml`
 still says `["pitch"]`, so the robot's D term still differentiates the angle; changing it is a gated
-decision (a proposal, not yet written) and has to cover [L-8](#l-8--pid_controller-sets-the-rate-reference-once-at-activation).
+decision ([proposal 0008](../proposals/0008-candidate-gains-and-tethered-test.md), Open) and has to cover [L-8](#l-8--pid_controller-sets-the-rate-reference-once-at-activation).
 It must also cover a **persistent** rate failure: today a bad rate is only held and logged, so once the real
 YAML consumes the rate the plugin needs its own consecutive-failure tracker that makes `read()` return `ERROR`,
 switched by a hardware parameter such as `pitch_rate_required` (see the comment in `ICM20948.hpp`).
@@ -930,8 +930,8 @@ stack — chained controllers, sign conventions, units, the watchdog, arm/disarm
   robot would not (H-7), so M-4 stays *partly done*. See the
   [verification ladder](../architecture/verification-ladder.md) for the tier's status and
   [`sim-plant.md`](../architecture/sim-plant.md) for the model. It still conflicts with
-  [ADR 0003](../decisions/0003-simulation-target.md), which chose Gazebo and stays `Proposed`; a
-  proposal to amend it is to follow.
+  [ADR 0003](../decisions/0003-simulation-target.md), which chose Gazebo and stays `Proposed`; the
+  amending proposal is [0005](../proposals/0005-amend-adr-0003-simulpant-first.md) (Open).
 
 ---
 

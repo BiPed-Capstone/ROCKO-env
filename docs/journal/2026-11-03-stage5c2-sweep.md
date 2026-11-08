@@ -274,8 +274,14 @@ Laptop, repo root, container started from this checkout (`./check_container_moun
 docker compose -f docker/compose.yml exec -T ros2 bash -c 'cd /ros2_ws && src/ROCKO-env/build_ros.sh'
 docker compose -f docker/compose.yml exec -T ros2 python3 /ros2_ws/src/ROCKO-env/sim/parameter_sweep.py run --stem /tmp/sweep/again
 #   about 35 minutes; a different --stem so the committed results are not appended to
-python3 -I sim/parameter_sweep.py report     # the table from the committed CSV, with the linear model, seconds
+cp sim/results/stage5c2-sweep.csv /tmp/old-metric-sweep.csv
+python3 -I sim/parameter_sweep.py report --stem /tmp/old-metric-sweep   # the table from a COPY of the committed CSV, with the linear model, seconds
 ```
+
+The CSV and report in `sim/results/stage5c2-sweep.*` are the **old V metric**; they are committed as the
+record of that run, and `report` without `--stem` would rewrite their `.md`, so read them through a copy
+as above. The corrected-metric run is `sim/results/stage5c2-sweep-vmetric2.*`
+([re-run journal](2026-11-07-stage5c2-sweep-rerun.md)).
 
 ## Commits
 

@@ -57,7 +57,7 @@ FAIL 7). **No case fell, and U and I passed in all 25 cases** (U late |pitch| at
 | `m+h−k−d−` | PASS | MARGINAL | 15.1-27.9 |
 | `m+h+k−d−` | MARGINAL | MARGINAL | 17.2-27.7 |
 | `m−h−k−d−` | MARGINAL | MARGINAL | 14.7-29.9 |
-| the other 10 cases | PASS | PASS | 14.7 to 23.3 at most |
+| the other 11 cases | PASS | PASS | 14.7 to 23.3 at most |
 
 (m = body mass 1.4 / 2.6 kg, h = centre-of-mass height 0.14 / 0.26 m, k = stall torque 0.542 / 1.007 N m,
 d = IMU delay 14 / 26 ms.) Of the 25 cases, 7 went from FAIL or MARGINAL to PASS (the first seven rows),

@@ -205,44 +205,65 @@ section 3.3).
 
 ## 7. IMU delay
 
-`imu_delay_ms` stands for how long after the robot moves the controllers see the new pitch. This
-measurement needs the robot's software, so it is an **on-robot step**: robot on a stand, wheels
-clear, motors able to run, a hand ready on the power cut.
+`imu_delay_ms` stands for how long after the robot moves the pitch reaches software. This
+measurement needs the robot's IMU, so it is an **on-robot step**, but it needs no controllers and
+no motor power: the IMU node runs alone, the robot sits on a stand, and nothing can drive a wheel.
 
-**Tools:** the Pi with a display or an SSH terminal on a screen, a phone that films at 240 frames
-per second.
+**Why tank mode will not do:** tank mode (`rocko_tank_mode.launch.py`) has no balance loop, and
+`rocko.launch.py` is the launch that starts the IMU node (`rocko.launch.py:110`, only when
+`use_mock_hardware` is false). So this procedure runs the node by itself, as
+[proposal 0008, section A](../proposals/0008-candidate-gains-and-tethered-test.md) does.
 
-1. On the Pi, start the software in tank mode (it holds the wheels still without a command), in
-   one terminal:
+**What the data is, honestly:** the node answers a service, `/icm20948_data`. The reply
+(`rocko_interfaces/srv/Icm20948Data`) holds yaw, pitch, roll and `success`, and **has no timestamp**.
+So there is no sensor clock to compare against: the only time a reading can have is the moment a
+client receives it. This procedure therefore measures *physical motion to a reply reaching a
+command-line client* on the Pi, which includes the sensor's own lag, the service round trip and the
+client's printing. It does not include the 100 Hz control cycle or the C++ plugin that the real loop
+adds on top, so it is a **lower bound** on the delay the controllers see, not the delay itself.
+
+**Tools:** the Pi with a display (or a screen showing an SSH terminal), a phone that films at 60
+frames per second if it can (30 if not).
+
+1. On the Pi, in one terminal:
 
    ```bash
-   ros2 launch rocko_env rocko_tank_mode.launch.py
+   source /opt/ros/jazzy/setup.bash
+   source ~/ros2_ws/install/setup.bash
+   ros2 run rocko_env ICM20948.py
    ```
 
-2. In a second Pi terminal, start a recording of the state interfaces (it contains `pitch`):
+2. In a second Pi terminal, call the service repeatedly and print each reply as it arrives.
+   `ros2 service call` has a `-r` (repeat rate, Hz) option in recent ROS 2 releases; check that
+   `ros2 service call --help` lists it on your Pi first. If it does not, wrap the call in a shell
+   `while true` loop (slower, because each call starts a new process). **Not run by the author of
+   this guide: the command is a composition of standard tools, not a tested script.**
 
    ```bash
-   ros2 bag record -o ~/rocko_logs/imu_delay_$(date +%Y%m%d_%H%M%S) /dynamic_joint_states
+   source /opt/ros/jazzy/setup.bash
+   source ~/ros2_ws/install/setup.bash
+   ros2 service call -r 20 /icm20948_data rocko_interfaces/srv/Icm20948Data
    ```
 
-3. In a third terminal, show the Pi's clock so a camera can see it, and keep it in the video:
+3. Put the robot's body and that terminal in **one** camera frame. Film at 60 fps (30 if that is all
+   you have). Tilt the body by hand, quickly and sharply, about 10 degrees, several times.
+4. Play the video frame by frame. For each tilt, note the frame where the body first visibly
+   moves, and the first frame where the terminal shows a `pitch` that has clearly changed. The
+   number of frames between them, times the frame time (16.7 ms at 60 fps, 33.3 ms at 30 fps), is
+   one delay sample. No clock needs to match anything, because both events are in the same video.
+5. 10 tilts; record the mean and the range.
 
-   ```bash
-   watch -n 0.01 date +%s.%N
-   ```
+**Its uncertainty:** each of the two events is read to within one video frame, and the terminal
+adds its own redraw time (one display refresh, about 17 ms, plus whatever the terminal program
+adds). A sample is good to about **±20 ms at 60 fps and ±35 ms at 30 fps**, and averaging 10 tilts
+does not remove the part that is the same every time (the display and the client). The `-r` rate
+also limits it: the sensor is only read when a call arrives, so at 20 Hz a tilt waits up to 50 ms
+for the next call and a sample can read up to 50 ms long. Use a higher rate (`-r 50`) if the Pi
+keeps up. Say all of this when you record the value. If you cannot
+do this, write `not measured`; do not substitute a datasheet number.
 
-4. Film the robot's body and that terminal in one frame at 240 fps. Tilt the body quickly by hand
-   toward and away from upright, several times, with a clear, sharp start of motion each time.
-5. For each tilt, read from the video the Pi-clock reading when the body starts to move. Then find
-   in the bag when `pitch` starts to change. The difference (bag stamp minus video clock) is the
-   delay the controllers see. `ros2 bag play` and `ros2 topic echo` can be used to read stamps.
-6. 10 tilts; record the mean and the range.
-
-**What this includes:** the sensor's own lag, the blocking service call and the control cycle. **Its
-uncertainty:** the terminal's refresh and the video frame limit it to about ±10 to 20 ms; say so.
-If you cannot do this, write `not measured`; do not substitute a datasheet number.
-
-Also useful, since the loop's timing matters (finding H-5): with the software running,
+Also useful, since the loop's timing matters (finding H-5): with a full launch running (the balancing launch, or the tank-mode one of step 8; not the lone IMU
+node above, which publishes no state), in another terminal:
 
 ```bash
 ros2 topic hz /dynamic_joint_states

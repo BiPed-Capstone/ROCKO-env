@@ -276,7 +276,8 @@ V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degre
 S2B_FALL_S=1.0         # [s] with the pitch loop's sign flipped the linear model diverges at ~20 /s
                        #   (1.218 per cycle, sim-plant.md §7.2): 2 -> 35 deg in ~0.2 s. 1.0 s is
                        #   generous and far below AB_MIN_FALL_S, so a slow drift cannot pass for it
-AB_RECORD_S=20         # [s] long enough to see the as-built fall (9.3-10.0 s observed so far)
+AB_RECORD_S=20         # [s] long enough to see the as-built fall (AB falls at 9.3-10.0 s with the
+                       #   hardware gains, about 3.8 s with the stage 5c-1 sim gains)
 AB_MIN_FALL_S=3.0      # [s] AB must fall by a slow run-away (linear model: a real pole at +0.82 /s),
                        #   not at once: a fall before 3 s would be a different fault
 

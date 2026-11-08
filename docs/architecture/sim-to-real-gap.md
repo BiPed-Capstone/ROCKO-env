@@ -18,7 +18,7 @@ if the robot were tested, which loop it hits, and why.
 > about the estimated model. "Optimistic" means the sim makes a gain look safer than the robot will.
 > The list is a set of reasons to expect a difference, not a forecast of its size.
 
-Last written 2026-11-04, on top of `77664f4`. The six places this page can go stale: the gains in
+Last written 2026-11-04, on top of `77664f4`; sweep and V-metric figures updated 2026-11-07. The six places this page can go stale: the gains in
 `rocko_sim_controllers.yaml`, the model's parameters (sim-plant.md §4), the write path in
 `Motor12VoltQuadEncoder.cpp`, the encoder node, the IMU node, and the sweep results.
 
@@ -206,7 +206,8 @@ and [§3](sim-plant.md#3-the-model).
 - **Direction (reasoning):** optimistic, size unknown. **The container already shows the effect on
   the node's replica:** stage 5c-1 saw velocity samples 3.3 to 28 ms apart and a noisy measured
   velocity, and the nominal model failed the velocity-step overshoot in some runs of three
-  (stage 5c-2). The Pi's timing is not the container's and neither has been measured against the
+  (stage 5c-2, old V metric; the noise was a late control cycle read as a faster wheel and the
+  corrected metric passes the nominal model). The Pi's timing is not the container's and neither has been measured against the
   other.
 - **Not covered by the sweep:** timing jitter.
 

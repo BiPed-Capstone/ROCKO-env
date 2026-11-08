@@ -297,7 +297,8 @@ deletes it.
 
 **What a pass does not tell you.** Every physical number in the model (masses, inertia, motor
 constants, the IMU delay) is an estimate; nothing was measured on the robot. The scenarios that ask whether
-the controllers *hold* the model upright are a separate mode (below) and fail today; the safeguard checks
+the controllers *hold* the model upright are a separate mode (below): with the stage 5c-1 sim gains they pass (`SCENARIOS_EXPECTED_RED=0`), with the
+hardware gains they fail; the safeguard checks
 above run for a few seconds and look at the safeguard, not at balance, so a pass does not mean the cascade balances,
 and it certainly does not mean the real robot balances or that any gain is good. The
 [verification ladder](../architecture/verification-ladder.md) says what is and is not built, and
@@ -314,8 +315,10 @@ Run it from the repo root on the laptop, after the build (step 2). It is a separ
 the default run, and makes five launches (U upright, I impulse, V velocity step, S2b, AB), which take a
 few minutes. Exit status: **0** only if U, I and V pass and S2b and AB print `ok`; **1** if any scenario
 fails; **2** if a run could not be judged and none failed. **Today it should exit 0:** with the
-sim gains tuned in stage 5c-1 U, I and V pass and S2b and AB print `ok`. V passes narrowly (overshoot
-23.5 to 29.1 % against a 30 % limit in six runs), so an occasional V failure on a slow or busy laptop is
+sim gains tuned in stage 5c-1 U, I and V pass and S2b and AB print `ok`. V passes narrowly (under the corrected
+V metric the nominal overshoot is about 15 to 24 % against the 30 % limit; the 23.5 to 29.1 % that this page
+used to quote was the old metric, see the [sweep re-run journal](../journal/2026-11-07-stage5c2-sweep-rerun.md)),
+so an occasional V failure on a slow or busy laptop is
 possible and is not a broken check; a red S2b or AB is never expected. What each scenario asks, its thresholds, and the results of the first run: the
 [verification ladder](../architecture/verification-ladder.md#the-balance-scenarios-verify_simsh-scenarios-a-separate-mode),
 the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md) and, for the tuning, the
@@ -329,9 +332,10 @@ the committed results in `sim/results/` are not appended to):
 docker compose -f docker/compose.yml exec -T ros2 python3 /ros2_ws/src/ROCKO-env/sim/parameter_sweep.py run --stem /tmp/sweep/mine
 ```
 
-It ends with `parameter_sweep: wrote ... (25 cases, 125 runs): FAIL n, MARGINAL n, PASS n` and a
+It ends with `parameter_sweep: wrote ... (25 cases, 125 runs): FAIL n, MARGINAL n, PASS n` (plus `COULD NOT JUDGE n` when a probe gave no verdict) and a
 markdown table next to the CSV. What the cases are and what the last run found:
-[stage 5c-2 journal](../journal/2026-11-03-stage5c2-sweep.md).
+[stage 5c-2 journal](../journal/2026-11-03-stage5c2-sweep.md) (first run, old V metric) and the
+[re-run journal](../journal/2026-11-07-stage5c2-sweep-rerun.md) (corrected metric, the current numbers).
 
 To run the plant's own unit test (no ROS, any machine with a C++17 compiler; from the repo root):
 

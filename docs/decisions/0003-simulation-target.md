@@ -3,7 +3,8 @@
 - **Status:** Proposed — **the decision itself (a Gazebo physics simulation) is not implemented.**
   Follow-on steps 1 and 2 are implemented on the `ai-forward` branch only, and a different plant,
   `SimPlant`, was built first (2026-10-31); see "Progress" below. The ADR **stays `Proposed`**: it
-  names Gazebo, Gazebo does not exist here, and the proposal to amend it is not written yet.
+  names Gazebo, Gazebo does not exist here, and the proposal to amend it
+  ([proposal 0005](../proposals/0005-amend-adr-0003-simulpant-first.md)) is Open, awaiting a human.
 - **Date:** 2026-09-20 (progress added 2026-10-27 and 2026-10-31)
 - **Deciders:** ROCKO capstone team
 
@@ -28,8 +29,9 @@
 [`balance-loop-findings.md`](../claude-analysis/balance-loop-findings.md) recommends a `SimPlant`
 hardware plugin (about 200 lines of C++ integrating cart-pole dynamics) over a full Gazebo setup.
 This ADR chose Gazebo before that audit. For the 2026-10-31 run the person decided `SimPlant` first
-and it was built; Gazebo is not ruled out. The amendment to this ADR that records that (a proposal)
-**is to follow and has not been written**, so until then this ADR and the code disagree. The
+and it was built; Gazebo is not ruled out. The amendment to this ADR that records that is
+[proposal 0005](../proposals/0005-amend-adr-0003-simulpant-first.md) (**Open**, not decided), so until a
+human accepts it this ADR and the code disagree. The
 `bootstrap-sim` skill lays out the trade.
 
 ## Context
