@@ -10,7 +10,13 @@
   (Python 3, standard library). **Nothing ran on a robot or a Raspberry Pi.**
 
 > **STATUS AT WRITING (the orchestrator edits this box).**
-> - **Stage 6 (finding C-1, the blocking service calls in the 100 Hz loop) is NOT started.**
+> - **Stage 6 (finding C-1, the blocking service calls in the 100 Hz loop) is partly done
+>   (2026-11-07): helper + test + proposal; the plugin is unchanged.** Landed: the BNO055 UART framing
+>   as an unwired header (`Bno055UartProtocol.hpp`) with a host test, and
+>   [proposal 0010](../proposals/0010-c1-imu-uart-and-encoders-in-cpp.md) for the rest
+>   ([journal](2026-11-07-c1-bno055-uart-framing.md)). `ICM20948.cpp` and the encoder reads still make
+>   the blocking service calls; nothing that runs on the robot changed. Lines below that say stage 6
+>   is not started were true when written.
 > - **Tier 3 is now marked built** (2026-11-07, the orchestrator's decision after review) in the
 >   [verification ladder](../architecture/verification-ladder.md), which is the only home of that status. **Tier 3 is
 >   built: a model with ESTIMATED, unmeasured parameters (row 2.2/proposal 0007 not done), `encoder_sign:=-1`

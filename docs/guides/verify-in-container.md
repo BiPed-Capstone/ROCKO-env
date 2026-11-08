@@ -118,6 +118,18 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/in
 Success: it prints `all ImuFaultTracker tests passed` and exits 0. It is not a tier and nothing runs it
 automatically. It tests the counting logic of that one header, nothing on the sensor or the robot.
 
+If you changed `Bno055UartProtocol.hpp` (the BNO055 UART framing for finding C-1; no plugin uses it
+yet), run its host test the same way:
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    tools/bno055_uart_protocol_test.cpp -o /tmp/bno055_uart_protocol_test && /tmp/bno055_uart_protocol_test
+```
+
+Success: it prints `all Bno055UartProtocol tests passed (388 checks)` and exits 0. It is not a tier and
+nothing runs it automatically. It tests the byte framing and decoding as the header describes them,
+not that the header matches the real sensor, and nothing about the serial port or the robot.
+
 Why `src/ROCKO-env/build_ros.sh` and not `./build_ros.sh`? The container also has a separate copy at
 `/ros2_ws/build_ros.sh` that goes stale if the file is replaced while the container runs; the copy
 inside `src/ROCKO-env/` is always the current one.

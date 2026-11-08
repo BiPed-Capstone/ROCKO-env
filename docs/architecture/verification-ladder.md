@@ -100,6 +100,26 @@ limit, the 10-of-20 window, a good read clearing the run, the total never resett
 about `ICM20948.cpp`, the sensor, timing or a robot. It is not run by any script here, so nothing
 makes anyone run it.
 
+### The host unit test of the BNO055 UART framing (not a tier)
+
+`tools/bno055_uart_protocol_test.cpp` tests `Bno055UartProtocol.hpp`, a header-only helper for the
+BNO055's UART register protocol (finding **C-1**, next-steps row 1.1). **No plugin includes the
+header yet**: it is the part of the C-1 IMU migration that can be checked without a robot, and the
+rest is [proposal 0010](../proposals/0010-c1-imu-uart-and-encoders-in-cpp.md). It needs only a C++17
+compiler, no ROS. From the repo root:
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    tools/bno055_uart_protocol_test.cpp -o /tmp/bno055_uart_protocol_test && /tmp/bno055_uart_protocol_test
+```
+
+Success is the line `all Bno055UartProtocol tests passed (388 checks)` and exit status 0; each failed
+check prints `FAIL <line>: <expression>` and the run exits 1. It is **not a tier** and no script runs
+it. It checks that the header builds request frames, checks reply frames and decodes the 12-byte
+gyro-plus-Euler burst as its own comments say. It cannot check that those comments match the BNO055
+datasheet (each fact is marked UNVERIFIED in the header), and says nothing about timing, the serial
+port, the sensor or the robot.
+
 ### The simulation check, `verify_sim.sh` (Tier 3, built with the limits in the table above)
 
 `verify_sim.sh` (repo root, runs in the container, after a Tier 1 build) launches
@@ -227,6 +247,7 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
 | --- | --- | --- |
 | 0 | The URDF expands and parses in seven expansions (balancing and tank, mock off and on, plus balancing with `use_sim_plant:=true`, without and with `use_mock_hardware:=true`, where the sim must win, plus tank mode asked for `use_sim_plant:=true`, which tank mode ignores by design), and each holds the right hardware: the two real motor plugins (and the IMU, in balancing mode) when the mock is off, exactly one `MockRocko` system when it is on, exactly one `SimPlant` system (`SimRocko`) and nothing else for the sim, and still the two real motor plugins and no `SimPlant` for the tank request; no plugin of any other kind; and the mock exports exactly the same interfaces (joints, sensors and gpio; a duplicate counts as a difference) as the real hardware, and so does the sim: 14 in balancing mode (the 12 of before plus a `pitch_rate` state on each wheel joint, finding H-6), 6 in tank mode. A pass prints 12 `ok` lines at the left margin (four more, indented, come from the config check below) and `PASS`. `sim/check_sim_config.py` also checks that `rocko_sim_controllers.yaml` equals `rocko_controllers.yaml` in everything except the `gains` maps and one allowed difference named in the script (`INTENTIONAL_WIRING_DIFFERENCES`: the sim's `pitch_pid_controller` has `reference_and_state_interfaces: ["pitch", "pitch_rate"]`, the hardware file `["pitch"]`; the entry fails if either file stops having exactly those values) (values compared with their type, so `100` and `100.0` differ; 17 wiring values equal plus 1 allowed difference on 2026-11-02); that in both files each controller's `gains` keys are exactly its `dof_names` and every `gains` key other than the tunable numbers (`p`, `i`, `d`, the clamps, `feedforward_gain`) is equal; that every simulator setting's default is the same in `SimPlantModel.hpp`, `rocko.urdf.xacro` and (for the settings in its `SIM_ARGUMENTS`) `rocko_sim.launch.py`, that each `<param>` in `rocko.ros2_control.xacro` is wired to the xacro arg of the same name, and that an `int` setting is written as an integer; and that the IMU fault limit the sim copies equals `ICM20948.hpp`'s. The guard hook blocks what it should and passes what it should. The git hooks in `.githooks/`, installed by copy in a throwaway repository, refuse and allow what they should | That anything compiles or runs. That the git hooks are installed in your clone |
 | host unit test (not a tier) | The counting logic of `ImuFaultTracker`: it trips at exactly the consecutive limit and not before; a good read clears the run; a sensor that alternates 4 bad and 1 good reads, which never reaches the consecutive limit, trips the 10-of-20 window; the window clears after 20 good reads; the total count is never reset; one bad read in ten never trips it; a custom window limit is honoured | That `ICM20948.cpp` calls it correctly, that the limits are right for the robot, or anything about the sensor, timing or physics |
+| host unit test of the BNO055 UART framing (not a tier) | `Bno055UartProtocol.hpp`, in 11 test functions and 388 checks: the read request is `AA 01 14 0C` and a 0-byte read is refused; the write request's bytes, and its refusals; a good 14-byte reply decodes to exact gyro (deg/s, 16 LSB each) and Euler (deg, 16 LSB each) values, negative ones and the int16 extremes included (low byte first, two's complement); every `0xEE` status gives a device error with that status; every truncation, an extra byte, a wrong first byte (all 256 tried: only `0xBB` is accepted) and a wrong length byte are refused; on every failure all six values are NaN and the snapshot is invalid | That the frame bytes, status codes, register addresses or scale factors match the real BNO055 (written from memory, marked UNVERIFIED); termios, timing, the sensor's reply delay; which field is the robot's pitch; anything a plugin does (none uses it) |
 | compile-only (not a tier) | `Motor12VoltQuadEncoder.cpp` parses, every name resolves, every call matches a declared signature, and the ROS 2 headers it uses exist in Jazzy. First run, 2026-10-31, on the unmodified file: pass. Rerun on the edited file (the new `write()`, review round 2): pass. It was not made to fail on the new `write()` | That the real WiringPi signatures match: the stubs are copied by hand, so a stub that differs from the real header would hide a mistake. That it links, runs, behaves, is fast enough, or builds on a Pi |
 | 1 | `rocko_interfaces` and `rocko_env` compile and link; declared dependencies install | Anything about **`Motor12VoltQuadEncoder.cpp`** (left out off-Pi: it needs WiringPi; only the compile-only check above type-checks it). Anything at runtime |
 | 2 | Every controller **the launch file spawns** (the four cascade controllers in balancing mode; the diff-drive controller and joint-state broadcaster in tank mode) loads against the mock, claims interfaces the hardware layer exports, chains, activates and stays active; `Joystick.py` and `DiffDriveController.py` have not crashed. It refuses to run while another controller manager is up, so it cannot be fooled by a leftover one | **Physics.** The mock echoes each command back as a state and holds pitch at 0.0, so a controller that would drop the robot on the floor passes just the same. It does not start every controller named in the YAML, and it skips the IMU and encoder nodes |
@@ -270,6 +291,7 @@ fixed; see the journal.)
 | 2 | Remove the executable bit from `Joystick.py` | `FAIL`, exit 1: `node Joystick.py crashed` |
 | compile-only | Break a copy of `Motor12VoltQuadEncoder.cpp` in the container's `/tmp` and pass it as the script's argument: put a string where an `int` is expected; delete a `;`; remove `#include <softPwm.h>`; misspell `HW_IF_VELOCITY` as `HW_IF_VELOCIT` | each `FAIL (compile-only)`, exit 1, for the right reason: `invalid conversion from const char* to int`; `expected ';' before 'return'`; `softPwmCreate was not declared`; `not a member of hardware_interface`. The unmodified file passes with exit 0 |
 | host unit test | Three deliberate breaks to `ImuFaultTracker.hpp`, one at a time: disable the windowed trip; change `>=` to `>` in a limit test; make a good read stop clearing the consecutive run | each went red on a named assertion, and the unbroken header passes with `all ImuFaultTracker tests passed` |
+| host unit test of the BNO055 UART framing (2026-11-07) | Five scratch copies of `Bno055UartProtocol.hpp`, one break each: Euler scale 16 → 100 LSB/deg; low and high byte swapped; the first-byte (header) check removed; no two's complement; an oversized frame accepted | red each time, exit 1: 6, 14, 265, 7 and 2 of 388 checks failed (first failures: `heading_deg == 359.9375`; `gyro_x_deg_s == 1.5`; `status == kBadHeader`; `gyro_y_deg_s == -2.0625`; `status == kTooLong`). The real header: 388 of 388 |
 | 1 | `build_ros.sh` with the flag `OFF` where there is no WiringPi | CMake `WiringPi not found`, then `ERROR: colcon build failed`, **exit 1**, no `Done!`; the next normal run recovers (its explicit `-D` overrides the cached value) |
 | 1 | Skip flag `ON` while a (fake) `libwiringPi` is present | CMake stops: `ROCKO_SKIP_WIRINGPI=ON, but WiringPi IS installed here`, exit 1 |
 | 1 | Skip flag `OFF` with a (fake) `libwiringPi` present — the Pi path | Configures with 0 CMake errors and compiles `Motor12VoltQuadEncoder.cpp`, which then fails on the missing `wiringPi.h` as it must off-Pi. This shows the Pi branch is taken; it is **not** a Pi build |
@@ -361,6 +383,9 @@ because they show what each tier is for.
   not run anywhere. `SimPlant` applies the same counting rule to its own simulated IMU (a copy of the
   decision, not `ICM20948.cpp`), so it does not cover that file either. A sensor that freezes or resets
   while still returning valid-looking numbers is not detected by the code either (finding **H-9**).
+  The BNO055 UART framing helper for C-1 (`Bno055UartProtocol.hpp`) has a host test but is used by no
+  plugin, so nothing about the serial read it is meant for is tested
+  ([proposal 0010](../proposals/0010-c1-imu-uart-and-encoders-in-cpp.md)).
 - **Timing is not measured.** Container and mock timings say nothing about the Pi's 10 ms budget.
 - **The simulator is a model with invented numbers.** Every physical parameter of `SimPlant`
   (masses, centre-of-mass height, inertia, motor constants, IMU delay, wheel radius) is an estimate,
@@ -459,7 +484,11 @@ because they show what each tier is for.
     IMU node, because the blocking `read()` (C-1) then never returns. `AddFeedforwardController.cpp` holds
     the tipover block twice, an inline block that runs and an unused duplicate helper, because the guard
     hook denied the move (next-steps row 1.14); nothing here checks that the duplicate matches. The three
-    tipover keys are only code defaults in a file the hook does not watch.
+    tipover keys are only code defaults in a file the hook does not watch. **H4 is flaky on its own
+    timing (seen 2026-11-07, 2 of 4 runs red):** the cutoff part passed every time, but the re-arm refusal
+    was sometimes logged after the 16 s recording window (`TIPOVER_RECORD_S`) had closed, so the rule
+    "commands watched for 1 s after the refusal" failed. Not fixed; cause not shown
+    ([journal](../journal/2026-11-07-c1-bno055-uart-framing.md#sim-run)).
   - *C3 (watchdog).* The fake gamepad publishes `TwistStamped` straight to
     `/diffbot_base_controller/cmd_vel`, so the TCP path (`Joystick.py`'s socket handling and the laptop
     sender's heartbeat) is only covered by the host tests with stand-ins, not by a launch. The timeout (0.2

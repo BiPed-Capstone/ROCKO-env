@@ -36,7 +36,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 
 | ID | Severity | Finding |
 | --- | --- | --- |
-| C-1 | Critical | Unbounded blocking service calls inside the real-time loop |
+| C-1 | Critical | Unbounded blocking service calls inside the real-time loop — open; the BNO055 UART framing helper landed **unwired** (2026-11-07), the rest is proposal 0010 |
 | C-2 | Critical | IMU read failure reports pitch = 0.0 ("upright") — **fixed on `ai-forward`, awaiting robot** (2026-10-31); a frozen sensor is still undetected (H-9); the sim's copy of the rule is run end to end by check C2 (2026-11-02) |
 | C-3 | Critical | No teleop watchdog, and no defined comms-loss failsafe — **fixed on `ai-forward`, awaiting robot** (2026-11-02; checked in the sim; the 0.2 s timeout is proposed); the response is a step to zero velocity, never a motor stop |
 | H-1 | High | Motor command is open loop; no wheel velocity feedback |
@@ -117,6 +117,17 @@ handler for the timeout branch — but the right answer is to remove the indirec
 the timeout branch must also remove the pending request. A client keeps each request it has sent
 until a reply arrives, so abandoning a request without removing it makes that list grow every time
 the timeout fires.
+
+**Status on `ai-forward` (2026-11-07): still open; one piece landed, unwired.** The BNO055 UART
+framing for the IMU half of the fix is a header-only helper,
+`rocko_env/rocko_env/hardware/sensors/icm20948/include/rocko_env/Bno055UartProtocol.hpp` (build a read
+request, check the reply with an explicit status, decode the 12-byte burst of registers `0x14`–`0x1F`
+into gyro and Euler as one snapshot, all NaN on any failure; no I/O). Its datasheet facts are written
+from memory and marked UNVERIFIED. **No plugin includes it**; `ICM20948.cpp`,
+`Motor12VoltQuadEncoder.cpp` and `QuadEncoder.cpp` are unchanged and still block. Checked only by a host
+test (`tools/bno055_uart_protocol_test.cpp`, 388 checks, red on 5 deliberate breaks; not a tier). The
+rest, including the wiring, the bounded read, the encoders and the bench test, is
+[proposal 0010](../proposals/0010-c1-imu-uart-and-encoders-in-cpp.md).
 
 ---
 
