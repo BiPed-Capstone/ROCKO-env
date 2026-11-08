@@ -22,7 +22,7 @@
 | 1. `use_mock_hardware` selects a mock plugin | **Done.** Selects `mock_components/GenericSystem`. Verified by `verify_mock.sh`. |
 | 2. `rocko_env` configures and builds off-Pi | **Done**, with a deliberate cost: `-DROCKO_SKIP_WIRINGPI=ON` leaves out the motor plugin, so `Motor12VoltQuadEncoder.cpp` is **not compiled** off a Pi. The Pi default is unchanged and still requires WiringPi. Since 2026-10-31 a separate compile-only check type-checks that file against stub headers (syntax and types only; see [the ladder](../architecture/verification-ladder.md)). |
 | 3. Measured inertial properties | Not done. Needs a person with the robot. `SimPlant` uses estimates, labelled `ESTIMATE, NOT MEASURED`, in their place. |
-| 4. `gz_ros2_control` and a world | Not done. `SimPlant` (a hardware plugin with its own dynamics, no Gazebo) was built instead, first, on 2026-10-31: see [sim-plant.md](../architecture/sim-plant.md). Status of the tier: [the ladder](../architecture/verification-ladder.md) (partly built, not called built). |
+| 4. `gz_ros2_control` and a world | Not done. `SimPlant` (a hardware plugin with its own dynamics, no Gazebo) was built instead, first, on 2026-10-31: see [sim-plant.md](../architecture/sim-plant.md). Status of the tier: [the ladder](../architecture/verification-ladder.md) (built on 2026-11-07 with limits: a model with estimated parameters and an assumed encoder sign, which says nothing about whether the robot balances). |
 | 5. Document the sim-to-real gap | Not done as its own page. [sim-plant.md §6](../architecture/sim-plant.md) lists what `SimPlant` leaves out. |
 
 **An open disagreement.** Finding **M-4** in

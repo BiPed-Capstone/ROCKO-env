@@ -74,7 +74,7 @@ Exact commands a stranger runs to get the same result.
 | 2026-10-29 | [Stop asking before every push to `ai-forward`](2026-10-29-push-without-asking.md) |
 | 2026-10-30 | [Apply items B, C and D of proposal 0002 to the settings](2026-10-30-apply-proposal-0002-b-d.md) |
 | 2026-10-30 | [Make `acceptEdits` the project's default permission mode](2026-10-30-default-mode-accept-edits.md) |
-| 2026-10-31 | [Fix C-1/C-2/C-3 (+M-5, H-4, H-6) and build Tier 3: a `SimPlant` physics simulation](2026-10-31-sim-plant-and-critical-fixes.md) (in progress: stages 2 to 4 are logged: foundations, the plant, and the tipover cutoff / teleop watchdog / pitch rate with their sim checks; stage 4: review round 1 is done and round 2 is pending; Tier 3 is only partly built) |
+| 2026-10-31 | [Fix C-1/C-2/C-3 (+M-5, H-4, H-6) and build Tier 3: a `SimPlant` physics simulation](2026-10-31-sim-plant-and-critical-fixes.md) (in progress: stages 2 to 4 are logged: foundations, the plant, and the tipover cutoff / teleop watchdog / pitch rate with their sim checks; stage 4: review round 1 is done and round 2 is pending; Tier 3 was only partly built when this was written; since 2026-11-07 the ladder calls it built, with limits) |
 | 2026-11-03 | [Stage 5: find why the model drifts off (finding H-12), and write the balance scenarios before any tuning](2026-11-03-stage5-balance-in-sim.md) |
 | 2026-11-03 | [Find why checks C3 and FF are flaky, and make them judge send times](2026-11-03-c3-ff-flaky-checks.md) |
 | 2026-11-03 | [Stage 5c-1: tune the sim gains until scenarios U, I, V pass (thresholds unchanged)](2026-11-03-stage5c1-sim-gain-tuning.md) |

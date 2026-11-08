@@ -22,8 +22,10 @@ physical number is still an estimate.
 
 ## Evidence
 
-Tier 3 partly built: `verify_sim.sh` passes S1, S2a and the H4, C3, C2, H6 and FF checks on a model with estimated
-parameters. Nothing about the real robot.
+As written on 2026-11-02: `verify_sim.sh` passed S1, S2a and the H4, C3, C2, H6 and FF checks on a model with
+estimated parameters. Nothing about the real robot. Since 2026-11-07 the
+[ladder](../architecture/verification-ladder.md) calls Tier 3 built, with limits: an estimated model, an assumed
+encoder sign, and it says nothing about whether the robot balances.
 
 ## Risk
 

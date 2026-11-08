@@ -25,7 +25,7 @@ being present does.
 | --- | --- | --- |
 | Docker dev container | 0, 1, 2 | Builds without the motor plugin. This is where an agent works |
 | Raspberry Pi (Ubuntu 24.04, Jazzy, WiringPi) | 0, 1 (the only place the motor plugin builds), 2, and 4 | A human's machine; `ros2 launch` here drives real motors. Not run by an agent |
-| Simulation | 3 | `verify_sim.sh` runs in the container. See the ladder for how much of Tier 3 exists (partly built, not called built); `bootstrap-sim` builds the rest |
+| Simulation | 3 | `verify_sim.sh` runs in the container. Tier 3 is built, with limits: a model with ESTIMATED, unmeasured parameters, `encoder_sign:=-1` ASSUMED, sim-tuned gains that are a candidate only; it says nothing about whether the robot balances (the ladder has the full sentence); `bootstrap-sim` lists what is left |
 
 ## Before any tier (Docker target) — is the container looking at your files?
 
@@ -188,7 +188,7 @@ break the thing on purpose — delete a `<state_interface>` from the `MockRocko`
 
 ## Tier 3 and 4
 
-Tier 3 is partly built (the ladder is the authority on how much). Run it after a Tier 1 build:
+Tier 3 is built, with limits: a model with ESTIMATED, unmeasured parameters, `encoder_sign:=-1` ASSUMED, scenarios U, I and V passing with sim-tuned gains that are a candidate only, and no statement about whether the robot balances (the [ladder](../../../docs/architecture/verification-ladder.md) is the authority and has the full sentence). Run it after a Tier 1 build:
 
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh

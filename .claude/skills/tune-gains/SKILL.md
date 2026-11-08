@@ -19,7 +19,7 @@ number tuned against a model; it is a *candidate* for the hardware file, never a
 ## What you can do without a physics simulation
 
 Check the [verification ladder](../../../docs/architecture/verification-ladder.md) for how much of
-Tier 3 (a physics simulation) exists. A simulator now exists, but it is a model with estimated,
+Tier 3 (a physics simulation) is built, with limits. A simulator exists, but it is a model with estimated,
 unmeasured parameters ([`sim-plant.md`](../../../docs/architecture/sim-plant.md)). Its balance
 scenarios (`verify_sim.sh scenarios`, thresholds committed 2026-11-03 before any tuning) fail with
 the hardware gains and pass with the sim gains tuned in stage 5c-1 (V narrowly), and they assume an encoder sign nobody has checked on the robot (finding H-12,

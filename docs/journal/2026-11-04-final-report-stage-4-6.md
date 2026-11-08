@@ -11,8 +11,14 @@
 
 > **STATUS AT WRITING (the orchestrator edits this box).**
 > - **Stage 6 (finding C-1, the blocking service calls in the 100 Hz loop) is NOT started.**
-> - **Tier 3 is NOT yet marked built** in the [verification ladder](../architecture/verification-ladder.md);
->   that page is the only home of that status, and this report does not change it.
+> - **Tier 3 is now marked built** (2026-11-07, the orchestrator's decision after review) in the
+>   [verification ladder](../architecture/verification-ladder.md), which is the only home of that status. **Tier 3 is
+>   built: a model with ESTIMATED, unmeasured parameters (row 2.2/proposal 0007 not done), `encoder_sign:=-1`
+>   ASSUMED (proposal 0006 not checked), scenarios U/I/V pass with sim-tuned gains that differ from the hardware
+>   gains (candidate only: proposal 0008), S2b fails as it must; in the ±30 % sweep one corner fails V overshoot
+>   (`m+h+k−d+`, about 46 %), four are marginal, one case could not be judged (clock step), and one real V failure
+>   (31.5 %) followed a late control cycle; it says nothing about whether the robot balances.** Text below that says
+>   "not called built" was true when written (2026-11-04).
 > - Proposals 0003 to 0009 are all **Open**. No gain, threshold or version pin was changed.
 > - Review status of the last code: see (b) and (e) below; this box does not claim a clean review.
 > - Anything in this report that disagrees with the ladder or [next-steps](../next-steps.md): they win.
@@ -60,7 +66,7 @@
 | Changing V's overshoot threshold or metric, though V's verdict is noisy (5c-1, 5c-2) | A threshold change after seeing results is a separate human decision and must precede further tuning; it was not made. Reported as narrow and noisy instead. (Later, 2026-11-07, the **metric** was changed once the noise was shown to be a verifier artefact; the threshold still was not: (b)) |
 | Retuning after the sweep's one systematic FAIL corner (`m+h+k−d+`) | The task was a sweep, not retuning; reported only |
 | A stub motor plugin for off-Pi builds (stage 1) | The error text is documented instead; the wheels cannot be driven by it |
-| Marking Tier 3 built | A call for the orchestrator; the ladder still says partly built |
+| Marking Tier 3 built | A call for the orchestrator; made on 2026-11-07: the ladder now says built, with the limits in the box at the top |
 | The stage 5 reviewer agents (`explainability-reviewer`, `docs-reviewer`, `ros2-control-reviewer`) | Not run in 5b, 5c-1 or 5c-2: those task lists did not include them. **Waiting.** This is not a declined finding but an unrun review, listed so it is not mistaken for a clean one. (Later: findings of a `ros2-control-reviewer` and an `explainability-reviewer` pass over stage 5c were fixed on 2026-11-07, [review fixes](2026-11-07-stage5c-review-fixes.md); those fixes were not re-reviewed in that run) |
 
 ## (d) Proposals filed

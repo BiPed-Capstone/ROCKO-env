@@ -20,7 +20,9 @@ something that falls over.
   `verify_urdf.sh`) fails if the sim controller YAML's wiring or the defaults of the simulator
   settings drift apart.
 
-Whether Tier 3 counts as built is recorded only in the [verification ladder](verification-ladder.md).
+Whether Tier 3 counts as built is recorded only in the [verification ladder](verification-ladder.md),
+which (since 2026-11-07) says it is built **with limits**: this plant has ESTIMATED, unmeasured
+parameters, `encoder_sign:=-1` is ASSUMED, and a pass says nothing about whether the robot balances.
 [ADR 0003](../decisions/0003-simulation-target.md) (still `Proposed`) chose Gazebo; the 2026-10-31 run
 ([journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md)) builds `SimPlant` first, as finding
 **M-4** recommends. The proposal to amend the ADR is

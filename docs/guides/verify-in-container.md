@@ -246,7 +246,9 @@ Use `rocko_tank_mode.launch.py` instead for tank mode. Press Ctrl+C to stop it. 
 process is left over afterwards, restart the container to clear all of it:
 `docker compose -f docker/compose.yml restart ros2`.
 
-## 5. Run the simulated robot (Tier 3, partly built)
+## 5. Run the simulated robot (Tier 3, built with limits)
+
+Tier 3 is built: a model with ESTIMATED, unmeasured parameters (row 2.2, proposal 0007, not done), `encoder_sign:=-1` ASSUMED (proposal 0006, not checked), scenarios U, I and V pass with sim-tuned gains that differ from the hardware gains (a candidate only: proposal 0008), S2b fails as it must; in the ±30 % sweep one corner fails V's overshoot (`m+h+k−d+`, about 46 %), four cases are marginal, one case could not be judged (a clock step), and one real V failure (31.5 %) followed a late control cycle; it says nothing about whether the robot balances. The [ladder](../architecture/verification-ladder.md) has the detail.
 
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh

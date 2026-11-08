@@ -617,8 +617,9 @@ hardware, row 1.7 stays open.** In code, none of it run on a robot:
 Checked: the Tier 1 build with no compiler warnings, Tier 2 (the controller loads and activates), and
 the compile-only check of the motor plugin. Not checked: the NaN path, the hold, `on_deactivate` or the
 motor `write()` on any tier, and anything on a robot; no automated test of the controller's stop logic
-exists (a gtest was declined in round 2; the Tier 3 fault scenarios are meant to cover it, and they do not
-exist yet: Tier 3 is only partly built). What `controller_manager` does when a hardware component's `read()` or a controller's
+exists (a gtest was declined in round 2; the Tier 3 fault scenarios are meant to cover it, and for the model
+they exist as the `H4`, `C3` and `C2` checks of Tier 3, which is built with limits (an estimated model; it says
+nothing about whether the robot balances: the [ladder](../architecture/verification-ladder.md)). The paragraph is as written on the date of this audit). What `controller_manager` does when a hardware component's `read()` or a controller's
 `update()` returns `ERROR` depends on the ros2_control version; what the author remembers of Jazzy 4.x
 is from memory, not from a test, so it is not recorded here as fact. The H-4 tipover cutoff is not
 written.
