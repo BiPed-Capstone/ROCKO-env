@@ -33,8 +33,13 @@
 #        robot is released (so in the first cycle they write); every wheel command written while
 #        |pitch| > TIPOVER_DEG must be exactly 0.0 (from controller_manager's introspection topic,
 #        the value the plant receives); ONE re-arm published on the shared /tipover_rearm topic
-#        while still past the limit must be refused by BOTH controllers and leave the command at
-#        0.0; the controllers must stay active (the cutoff does not deactivate them).
+#        while still past the limit must be refused by BOTH controllers (each refusal logged within
+#        REARM_REPLY_WAIT_S of the publish returning, and stamped after it started; a message not
+#        answered by both is treated as lost and sent again, up to REARM_ATTEMPTS, and an attempt
+#        counts only if BOTH refuse it; no refusal may be logged before the first was sent) and leave the
+#        command at 0.0, watched until REARM_OBSERVED_S after the later refusal (by the samples' own
+#        stamps, however late the re-arm went out); the controllers must stay active (the cutoff
+#        does not deactivate them).
 #        (The re-arm hysteresis, refusing a re-arm inside the trip limit but outside
 #        rearm_max_pitch_deg, is checked by the host test tools/tipover_latch_test.cpp, not here.)
 #   C3   teleop watchdog. teleop:=true (the real DiffDriveController.py; Joystick.py is started too
@@ -175,14 +180,22 @@ FALL_LIMIT_S=0.48      # [s] the model falls 2 -> 35 deg in 0.4273 s with no tor
 TIPOVER_START_DEG=40   # [deg] H4's start: 5 deg past the limit, so the cutoff must trip in the first
                        #   cycle. Released there, the model falls on to 60 deg ("lying on the floor")
                        #   and stays past the limit, so the re-arm must be refused
-TIPOVER_RECORD_S=16    # [s] H4 records the commands this long after the controllers start writing:
-                       #   time for the wiring check and the re-arm, plus REARM_OBSERVED_S after it.
-                       #   Measured 2026-11-02: the refusal came 11.4 s after the first write (the
-                       #   wiring check, then `ros2 topic pub -w 2` waiting ~3 s for discovery to find
-                       #   BOTH subscribers), so 8 s was too short; 16 s leaves ~4 s of margin
+TIPOVER_RECORD_MAX_S=120  # [s] a cap only. H4 records the commands from the first write until a
+                       #   sample is stamped REARM_OBSERVED_S after the later refusal (the script
+                       #   tells the checker when, through a file). Until 2026-11-07 it recorded a
+                       #   FIXED 16 s, and 2 of 4 runs failed because the re-arm, sent after the
+                       #   wiring check and the publisher's discovery wait, was refused later than
+                       #   that (3.7 to 19 s after the first write in the kept runs)
+                       #   (docs/journal/2026-11-07-h4-verifier-fix.md). The cap only stops the
+                       #   checker waiting forever if its samples stop coming; then the refusal was
+                       #   not watched for REARM_OBSERVED_S, which is a FAIL
 REARM_OBSERVED_S=1     # [s] the commands must be seen at 0.0 at least this long after the refusal
 REARM_REPLY_WAIT_S=5   # [s] wait this long for each controller's 'Tipover re-arm refused' line: the
                        #   next 10 ms cycle answers, so this is all DDS delivery and log flushing
+                       #   (measured 2026-11-07: the line was stamped 0.24-0.27 s BEFORE
+                       #   `ros2 topic pub` returned, in 10 of 10 runs)
+REARM_ATTEMPTS=3       # re-arm messages sent at most, each judged on its own, when one is LOST
+                       #   (neither controller logs anything: seen once in 30 runs, 2026-11-07)
 TELEOP_TIMEOUT_S=0.2   # [s] DiffDriveController's command_timeout_s default (and the launch arg's)
 TELEOP_MARGIN_S=0.1    # [s] allowed lateness of the timeout: the node checks every 10 ms, plus
                        #   Python executor and DDS delivery in the container; 0.1 s is 10 cycles
@@ -382,6 +395,12 @@ wait_for_wiring() {
 log_stamp() {
   grep -m1 -E "$2" "$1" | sed -n 's/.*\[\(INFO\|WARN\|ERROR\)\] \[\([0-9]*\.[0-9]*\)\].*/\2/p'
 }
+# stamp_after <log> <extended regex> <epoch seconds>: like log_stamp, but the first matching line
+# stamped at or after the given time, or nothing.
+stamp_after() {
+  grep -E "$2" "$1" | sed -n 's/.*\[\(INFO\|WARN\|ERROR\)\] \[\([0-9]*\.[0-9]*\)\].*/\2/p' \
+    | awk -v t="$3" '$1 >= t {print; exit}'
+}
 # wait_for_log <log> <extended regex> <seconds>: true as soon as the log has a matching line.
 wait_for_log() {
   local deadline=$((SECONDS + $3))
@@ -529,7 +548,9 @@ run() {
 # is still past the limit, and leaves the controllers active.
 check_tipover() {
   new_run "H4-tipover"
-  start_check tipover --limit-deg "$TIPOVER_DEG" --record "$TIPOVER_RECORD_S"
+  # The checker records until this file says when to stop (written below, on every path).
+  local until_file="$dir/watch_until"
+  start_check tipover --limit-deg "$TIPOVER_DEG" --record "$TIPOVER_RECORD_MAX_S" --until-file "$until_file"
   local pid="$check_pid"
   launch teleop:=false initial_pitch_deg:="$TIPOVER_START_DEG"
   zero_reference
@@ -551,21 +572,73 @@ check_tipover() {
   elif [ -n "$trip_line" ] && [ "$trip_line" -gt "$release_line" ]; then
     failures+=("the cutoff tripped only after the robot was released, not in the first cycle")
   fi
-  # ONE deliberate re-arm on the shared topic, while the robot is still past the limit: BOTH wheel
-  # controllers must receive it and refuse it. -w 2: publish only once both have subscribed.
-  timeout -k 2 "$CALL_TIMEOUT" ros2 topic pub --once -w 2 /tipover_rearm \
-    std_msgs/msg/Empty "{}" >"$dir/rearm.log" 2>&1
-  local publish_status=$?
-  if [ "$publish_status" -ne 0 ]; then
-    # Not the controllers' fault: the message may never have been sent, so do not wait for replies
-    # to it (that would blame the cutoff for a slow DDS discovery).
-    failures+=("publishing /tipover_rearm failed or timed out (exit $publish_status; discovery slow? see $dir/rearm.log): the re-arm was not tested")
-  else
-    for side in left right; do
-      wait_for_log "$log" "\[${side}_add_feedforward_controller\]: Tipover re-arm refused" "$REARM_REPLY_WAIT_S" \
-        || failures+=("${side}_add_feedforward_controller did not log 'Tipover re-arm refused' after the one /tipover_rearm message")
+  # ONE deliberate re-arm message on the shared topic, while the robot is still past the limit: BOTH
+  # wheel controllers must receive that one message and refuse it. -w 2: publish only once both
+  # have subscribed. Every time below is an epoch-seconds stamp on the system clock, the clock the
+  # controllers' log lines and the checker's samples are stamped with, so they can be compared.
+  #
+  # A message can be LOST even so: once (2026-11-07, 1 run in 30) `ros2 topic pub` printed
+  # 'publishing #1' and exited 0, and neither controller logged anything, then or later. A lost
+  # message tests nothing, so the message is sent again, up to REARM_ATTEMPTS times. Each attempt is
+  # judged on its own: it counts only if BOTH controllers log a refusal stamped after THAT attempt
+  # started (the refusal log is rate-limited to one a second, and attempts are more than
+  # REARM_REPLY_WAIT_S apart, so each attempt that arrives is logged). A controller that ACCEPTS
+  # any of them logs 'RE-ARMED', which fails the check below.
+  local refusal_re="Tipover re-arm refused" refused="" attempt publish_start publish_end publish_status
+  local first_publish_start="" deadline left_at right_at
+  for attempt in $(seq 1 "$REARM_ATTEMPTS"); do
+    publish_start="$(date +%s.%N)"
+    [ -z "$first_publish_start" ] && first_publish_start="$publish_start"
+    timeout -k 2 "$CALL_TIMEOUT" ros2 topic pub --once -w 2 /tipover_rearm \
+      std_msgs/msg/Empty "{}" >"$dir/rearm-$attempt.log" 2>&1
+    publish_status=$?
+    publish_end="$(date +%s.%N)"
+    echo "    re-arm attempt $attempt: 'ros2 topic pub' started $publish_start, returned $publish_end (exit $publish_status)"
+    if [ "$publish_status" -ne 0 ]; then
+      # Not the controllers' fault: the message may never have been sent, so do not wait for replies
+      # to it (that would blame the cutoff for a slow DDS discovery).
+      failures+=("publishing /tipover_rearm failed or timed out (exit $publish_status; discovery slow? see $dir/rearm-$attempt.log): the re-arm was not tested")
+      break
+    fi
+    # Each controller answers in its next 10 ms cycle, so REARM_REPLY_WAIT_S after the publish
+    # RETURNED is all log delivery.
+    deadline=$((SECONDS + REARM_REPLY_WAIT_S))
+    while :; do
+      left_at="$(stamp_after "$log" "\[left_add_feedforward_controller\]: $refusal_re" "$publish_start")"
+      right_at="$(stamp_after "$log" "\[right_add_feedforward_controller\]: $refusal_re" "$publish_start")"
+      { [ -n "$left_at" ] && [ -n "$right_at" ]; } || [ $SECONDS -ge $deadline ] && break
+      sleep 0.5
     done
+    echo "    re-arm attempt $attempt: refused by left at ${left_at:-never}, by right at ${right_at:-never}"
+    if [ -n "$left_at" ] && [ -n "$right_at" ]; then
+      refused="$(awk -v a="$left_at" -v b="$right_at" 'BEGIN {print (a > b ? a : b)}')"  # the later
+      break
+    fi
+    if [ "$attempt" -eq "$REARM_ATTEMPTS" ]; then
+      [ -z "$left_at" ] && failures+=("left_add_feedforward_controller did not log '$refusal_re' within $REARM_REPLY_WAIT_S s of any of $REARM_ATTEMPTS /tipover_rearm messages")
+      [ -z "$right_at" ] && failures+=("right_add_feedforward_controller did not log '$refusal_re' within $REARM_REPLY_WAIT_S s of any of $REARM_ATTEMPTS /tipover_rearm messages")
+    fi
+  done
+  # A refusal logged before any re-arm was sent answers nothing: the controller refused a request
+  # nobody made.
+  local early
+  for side in left right; do
+    early="$(log_stamp "$log" "\[${side}_add_feedforward_controller\]: $refusal_re")"
+    if [ -n "$early" ] && [ -n "$first_publish_start" ] && ! seconds_between "$first_publish_start" "$early" 0; then
+      failures+=("${side}_add_feedforward_controller logged '$refusal_re' at $early, before any re-arm was sent ($first_publish_start)")
+    fi
+  done
+  # Tell the checker when to stop: once it holds a sample stamped REARM_OBSERVED_S after the later
+  # refusal. Without a refusal there is nothing to watch after (that failure is already recorded),
+  # so stop at the next sample. Written to a temporary name and renamed, so the checker never reads
+  # half a number.
+  local watch_until
+  if [ -n "$refused" ]; then
+    watch_until="$(awk -v r="$refused" -v w="$REARM_OBSERVED_S" 'BEGIN {printf "%.9f", r + w}')"
+  else
+    watch_until="$(date +%s.%N)"
   fi
+  echo "$watch_until" >"$until_file.tmp" && mv "$until_file.tmp" "$until_file"
   wait "$pid"; local status=$?
   # The evidence, shortened: who tripped, and the refused re-arm. The sed keeps the logger name, e.g.
   # "[ros2_control_node-1] [ERROR] [1793.1] [left_add_feedforward_controller]: TIPOVER ..."
@@ -573,9 +646,10 @@ check_tipover() {
   grep -E "TIPOVER CUTOFF TRIPPED|Tipover re-arm refused|RE-ARMED" "$log" \
     | sed 's/^.*\] \[\([a-z_]*\)\]: /    log: \1: /' | cut -c1-140
   grep -q "RE-ARMED" "$log" && failures+=("a controller logged 'RE-ARMED' although the robot was past the limit")
-  # After the refusal the commands must have been watched (at 0.0) for REARM_OBSERVED_S more.
-  local refused last watched_after_refusal=0
-  refused="$(log_stamp "$log" "Tipover re-arm refused")"
+  # After the later refusal the commands must have been watched (at 0.0) for REARM_OBSERVED_S more.
+  # The checker waits for exactly that, so this fails only if its samples stopped coming (or it hit
+  # its TIPOVER_RECORD_MAX_S cap).
+  local last watched_after_refusal=0
   last="$(metric "$dir/metrics.json" last_stamp_s)"
   if [ -n "$refused" ] && [ -n "$last" ] && seconds_between "$refused" "$last" "$REARM_OBSERVED_S"; then
     watched_after_refusal=1

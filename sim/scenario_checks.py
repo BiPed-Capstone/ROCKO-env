@@ -8,7 +8,8 @@ Each subcommand is one check. It listens (and, for `teleop`, publishes), writes 
     tipover     finding H-4. Watches the wheel COMMANDS the controllers write to the plant, from
                 controller_manager's introspection topic. PASS if, from the first cycle the
                 controllers write, every command written while |pitch| > --limit-deg is exactly
-                0.0 on both wheels.
+                0.0 on both wheels. Records until a sample is stamped at or after the time
+                verify_sim.sh writes to --until-file (1 s after the re-arm was refused).
     teleop      finding C-3. Plays the gamepad: publishes TwistStamped on
                 /diffbot_base_controller/cmd_vel at 20 Hz for 2 s, then stops. PASS if
                 DiffDriveController's command_timed_out goes False while driven and True between
@@ -173,10 +174,31 @@ def check_tipover(args):
         collect_new()
         return any(math.isfinite(s[2]) and math.isfinite(s[3]) for s in samples)
 
+    def watched_until_asked():
+        """True once a sample stamped at or after the time in --until-file has arrived.
+
+        verify_sim.sh writes that file (one epoch-seconds stamp, the controllers' own clock) when
+        it has seen both refusals of the re-arm: the later refusal's log stamp + REARM_OBSERVED_S.
+        Until 2026-11-07 this recorded a fixed time instead, and failed whenever the shell's steps
+        before the re-arm (the wiring check, the publisher's discovery wait) took longer than
+        usual: the re-arm was refused 3.7 to 19 s after the first write in the kept runs. Stopping on
+        a sample's STAMP means a slow shell or a stall of this script can only make the recording
+        longer, never cut it short."""
+        collect_new()
+        try:
+            with open(args.until_file) as f:
+                until_s = float(f.read())
+        except (OSError, ValueError):  # not written yet
+            return False
+        return samples[-1][0] >= until_s
+
     if not rec.spin_until(writing, args.wait):
         return finish(args.out, {"samples": len(samples)}, COULD_NOT_JUDGE,
                       f"the controllers wrote no wheel command within {args.wait} s")
-    rec.spin_for(args.record)
+    # --record is only a cap for a verify_sim.sh that never writes --until-file (it always does,
+    # on every path); if it is hit, verify_sim.sh reports that the commands were not watched long
+    # enough after the refusal.
+    rec.spin_until(watched_until_asked, args.record)
     collect_new()
     rec.destroy_node()
 
@@ -980,8 +1002,13 @@ def main():
         p.set_defaults(function=function)
         return p
 
-    p = add("tipover", check_tipover, "seconds to record after the first written command")
+    p = add("tipover", check_tipover,
+            "the most seconds to record after the first written command, if --until-file is "
+            "never written")
     p.add_argument("--limit-deg", type=float, required=True, help="tipover_pitch_deg [deg]")
+    p.add_argument("--until-file", required=True,
+                   help="record until a sample is stamped at or after the epoch-seconds stamp "
+                        "this file will hold (verify_sim.sh writes it)")
     p = add("teleop", check_teleop, None)  # its timing is --drive-s and --after-s
     p.add_argument("--timeout-s", type=float, required=True, help="the node's command_timeout_s")
     p.add_argument("--margin-s", type=float, required=True, help="allowed lateness [s]")

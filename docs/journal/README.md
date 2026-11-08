@@ -83,3 +83,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-07 | [Two noisy verifiers: scenario V's overshoot metric (limit unchanged) and check C3's second flake](2026-11-07-c3-v-verifier-noise.md) |
 | 2026-11-07 | [Stage 5c-2 sweep re-run with V's corrected overshoot metric: PASS 18, MARGINAL 4, FAIL 2, COULD NOT JUDGE 1](2026-11-07-stage5c2-sweep-rerun.md) |
 | 2026-11-07 | [Stage 5c review fixes (a tuned gain on every joint; simpler sim scripts) and why V could not judge two `d+` runs](2026-11-07-stage5c-review-fixes.md) |
+| 2026-11-07 | [Make check H4 wait for the re-arm refusal instead of recording a fixed 16 s (and re-send a lost re-arm)](2026-11-07-h4-verifier-fix.md) |
