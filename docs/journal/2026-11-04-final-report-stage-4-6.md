@@ -16,6 +16,10 @@
 > - Proposals 0003 to 0009 are all **Open**. No gain, threshold or version pin was changed.
 > - Review status of the last code: see (b) and (e) below; this box does not claim a clean review.
 > - Anything in this report that disagrees with the ladder or [next-steps](../next-steps.md): they win.
+> - Updated 2026-11-07: the sweep numbers, V's verdict noise and C3's flake in (a), (b) and (c) follow
+>   the later journals ([V metric and C3](2026-11-07-c3-v-verifier-noise.md),
+>   [sweep re-run](2026-11-07-stage5c2-sweep-rerun.md), [review fixes](2026-11-07-stage5c-review-fixes.md)).
+>   Tier 3 is still not marked built and stage 6 is still not started.
 
 > **The strongest claim in this whole report is "balances in simulation under an estimated
 > model".** The balancing of the real robot was not checked and cannot be by an agent (CLAUDE.md §4).
@@ -29,10 +33,10 @@
 | The tree builds (both packages, no motor plugin) | Tier 1 | `build_ros.sh` exit 0 in [stage 5c-2](2026-11-03-stage5c2-sweep.md). The motor plugin is **not** compiled in the container; `check_motor_plugin_compiles.sh` type-checks it only (syntax and types, stub headers) |
 | The URDF expands in all modes; the sim config has not drifted | Tier 0 | `verify_urdf.sh` PASS; `sim/check_sim_config.py` six `ok`; hook tests 81 cases ([5c-1](2026-11-03-stage5c1-sim-gain-tuning.md)) |
 | The controllers load, claim interfaces and activate (mock) | Tier 2 | Last passed in the stage 4 round 3 preflight ([stage 4 journal](2026-10-31-sim-plant-and-critical-fixes.md)); **not rerun in stage 5** (no file the mock loads changed). Says nothing about physics |
-| The tipover cutoff, teleop watchdog, IMU outage handling, gyro-rate wiring and feedforward age limit behave as designed | Tier 3, **the model** | Checks H4, C3, C2, H6, FF of `verify_sim.sh`. C3 is **flaky** in the container (last: 2 of 3 default runs red in 5c-2; one green at the end). Whether any of these work on the robot: not checked |
+| The tipover cutoff, teleop watchdog, IMU outage handling, gyro-rate wiring and feedforward age limit behave as designed | Tier 3, **the model** | Checks H4, C3, C2, H6, FF of `verify_sim.sh`. C3 was **flaky** in the container (2 of 3 default runs red in 5c-2); its cause was found and C3 fixed on 2026-11-07, 20 of 20 green since ([journal](2026-11-07-c3-v-verifier-noise.md)). Whether any of these work on the robot: not checked |
 | The real cascade with the hardware gains holds the model up | -- | **False in the model**: it does not (finding H-12, [stage 5](2026-11-03-stage5-balance-in-sim.md)), with either encoder sign |
-| The cascade with the **sim-tuned gains** holds the model up, recovers from a push and follows a step (U, I, V) | Tier 3, **an estimated model, `encoder_sign:=-1` assumed** | [5c-1](2026-11-03-stage5c1-sim-gain-tuning.md). V's overshoot 23.5 to 29.1 % against a 30 % limit: narrow and noisy |
-| The same, under ±30 % of mass, centre-of-mass height, motor gain and IMU delay | Tier 3, estimated model | [5c-2](2026-11-03-stage5c2-sweep.md): PASS 14, MARGINAL 4, FAIL 7 of 25 cases; no fall; one corner fails V systematically. See the [gap page](../architecture/sim-to-real-gap.md) for what the sweep did not cover |
+| The cascade with the **sim-tuned gains** holds the model up, recovers from a push and follows a step (U, I, V) | Tier 3, **an estimated model, `encoder_sign:=-1` assumed** | [5c-1](2026-11-03-stage5c1-sim-gain-tuning.md). V's overshoot 23.5 to 29.1 % against a 30 % limit with the metric of the time; much of that spread was the verifier's noise (a late control cycle read as a faster wheel), and with the corrected metric (2026-11-07, limit unchanged) nominal V passed 20 of 20, 15.9 to 24.5 % ([journal](2026-11-07-c3-v-verifier-noise.md)) |
+| The same, under ±30 % of mass, centre-of-mass height, motor gain and IMU delay | Tier 3, estimated model | [Sweep re-run with the corrected V metric](2026-11-07-stage5c2-sweep-rerun.md): **PASS 18, MARGINAL 4, FAIL 2, COULD NOT JUDGE 1** of 25 cases; no fall; U and I pass in all 25; one corner (`m+h+k−d+`) fails V in all 3 runs (45 to 47 %), one `m+` run failed on a gamepad-watchdog lurch caused by the harness, and `d+` could not be judged in 2 runs (the container's clock stepped back under the samples; [review fixes](2026-11-07-stage5c-review-fixes.md#3-why-v-could-not-judge-two-d-runs-the-containers-system-clock-stepped-back)). Historical: the first sweep, with the old metric, gave PASS 14, MARGINAL 4, FAIL 7 ([5c-2](2026-11-03-stage5c2-sweep.md)). See the [gap page](../architecture/sim-to-real-gap.md) for what the sweep did not cover |
 | Anything about the robot: balancing, a gain being better, the signs, the safeguards | **not reached (Tier 4 is a human)** | Procedures: [0006](../proposals/0006-velocity-loop-sign-check.md), [0008](../proposals/0008-candidate-gains-and-tethered-test.md) |
 
 ## (b) What failed, and what was done about it
@@ -43,20 +47,21 @@
 | Review round 3 of stage 4 came back **dirty** (H-A, M-A, M-B, plus docs findings) | [stage 4 journal](2026-10-31-sim-plant-and-critical-fixes.md) | The run stopped at the cap (CLAUDE.md §2 step 6). The person authorised a round 4; findings H-11 (feedforward age limit), M-7 (gyro read gated) and M-8 (log lines) were fixed in code. **Round 4's fixes were not re-reviewed** by the journal's account; confirm before relying on them |
 | With the hardware gains the model drifts off and falls (found 2026-11-02) | [stage 5](2026-11-03-stage5-balance-in-sim.md) | Diagnosed as finding H-12: the outer loop is positive feedback unless the encoder reads negative when a command drives the robot. Not a code fix: [proposal 0006](../proposals/0006-velocity-loop-sign-check.md) |
 | Scenarios U, I, V failed with the hardware gains (the first scenarios run) | stage 5 | Sim gains tuned in 6 iterations ([5c-1](2026-11-03-stage5c1-sim-gain-tuning.md)); thresholds, committed before tuning, were not changed |
-| Checks C3 and FF were flaky | [C3/FF journal](2026-11-03-c3-ff-flaky-checks.md) | Fixed to judge send times, not when the checker ran. **C3 then flaked again** in 5c-2 (flag set 0.15 s after a command); **not fixed** |
+| Checks C3 and FF were flaky | [C3/FF journal](2026-11-03-c3-ff-flaky-checks.md) | Fixed to judge send times, not when the checker ran. **C3 then flaked again** in 5c-2 (flag set 0.15 s after a command); not fixed in this report's runs, **fixed on 2026-11-07** (a blocked `publish()` or a stalled node, neither a watchdog fault; [journal](2026-11-07-c3-v-verifier-noise.md)) |
+| Scenario V's overshoot verdict was noisy (5c-1, 5c-2) | [V/C3 journal](2026-11-07-c3-v-verifier-noise.md) | 2026-11-07: the metric changed (velocity recomputed with each cycle's real length), the 30 % limit did not; the sweep was re-run with it ([re-run](2026-11-07-stage5c2-sweep-rerun.md)) |
 | The sweep's override mechanism refused `motor_stall_torque_Nm` (regex allowed lower case only) | 5c-2 | Found by a deliberate break before the sweep ran; fixed |
-| The drift check let every gain differ unchecked | 5c-1 | `check_sim_config.py` now allows only the named tuned gains to differ and pins their hardware values; 11 deliberate breaks shown red |
+| The drift check let every gain differ unchecked | 5c-1 | `check_sim_config.py` now allows only the named tuned gains to differ and pins their hardware values; 11 deliberate breaks shown red. Since 2026-11-07 a tuned gain must also be on every joint in both files ([review fixes](2026-11-07-stage5c-review-fixes.md)) |
 
 ## (c) Findings declined, and why
 
 | Finding | Why declined |
 | --- | --- |
 | A host gtest for `AddFeedforwardController`'s NaN and stale-reference logic (stage 2 round 2 and 3) | It is exercised end to end by the sim checks once the fault scenarios exist; recorded as not covered by a unit test in the stage 4 journal, section "Not verified" |
-| Changing V's overshoot threshold or metric, though V's verdict is noisy (5c-1, 5c-2) | A threshold change after seeing results is a separate human decision and must precede further tuning; it was not made. Reported as narrow and noisy instead |
+| Changing V's overshoot threshold or metric, though V's verdict is noisy (5c-1, 5c-2) | A threshold change after seeing results is a separate human decision and must precede further tuning; it was not made. Reported as narrow and noisy instead. (Later, 2026-11-07, the **metric** was changed once the noise was shown to be a verifier artefact; the threshold still was not: (b)) |
 | Retuning after the sweep's one systematic FAIL corner (`m+h+k−d+`) | The task was a sweep, not retuning; reported only |
 | A stub motor plugin for off-Pi builds (stage 1) | The error text is documented instead; the wheels cannot be driven by it |
 | Marking Tier 3 built | A call for the orchestrator; the ladder still says partly built |
-| The stage 5 reviewer agents (`explainability-reviewer`, `docs-reviewer`, `ros2-control-reviewer`) | Not run in 5b, 5c-1 or 5c-2: those task lists did not include them. **Waiting.** This is not a declined finding but an unrun review, listed so it is not mistaken for a clean one |
+| The stage 5 reviewer agents (`explainability-reviewer`, `docs-reviewer`, `ros2-control-reviewer`) | Not run in 5b, 5c-1 or 5c-2: those task lists did not include them. **Waiting.** This is not a declined finding but an unrun review, listed so it is not mistaken for a clean one. (Later: findings of a `ros2-control-reviewer` and an `explainability-reviewer` pass over stage 5c were fixed on 2026-11-07, [review fixes](2026-11-07-stage5c-review-fixes.md); those fixes were not re-reviewed in that run) |
 
 ## (d) Proposals filed
 
@@ -84,10 +89,12 @@
 - **The motor plugin at run time** (not compiled in the container); **C-1** (the blocking service
   calls) is unfixed and untouched.
 - **Container timing versus the Pi**: nothing was measured on a Pi.
-- **Reviews**: stage 4 round 4's fixes and everything in stage 5 are not reviewed by the agents.
+- **Reviews**: stage 4 round 4's fixes and everything in stage 5 are not reviewed by the agents
+  (stage 5c was reviewed later, in part: see (c)).
 - **The `COULD NOT JUDGE` path** of the scenarios mode, and the pass branches of I and V from a
   deliberately broken input (5b), per the stage 5 journals.
-- **The default `verify_sim.sh` is not reliably green** because of C3.
+- **The default `verify_sim.sh` was not reliably green** because of C3 at the time of writing (C3
+  fixed 2026-11-07, see (b)).
 
 ## (f) The tethered robot procedure
 

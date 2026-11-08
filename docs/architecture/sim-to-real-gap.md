@@ -307,7 +307,7 @@ N·m) and IMU delay (14 to 26 ms), each alone at ±30 % and in all 16 corners.
 | Falls | none; U and I passed in all 25 cases |
 | Systematic failure | one corner, `m+h+k−d+` (heaviest, tallest, weakest motor, longest delay): V overshoot 45 to 47 % in all three runs (old: 49 to 51 %); the linear model predicts 44.8 %. Its I settle time was also the longest (1.39 s, peak 12.2 deg) |
 | One lurch | `m+`, one run of three: 68 %, the teleop watchdog fired while driving (the test harness delivered commands late); the other two runs 15.5 and 24.0 % |
-| One case not judged | `d+`, two runs of three: the metric refused to judge (repeated plant sample stamps; cause not found); the third run 15.5 % |
+| One case not judged | `d+`, two runs of three: the metric refused to judge (a plant sample stamp went backwards: the container's system clock, which stamps the messages, stepped back about 16 ms, [review fixes](../journal/2026-11-07-stage5c-review-fixes.md#3-why-v-could-not-judge-two-d-runs-the-containers-system-clock-stepped-back)); the third run 15.5 %. 9 later re-runs all judged: 8 pass (15.2 to 25.2 %), 1 fail (31.5 %) after a 46 ms late control cycle made the robot really surge (see that journal) |
 | The old noisy single-run FAILs | the nominal model, `h−` and `m−h−k+d−` now pass in all three runs; the encoder replica's reading of a late control cycle was the cause, and it is a property of the robot's `QuadEncoders.py` too (finding U-2) |
 
 **Not covered:** wheel radius, friction, the encoder sign, inertia separately from mass, the IMU

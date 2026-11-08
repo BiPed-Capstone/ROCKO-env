@@ -123,3 +123,72 @@ detects it. Only sub-millisecond forward steps were seen (+0.93 and +0.71 ms; on
 is not ruled out. A real fix needs the steady-clock period, which SimPlant does not export.
 On the 13 kept V runs the new code gives the same values and verdicts as before (the two refused runs
 refuse, with the new text).
+
+### `d+` V re-run: it judges
+
+`SIM_PLANT_OVERRIDES="body_mass_kg:=2.0 com_height_m:=0.2 motor_stall_torque_Nm:=0.774725 imu_delay_ms:=26"
+verify_sim.sh scenarios V`, three batches of three, on `74e8fe5`, with the clock watcher running alongside:
+
+| Batch | Runs | Judged overshoot (highest exported sample) |
+| --- | --- | --- |
+| 1 | 3 PASS | 15.2 (17.0), 15.9 (17.4), 15.6 (18.1) % |
+| 2 | 3 PASS | 15.4 (18.4), 25.2 (24.5; the gamepad watchdog fired mid-drive), 18.7 (20.4) % |
+| 3 | 2 PASS, **1 FAIL** | **31.5 (62.8)**, 17.4 (19.7), 19.7 (22.7) % |
+
+**All 9 judged; none refused.** The only clock step during the 9 runs was +0.60 ms. Rise 0.88-0.97 s,
+peak |pitch| 4.37-4.45 deg in every run.
+
+**The FAIL is real motion caused by the harness, not a metric error.** `controller_manager` logged
+`Overrun detected! ... The loop took 40.164503 ms (missed cycles : 5)` at 4.26 s after release; the samples
+show one 45.9 ms cycle there. The replica read that cycle's 10.9 mm of travel as a wheel at 0.1575 m/s
+(exported); the metric removed it (judged 0.1153 m/s at that sample, the speed before). But the velocity
+loop had already acted on the false reading: it asked for a lean back (pitch went from +0.06 to -1.0 deg in
+the next 0.12 s), and a balancing robot leans back by first driving its wheels forward, so the true wheel
+speed (travel / cycle length) rose from about 0.23 to 0.33 m/s for three cycles. The judged peak, 0.1315 m/s
+at 4.35 s, is that real surge. The same mechanism on the robot: `QuadEncoders.py` has the same fixed 0.01 s
+divisor (finding U-2), so a late cycle there would cause the same surge. Not changed: V judges the motion it
+got, as with the gamepad-watchdog lurch of the sweep re-run.
+
+## Verification
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| 0 | `./check_container_mount.sh` (host) | `ok    the container sees this checkout` |
+| 0 | `python3 -I sim/check_sim_config.py` (host and container) | six `ok`, exit 0 |
+| 0 | deliberate breaks of `check_sim_config.py` (section 1) | 3 new red, 11 older red, control green |
+| 0 | `verify_urdf.sh` (container) | `PASS: all seven expansions ... and the sim config has not drifted.`, exit 0 |
+| 0 | `python3 -I -m py_compile sim/*.py`; `bash -n verify_sim.sh` | ok; ok |
+| 0 | `cascade_linearisation.py` default, `--candidate yaml`, `--hardware-gains`, `--sweep` against `27e9788` | identical |
+| 0 | relative-link scan over `docs/`, `README.md`, `CLAUDE.md` (scratch script: every relative link's file exists, every `#anchor` matches a heading) | 0 broken |
+| 1 | `build_ros.sh` | **not run**: no C++ changed (the build from the sweep re-run is current) |
+| 2 | `verify_mock.sh` | **not run**: no file the mock loads changed |
+| 3 | `verify_sim.sh scenarios` (all five) | `SCENARIOS: PASS (exit 0)`: U PASS (\|pitch\| ≤ 0.052 deg, \|v\| ≤ 0.0014 m/s), I PASS (0.758 s, peak 6.28 deg), V PASS (17.0 %), S2b ok (0.149 s), AB ok (3.770 s) |
+| 3 | `verify_sim.sh scenarios V`, 3 more nominal runs | 3 PASS: 17.2, 17.6, 16.2 % |
+| 3 | `d+` V, 9 runs | above: 8 PASS, 1 FAIL (a harness-caused surge), 0 refused |
+| 3 | default `verify_sim.sh` (S1 S2a H4 C3 C2 H6 FF) | `PASS (simulation: S1 S2a H4 C3 C2 H6 FF)`, exit 0 (C3 timed out 0.206 s after the last command) |
+| — | `git diff 27e9788 -- rocko_env/rocko_env/bringup/config verify_sim.sh` | empty: no gain, threshold or YAML changed |
+
+Tier 3 is **not** called built. Reviewer agents were **not** run in this task (it was itself the fix of a
+review); the fixes are not re-reviewed.
+
+## Not verified, and what a human should know
+
+- **Anything about the robot.** Every result is about an estimated model with `encoder_sign:=-1` assumed.
+- **A forward step of the system clock** would make V's metric remove a jump that is not there (section 3).
+  Only sub-millisecond ones were seen; a real fix needs SimPlant to export the steady-clock period.
+- **Why the container's clock is corrected every 30 s, and why by ~16 ms during the sweep** but under 1 ms
+  idle: Docker Desktop's time sync is the likely cause; not looked up.
+- **The late-cycle surge** (the `d+` FAIL) is a property of the copied robot code (U-2) and of the container's
+  overruns; how often a Pi overruns is unknown.
+- The sweep was **not** re-run (as asked); its `d+` verdict stays COULD NOT JUDGE in the committed results.
+
+**Why the run stopped here:** the review findings are fixed with behaviour shown unchanged, the `d+`
+refusal is explained with evidence, and the docs match; nothing else was asked.
+
+## Commits
+
+- `27e7f2b`: `check_sim_config.py`, a tuned gain on every joint (section 1).
+- `1ca5685`: the explainability fixes (section 2).
+- `74e8fe5`: V's refusal text and docstring (section 3).
+- The docs commit: this entry's results, the final report's sweep numbers, the ladder, next-steps, the gap
+  page and a pointer in the sweep re-run journal.

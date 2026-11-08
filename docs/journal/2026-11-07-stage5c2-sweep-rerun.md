@@ -87,7 +87,9 @@ artefact, explains.
   same clock reading, are both plausible; neither was checked), and the failing runs' samples were not
   inspected. This is a new failure mode of the corrected metric that the 20 nominal runs of the metric-change
   journal did not show; `d+` is the case with the longest single-parameter delay (26 ms). **Not fixed here.**
-  It is a refusal to judge, not a pass: the case verdict says so.
+  It is a refusal to judge, not a pass: the case verdict says so. **Cause found later the same day:**
+  neither guess; the container's system clock, which stamps the messages, stepped back about 16 ms
+  (the [review-fixes journal](2026-11-07-stage5c-review-fixes.md#3-why-v-could-not-judge-two-d-runs-the-containers-system-clock-stepped-back)).
 
 ### MARGINAL cases (all runs pass, one above 27 %)
 
@@ -153,6 +155,7 @@ Logs:          sim/results/stage5c2-sweep-vmetric2.csv (committed); verify_sim.s
   [sim-to-real-gap.md](../architecture/sim-to-real-gap.md).
 - **Why `d+` produced repeated sample stamps** (above), and whether more cases would, with more runs. A
   verifier that sometimes cannot judge is better than one that guesses, but it still needs a cause.
+  (Found afterwards: a step back of the container's system clock; see the review-fixes journal linked above.)
 - **Variability of a re-run:** one re-run, one sample. The nominal case now has 3 PASS runs here and 20 of 20
   in the metric-change journal; the 7 verdict changes are consistent with removing the artefact, but a
   second re-run was not made, and `m+` and `d+` show that a single case can still change verdict for
