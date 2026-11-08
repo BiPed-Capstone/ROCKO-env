@@ -76,6 +76,7 @@ void test_read_request_bytes()
 {
   std::array<std::uint8_t, u::kReadRequestSize> req{};
   CHECK(u::make_read_request(u::kBurstFirstRegister, u::kBurstLength, req));
+  // Literal bytes on purpose: the test must not reuse the header's constants.
   CHECK(req[0] == 0xAA && req[1] == 0x01 && req[2] == 0x14 && req[3] == 0x0C);
 
   std::array<std::uint8_t, u::kReadRequestSize> untouched = {9, 9, 9, 9};
@@ -168,6 +169,7 @@ void test_truncated_and_oversized_frames()
   const std::uint8_t error_plus_one[] = {u::kStatusHeader, 0x02, 0x00};
   const u::BurstResult e = u::parse_gyro_euler_burst_reply(error_plus_one, 3);
   CHECK(e.status == u::ReplyStatus::kTooLong);
+  CHECK(e.device_status == 0);  // the status byte is reported only for kDeviceError
   CHECK(all_nan_and_invalid(e.snapshot));
 
   const u::BurstResult null_buf = u::parse_gyro_euler_burst_reply(nullptr, 14);

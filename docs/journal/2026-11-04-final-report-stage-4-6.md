@@ -31,7 +31,7 @@
 > - Updated 2026-11-07: the sweep numbers, V's verdict noise and C3's flake in (a), (b) and (c) follow
 >   the later journals ([V metric and C3](2026-11-07-c3-v-verifier-noise.md),
 >   [sweep re-run](2026-11-07-stage5c2-sweep-rerun.md), [review fixes](2026-11-07-stage5c-review-fixes.md)).
->   Tier 3 is still not marked built and stage 6 is still not started.
+>   Tier 3 is still not marked built and stage 6 is still not started (true on 2026-11-04; superseded by the bullets above).
 
 > **The strongest claim in this whole report is "balances in simulation under an estimated
 > model".** The balancing of the real robot was not checked and cannot be by an agent (CLAUDE.md §4).
@@ -99,7 +99,7 @@
 - **The sweep's gaps**: wheel radius, friction, encoder sign, inertia separately from mass, IMU
   bias, initial pitch; the `tune-gains` held-out set.
 - **The motor plugin at run time** (not compiled in the container); **C-1** (the blocking service
-  calls) is unfixed and untouched.
+  calls) is unfixed; only an unwired framing helper, its host test and proposal 0010 landed (2026-11-07).
 - **Container timing versus the Pi**: nothing was measured on a Pi.
 - **Reviews**: stage 4 round 4's fixes and everything in stage 5 are not reviewed by the agents
   (stage 5c was reviewed later, in part: see (c)).

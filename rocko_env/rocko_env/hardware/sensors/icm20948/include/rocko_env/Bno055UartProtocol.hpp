@@ -152,7 +152,8 @@ inline bool make_read_request(
 
 // Writes the bytes of a write request (header plus `length` data bytes) into `out`, which has room
 // for `out_capacity` bytes. Returns the number of bytes to send, or 0 (nothing written) if length is
-// 0, data is null, or `out` is too small. For configuration (OPR_MODE, UNIT_SEL) at configure time.
+// 0, data is null, or `out` is too small. The write-side helpers are only for configure time
+// (OPR_MODE, UNIT_SEL), never for read(); nothing uses them yet, and they are kept for that.
 inline std::size_t make_write_request(
   std::uint8_t register_address, const std::uint8_t * data, std::uint8_t length,
   std::uint8_t * out, std::size_t out_capacity)
@@ -188,8 +189,9 @@ inline std::size_t reply_frame_size(std::uint8_t first_byte, std::uint8_t expect
 }
 
 // Checks the reply to a read of `expected_length` bytes. `buffer` holds the `size` bytes received.
-// The checks run in this order: empty; bad header; a status reply (exactly 2 bytes); the length byte;
-// the byte count.
+// The checks run in this order: empty (kTooShort); bad header; fewer than 2 bytes (kTooShort); a
+// status reply (0xEE) must be exactly 2 bytes; the length byte (a mismatch is reported even on a
+// short frame); then the byte count.
 inline ReadReply parse_read_reply(
   const std::uint8_t * buffer, std::size_t size, std::uint8_t expected_length)
 {
@@ -199,7 +201,7 @@ inline ReadReply parse_read_reply(
     return reply;
   }
   const std::size_t frame_size = reply_frame_size(buffer[0], expected_length);
-  if (frame_size == 0) {
+  if (frame_size == 0) {  // 0 means "first byte is not 0xBB or 0xEE"
     reply.status = ReplyStatus::kBadHeader;
     return reply;
   }
@@ -208,8 +210,12 @@ inline ReadReply parse_read_reply(
     return reply;
   }
   if (buffer[0] == kStatusHeader) {
-    reply.status = (size == kReplyHeaderSize) ? ReplyStatus::kDeviceError : ReplyStatus::kTooLong;
-    reply.device_status = buffer[1];
+    if (size == kReplyHeaderSize) {
+      reply.status = ReplyStatus::kDeviceError;
+      reply.device_status = buffer[1];  // only for kDeviceError; kTooLong leaves it 0
+    } else {
+      reply.status = ReplyStatus::kTooLong;
+    }
     return reply;
   }
   // 0xBB: the length byte must be what we asked for, then the byte count must match it.

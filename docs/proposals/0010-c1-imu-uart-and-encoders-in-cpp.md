@@ -59,7 +59,7 @@ Nothing that runs on the robot changed.
   mode CONFIG, set `UNIT_SEL` (`0x3B`) explicitly to deg/s and degrees (the header's scale factors
   assume that; *UNVERIFIED* register value), optionally an axis remap
   ([bno055-improvements.md §1](../claude-analysis/bno055-improvements.md#1-use-gyro-rate-for-the-derivative-term)),
-  then the fusion mode (IMUPLUS, §3 of that page, or NDOF as today). Mode switches take milliseconds
+  then the fusion mode (IMUPLUS, §3 of that page, or NDOF as today (*UNVERIFIED*: the repo never sets the mode, so the sensor is in whatever mode it powers up in or was left in)). Mode switches take milliseconds
   (*UNVERIFIED* how many): fine in configure, never in `read()`. A failed configure step returns
   `ERROR`.
 - **`read()`**, once per cycle, the one transaction of [H-3](../claude-analysis/balance-loop-findings.md#h-3--imu-sample-is-three-separate-ic-reads):
@@ -92,7 +92,7 @@ Nothing that runs on the robot changed.
 ### C. The encoders in C++ (rows 1.3 and 1.10)
 
 - Count edges in C++ with WiringPi's interrupt callback (`wiringPiISR`), which `Motor12VoltQuadEncoder`
-  can use because it already links WiringPi; the callback runs on WiringPi's own thread and only
+  can use because it already links WiringPi; the callback runs on WiringPi's own thread (*UNVERIFIED*) and only
   updates a `std::atomic<std::int64_t>` count; `read()` loads that count (lock-free) and computes
   position and velocity from it with the real `period` argument. No service, no Python, no blocking.
 - **L-6 pattern** (tracker, `ERROR`, throttled log): with interrupt counting a `read()` cannot fail the
@@ -116,7 +116,7 @@ Nothing that runs on the robot changed.
 ### D. H-9 becomes writable
 
 With the bytes in C++ the plugin can (a) treat N identical 12-byte bursts in a row as a frozen sensor
-(the gyro's noise makes exact repeats unlikely on a robot that is balancing; N **proposed**, checked on
+(the gyro's noise makes exact repeats unlikely on a robot that is balancing, *UNVERIFIED*; N **proposed**, checked on
 the bench by leaving the robot still), and (b) read `SYS_STATUS`, `SYS_ERR` and `CALIB_STAT`
 (*UNVERIFIED* addresses `0x39`, `0x3A`, `0x35`) and the operating mode **at configure time**, and not
 in the 10 ms loop unless the bench test shows the time is there. A sensor found back in CONFIG mode
