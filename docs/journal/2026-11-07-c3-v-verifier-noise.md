@@ -228,8 +228,10 @@ reported as anything except the printed longest cycle gap.
   the procedure in the [C3/FF journal](2026-11-03-c3-ff-flaky-checks.md) (count `teleop command timed
   out` lines while driving tethered) also catches this.
 - **What causes the stalls** (now seen inside a `publish()` call and in a whole node process): not found.
-- **The ±30 % sweep was not re-run** with the new V metric; its verdicts in the stage 5c-2 journal were
-  made with the old one. The offline recomputation above covers only the kept (failing) runs.
+- **The ±30 % sweep was not re-run in this task** with the new V metric; its verdicts in the stage 5c-2
+  journal were made with the old one. It was re-run afterwards:
+  [re-run journal](2026-11-07-stage5c2-sweep-rerun.md) (PASS 18, MARGINAL 4, FAIL 2, COULD NOT JUDGE 1).
+  The offline recomputation above covers only the kept (failing) runs.
 - **V runs with the gamepad watchdog firing mid-step** are still judged on the motion they produced;
   in the sweep two such runs failed (88.3, 63.4 %). Not changed: the robot really did lurch.
 - Review: the reviewer agents were not run in this task (`explainability-reviewer` for

@@ -15,7 +15,8 @@
 ([proposal 0006](../proposals/0006-velocity-loop-sign-check.md), finding H-12), and with the modelled
 20 ms IMU delay. The strongest claim this entry can make is "**balances in simulation under an
 estimated model**". It says nothing about the robot, and no gain here is a recommendation for
-`rocko_controllers.yaml`; that needs a candidate-gains proposal (a later task, not written here).
+`rocko_controllers.yaml`; that needs a candidate-gains proposal (not written in this stage; it is now
+[proposal 0008](../proposals/0008-candidate-gains-and-tethered-test.md)).
 
 ## Goal and success criteria
 
@@ -356,7 +357,8 @@ Observed:      see sections 3 and 4
   file changed, but `rocko_sim_controllers.yaml` is a `bringup/config/*.yaml` file, so a later
   `realtime-auditor` and `ros2-control-reviewer` pass should look at it). Waiting for
   `explainability-reviewer` (the two scripts), `docs-reviewer` and `ros2-control-reviewer`.
-- No candidate-gains proposal is written: the gains stay in the sim YAML until one is (a later task).
+- No candidate-gains proposal was written in this stage: the gains stay in the sim YAML. One exists
+  now: [proposal 0008](../proposals/0008-candidate-gains-and-tethered-test.md) (open).
 
 ## Reproduce
 
@@ -387,4 +389,5 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 
 **Why the run stopped here:** U, I and V pass in 6 iterations each (of 8), with S2b, AB, the default
 run, the drift check and the host tests green. The remaining work is a human's or a later task's: the
-held-out runs in the sim, the reviewers, a decision on V's metric, and a candidate-gains proposal.
+held-out runs in the sim, the reviewers, a decision on V's metric (changed 2026-11-07), and a candidate-gains proposal (now
+[0008](../proposals/0008-candidate-gains-and-tethered-test.md)).

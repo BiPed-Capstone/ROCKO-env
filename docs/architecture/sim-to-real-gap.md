@@ -295,16 +295,20 @@ first (proposal 0006, options A and B).
 
 ## 7. What the sweep covered, and what it did not
 
-[Stage 5c-2](../journal/2026-11-03-stage5c2-sweep.md): 25 cases, 125 runs, on `77f8ee1`. Mass
+[Stage 5c-2](../journal/2026-11-03-stage5c2-sweep.md): 25 cases, 125 runs, on `77f8ee1`, judged with
+V's old overshoot metric; **re-run on `03238ca` with the corrected metric**
+([re-run journal](../journal/2026-11-07-stage5c2-sweep-rerun.md)), which is the result below. Mass
 (1.4 to 2.6 kg), centre-of-mass height (0.14 to 0.26 m), motor gain (stall torque 0.542 to 1.007
 N·m) and IMU delay (14 to 26 ms), each alone at ±30 % and in all 16 corners.
 
-| Result | Detail |
+| Result | Detail (corrected metric; old metric in brackets) |
 | --- | --- |
-| Cases | PASS 14, MARGINAL 4, FAIL 7 |
+| Cases | PASS 18, MARGINAL 4, FAIL 2, COULD NOT JUDGE 1 (old: PASS 14, MARGINAL 4, FAIL 7) |
 | Falls | none; U and I passed in all 25 cases |
-| Systematic failure | one corner, `m+h+k−d+` (heaviest, tallest, weakest motor, longest delay): V overshoot 49 to 51 % in all three runs; the linear model predicts 44.8 %. Its I settle time was also the longest (1.40 s, peak 12.4 deg) |
-| The other six FAILs | one run of three each; they look like the verifier's noise (two had the teleop watchdog firing while driving) and the nominal model fails 1 run in 3 too, so a 1/3 FAIL says little |
+| Systematic failure | one corner, `m+h+k−d+` (heaviest, tallest, weakest motor, longest delay): V overshoot 45 to 47 % in all three runs (old: 49 to 51 %); the linear model predicts 44.8 %. Its I settle time was also the longest (1.39 s, peak 12.2 deg) |
+| One lurch | `m+`, one run of three: 68 %, the teleop watchdog fired while driving (the test harness delivered commands late); the other two runs 15.5 and 24.0 % |
+| One case not judged | `d+`, two runs of three: the metric refused to judge (repeated plant sample stamps; cause not found); the third run 15.5 % |
+| The old noisy single-run FAILs | the nominal model, `h−` and `m−h−k+d−` now pass in all three runs; the encoder replica's reading of a late control cycle was the cause, and it is a property of the robot's `QuadEncoders.py` too (finding U-2) |
 
 **Not covered:** wheel radius, friction, the encoder sign, inertia separately from mass, the IMU
 bias, the initial pitch, every omission of section 3, and the `tune-gains` held-out set (another

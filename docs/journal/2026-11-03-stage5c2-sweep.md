@@ -257,7 +257,9 @@ Logs:          sim/results/stage5c2-sweep.csv (committed); verify_sim.sh output 
   5c-1, *Thresholds*); not changed. **Changed 2026-11-07** ([journal](2026-11-07-c3-v-verifier-noise.md)):
   V's overshoot metric (not its limit) now removes the replica's late-cycle error; on the kept runs the
   five single-run FAILs above recompute to 16.7-23.7 % and `m+h+k−d+` to 47.3-48.9 % (still FAIL).
-  The sweep itself was not re-run.
+  **The sweep was re-run with the new metric the same day:** PASS 18, MARGINAL 4, FAIL 2, COULD NOT JUDGE 1,
+  the corner still failing 3 of 3 at 45-47 % ([re-run journal](2026-11-07-stage5c2-sweep-rerun.md)). The
+  verdicts and tables in this entry are the old-metric record and are kept as written.
 - **C3 flakes again** (section 3): 4 failures in 15 runs today (2 of 3 full default runs, 1 of 4 alone,
   1 of 8 alone with the files as they were before this stage).
 - Review: the reviewer agents were not run in this stage (`explainability-reviewer` for the two

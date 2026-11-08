@@ -84,8 +84,11 @@ All of it is Tier 3, the model, `encoder_sign:=-1` assumed, 20 ms IMU delay, est
   29.1 % against a 30 % limit, **narrow**, and the verdict is noisy (the verifier's own timing).
   S2b fails for the right reason (0.142 s); AB falls as H-12 predicts (3.8 s).
 - **Sweep** (stage 5c-2, ±30 % of mass, centre-of-mass height, motor gain, IMU delay; 25 cases):
-  PASS 14, MARGINAL 4, FAIL 7; no case fell; **one corner fails V's overshoot systematically**
-  (heaviest, tallest, weakest motor, 26 ms delay: 49 to 51 %); six other FAILs are single noisy runs.
+  re-run with V's corrected overshoot metric ([journal](../journal/2026-11-07-stage5c2-sweep-rerun.md)):
+  PASS 18, MARGINAL 4, FAIL 2, COULD NOT JUDGE 1 (old metric: PASS 14, MARGINAL 4, FAIL 7); no case fell;
+  **one corner fails V's overshoot systematically** (heaviest, tallest, weakest motor, 26 ms delay: 45 to
+  47 %); the other FAIL is one run where the gamepad watchdog fired mid-step, and one case could not be
+  judged in two runs.
 - **Linear margins:** +10.1 dB up, −18.2 dB down on the motors' gain; stable to 50 ms of IMU delay
   (a 30 ms margin over the modelled 20 ms).
 
