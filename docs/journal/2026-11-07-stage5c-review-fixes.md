@@ -73,3 +73,53 @@ about half that spread.
 | `parameter_sweep.py report` on a copy of `stage5c2-sweep-vmetric2.csv` | the same verdicts and every table cell identical; two lines differ: the CSV's relative path (the copies were in different folders) and the legend's `0.20 m`, now `0.2 m` (built from `NOMINAL`) |
 | container: `velocity_from_true_periods()` at `27e9788` and now, on the 13 kept V `samples.csv` files in the container | identical output for all 13 (including the two refused `d+` runs) |
 | `python3 -I -m py_compile sim/*.py` | ok |
+
+## 3. Why V could not judge two `d+` runs: the container's system clock stepped back
+
+The sweep re-run's two refused runs (`d+`, V runs 1 and 3) kept their run directories in the container
+(`/tmp/tmp.WpK7nV9MIN`, `/tmp/tmp.Aayx8EK9jP`), with `samples.csv` and the launch log. Evidence:
+
+- **One pair in each run, not a repeat.** Each run has exactly one pair whose stamp goes *backwards*:
+  5.4621 then 5.4551 s after release (-7.0 ms) in run 1, 5.4809 then 5.4742 s (-6.7 ms) in run 3. No
+  equal stamps, no other gap under 0 and none over 15 ms. The wheel travel (`position_m`) keeps rising
+  across the pair by the usual amount (1.8 mm, about 8 ms of travel at 0.227 m/s), so the message is not
+  a duplicate or out of order: the physics advanced normally and only the stamp went back.
+- **The stamp clock lost 16-18 ms against the physics.** Over the 60 cycles around each event the
+  stamps advance 584.8 and 582.0 ms while the travel divided by the speed gives 602.6 and 597.8 ms:
+  the stamps lost 17.8 and 15.8 ms, all in that one pair.
+- **Another process saw the same thing at the same moment.** `robot_state_publisher` (which reads the
+  same `controller_manager` stamps, on `/joint_states`) logged `Moved backwards in time, re-publishing
+  joint transforms!` at 5.455 s after release in run 1 and 5.474 s in run 3: exactly the two pairs. So
+  the stamps were already backwards when published; it is not this script's recording.
+- **Two clocks.** The launch log says `Using Steady (Monotonic) clock for triggering controller manager
+  cycles` (`controller_manager` 4.48.1): the cycle period it hands to `read()`, which SimPlant integrates,
+  is on the steady clock, while the stamps on its messages are the ROS clock, which is the system clock
+  (CLOCK_REALTIME). A step of the system clock moves the stamps and nothing else.
+- **The system clock does step in this container.** The two warnings are 29.99 s apart in wall time
+  (1794097708.939 and 1794097738.928). A watcher that compared `time.time()` with `time.monotonic()`
+  every 0.5 ms for 15 minutes in the idle container (scratch, not committed) saw steps at 89.754 s
+  (-0.72 ms) and 119.757 s (+0.93 ms), 30.00 s apart, and later -0.71/+0.71 ms and -0.65 ms ones: a
+  periodic correction of the VM's clock, presumably Docker Desktop's time sync (its mechanism was not
+  looked up). Idle it is under a millisecond; during the sweep, with the container busy, it was about
+  -16 ms.
+
+**So it is not a bug in the metric's handling of a legitimate stamp, and the refusal stands.** The
+metric takes the gap between two stamps as the cycle's real length; across a backward step that gap is
+-7 ms while the cycle really lasted about 8 ms, and nothing in the recorded samples gives the real
+length without a guess (the travel divided by a neighbouring speed would, but only while the robot moves,
+and it is an estimate). Assuming the nominal 10 ms instead would hide part of the jump if the cycle was
+short, so it is not conservative. `COULD NOT JUDGE` is the honest answer for such a run; the case verdict
+already says so, and a re-run judges (below).
+
+**What did change** (`sim/scenario_checks.py`, verdicts unchanged): the refusal now says where and how
+large the backward step was and points at the explanation, e.g. `... so a period is unknown (1 pair(s),
+the first at 5.474 s after release, -6.7 ms; seen when the system clock that stamps them stepped back,
+see velocity_from_true_periods)`; and the function's docstring no longer says the stamps are "the same
+period SimPlant integrated". It says what is true: they agree unless the system clock steps, a backward
+step makes V refuse, and **a forward step would look like a late cycle and be corrected as one**,
+removing a jump that is not there. That last case would make an overshoot look smaller, and nothing
+detects it. Only sub-millisecond forward steps were seen (+0.93 and +0.71 ms; on a 10 ms cycle at
+0.23 m/s that is under 0.001 m/s, under 1 % of the 0.1 m/s step, decaying over 0.2 s), but a large one
+is not ruled out. A real fix needs the steady-clock period, which SimPlant does not export.
+On the 13 kept V runs the new code gives the same values and verdicts as before (the two refused runs
+refuse, with the new text).

@@ -695,8 +695,13 @@ def velocity_from_true_periods(samples):
     of 10 ms, seen in the kept V runs), the replica divides ~3 cycles of travel by 0.01 s, so its
     output jumps ~20 % in one sample and then decays over its own low-pass (time constant
     0.01 / 0.05 = 0.2 s). That jump is the replica's timing error, not the wheel going faster.
-    The real cycle length is the gap between the two samples' stamps (the controller_manager's
-    clock, the same period SimPlant integrated the physics over).
+    The real cycle length is taken as the gap between the two samples' stamps. That is only nearly
+    true: controller_manager stamps its messages with the system clock, but times its cycles (the
+    period SimPlant integrates over) on the steady clock. They agree unless the system clock is
+    stepped. A step BACK makes a gap zero or negative, and V refuses to judge (seen twice in the
+    sweep re-run: about -16 ms in the container). A step FORWARD would look like a late cycle and be
+    corrected as one, removing a jump that is not there; nothing here can tell them apart (only
+    sub-millisecond forward steps were seen, worth under 1 % of the step for 0.2 s).
 
     The replica, per cycle (sim-plant.md §3.7), with a = REPLICA_FILTER_ALPHA:
         left  = (1 - a) * filter + a * travel / 0.01     (exported as the left wheel's velocity)
@@ -711,8 +716,13 @@ def velocity_from_true_periods(samples):
     cycles and nothing else is removed, so any artefact inside the gap stays in (it can only make
     the overshoot look larger, never hide one)."""
     a = REPLICA_FILTER_ALPHA
-    if any(b.t_s <= s.t_s for s, b in zip(samples, samples[1:])):
-        return [], "two plant samples have the same or decreasing stamps, so a period is unknown", 0
+    backwards = [(b.t_s, b.t_s - s.t_s) for s, b in zip(samples, samples[1:]) if b.t_s <= s.t_s]
+    if backwards:
+        t_s, gap_s = backwards[0]
+        return [], (f"two plant samples have the same or decreasing stamps, so a period is unknown "
+                    f"({len(backwards)} pair(s), the first at {t_s:.3f} s after release, "
+                    f"{1000 * gap_s:+.1f} ms; seen when the system clock that stamps them stepped "
+                    "back, see velocity_from_true_periods)"), 0
     corrected = [samples[0].mean_velocity_m_s]
     error = 0.0  # [m/s] the replica's filter (its right-wheel output) minus the true-period one
     not_one_cycle = 0
