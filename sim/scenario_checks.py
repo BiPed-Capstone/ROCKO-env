@@ -42,7 +42,10 @@ and writes samples.csv as well as metrics.json:
                    linear.x = 0 for --before-s, then a step to --speed-m-s held for --step-s. PASS if
                    the mean measured wheel velocity reaches --rise-fraction of the step within
                    --rise-within-s, overshoots it by at most --max-overshoot-pct, |pitch| stays
-                   under --max-pitch-deg, and never reaches --tipover-deg.
+                   under --max-pitch-deg, and never reaches --tipover-deg. The overshoot is the
+                   peak of the measured velocity recomputed with each control cycle's real length
+                   (velocity_from_true_periods), because a late cycle in the container makes the
+                   encoder replica read ~20 % high for a moment; the exported peak is recorded too.
 "Measured wheel velocity" is the exported `velocity` state [m/s] the velocity loop itself reads (the
 mean of the two wheels). With model_encoder_node it is about HALF the true speed (finding U-2), and
 its sign is encoder_sign times the direction a positive command drives the robot (sim-plant.md §2.4).
@@ -522,6 +525,20 @@ PUSH_WINDOW_S = (-0.05, 0.1)
 MAX_FIRST_SAMPLE_S = 0.5
 # The last sample may stop this far short of the record length (one 100 Hz period is 0.01 s).
 END_SLACK_S = 0.05
+# The encoder replica (finding U-2, SimPlantModel.hpp update_encoder_outputs, copied from
+# QuadEncoders.py): each cycle it divides the wheel travel by an ASSUMED period and low-passes it.
+# Copied from SimPlantModel.hpp (kEncoderAssumedPeriodS, kEncoderFilterAlpha); keep them equal.
+REPLICA_ASSUMED_PERIOD_S = 0.01
+REPLICA_FILTER_ALPHA = 0.05
+# velocity_from_true_periods() replays one replica cycle from the previous sample; if that gives this
+# sample's exported velocity to within this [m/s], exactly one cycle lay between them. Doubles
+# arrive unchanged, so only float noise is allowed.
+REPLAY_TOLERANCE_M_S = 1e-6
+# If more than this fraction of sample pairs are not one replica cycle apart, the replica is not the
+# one written in velocity_from_true_periods() and V cannot judge. Dropped samples (this script's
+# subscription loses messages when it stalls) were 1 pair in ~880 in the runs of 2026-11-07; a
+# changed replica would miss on nearly every pair.
+MAX_NOT_ONE_CYCLE_FRACTION = 0.05
 
 
 def release_stamp(launch_log):
@@ -540,8 +557,8 @@ def release_stamp(launch_log):
 def record_from_release(rec, args, record_s, topic="/dynamic_joint_states", during=None):
     """Spin until record_s s of plant samples after the release have arrived. Returns (release
     stamp or None, samples), samples = [(t_s after release, pitch_deg, pitch_rate_deg_s,
-    mean measured wheel velocity m/s)]; pitch and rate are left_wheel_joint's (one IMU feeds both
-    joints). during(t_s) is called while spinning with the latest sample's time (for publishing)."""
+    mean measured wheel velocity m/s, wheel travel m, right wheel velocity m/s)]; pitch, rate and
+    travel are left_wheel_joint's (one IMU and one encoder reply feed both joints). during(t_s) is called while spinning with the latest sample's time (for publishing)."""
     deadline = time.monotonic() + args.wait
     release = None
     while release is None and time.monotonic() < deadline:
@@ -558,8 +575,11 @@ def record_from_release(rec, args, record_s, topic="/dynamic_joint_states", duri
             _, msg = rec.received[topic].pop(0)
             left, right = joint_values(msg, JOINTS[0]), joint_values(msg, JOINTS[1])
             v = 0.5 * (left.get("velocity", math.nan) + right.get("velocity", math.nan))
+            # The last two (wheel travel [m], right wheel velocity [m/s]) are only for
+            # velocity_from_true_periods(), used by V.
             samples.append((stamp_s(msg) - release, left.get("pitch", math.nan),
-                            left.get("pitch_rate", math.nan), v))
+                            left.get("pitch_rate", math.nan), v,
+                            left.get("position", math.nan), right.get("velocity", math.nan)))
 
     end = time.monotonic() + record_s + args.wait
     while time.monotonic() < end:
@@ -576,9 +596,10 @@ def write_samples(out_dir, samples):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "samples.csv"), "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["t_after_release_s", "pitch_deg", "pitch_rate_deg_s", "mean_velocity_m_s"])
+        writer.writerow(["t_after_release_s", "pitch_deg", "pitch_rate_deg_s", "mean_velocity_m_s",
+                         "position_m", "right_velocity_m_s"])
         for s in samples:
-            writer.writerow([f"{s[0]:.4f}", repr(s[1]), repr(s[2]), repr(s[3])])
+            writer.writerow([f"{s[0]:.4f}"] + [repr(x) for x in s[1:]])
 
 
 def coverage_problem(samples, args, record_s):
@@ -602,6 +623,56 @@ def fell_at(samples, tipover_deg):
 def nearest(samples, t_s):
     """The sample whose time is closest to t_s."""
     return min(samples, key=lambda s: abs(s[0] - t_s))
+
+
+def velocity_from_true_periods(samples):
+    """The mean measured wheel velocity [m/s] the encoder replica WOULD export if it divided each
+    cycle's travel by that cycle's real length instead of an assumed 10 ms; one value per sample.
+    Returns (values, problem, gaps): problem is None, or why the values cannot be trusted; gaps is
+    the number of sample pairs with dropped samples between them.
+
+    Why V needs it: when controller_manager runs a cycle late in the container (26-30 ms instead
+    of 10 ms, seen in the kept V runs), the replica divides ~3 cycles of travel by 0.01 s, so its
+    output jumps ~20 % in one sample and then decays over its own low-pass (time constant
+    0.01 / 0.05 = 0.2 s). That jump is the replica's timing error, not the wheel going faster.
+    The real cycle length is the gap between the two samples' stamps (the controller_manager's
+    clock, the same period SimPlant integrated the physics over).
+
+    The replica, per cycle (sim-plant.md §3.7), with a = REPLICA_FILTER_ALPHA:
+        left  = (1 - a) * filter + a * travel / 0.01     (exported as the left wheel's velocity)
+        right = (1 - a) * left                           (the second call sees no travel)
+    and the exported mean is (left + right) / 2. Dividing by the cycle's real length instead
+    changes `left` by a * travel * (1/0.01 - 1/period), and that difference then decays through
+    the same filter. So this function carries `error` = how much the replica's filter reads above
+    the true-period filter, and subtracts it from the exported value.
+
+    If samples were dropped between two samples (this script's subscription loses messages when
+    it stalls), the cycles in between are unknown: the error is decayed as over that many nominal
+    cycles and nothing else is removed, so any artefact inside the gap stays in (it can only make
+    the overshoot look larger, never hide one)."""
+    a = REPLICA_FILTER_ALPHA
+    if any(b[0] <= s[0] for s, b in zip(samples, samples[1:])):
+        return [], "two plant samples have the same or decreasing stamps, so a period is unknown", 0
+    corrected = [samples[0][3]]
+    error = 0.0  # [m/s] the replica's filter (its right-wheel output) minus the true-period one
+    not_one_cycle = 0
+    for before, s in zip(samples, samples[1:]):
+        travel_m, period_s = s[4] - before[4], s[0] - before[0]
+        # One replica cycle from the previous sample's state (its right velocity is the filter):
+        left = (1 - a) * before[5] + a * travel_m / REPLICA_ASSUMED_PERIOD_S
+        if abs(0.5 * (left + (1 - a) * left) - s[3]) <= REPLAY_TOLERANCE_M_S:
+            error_left = (1 - a) * error + a * travel_m * (1 / REPLICA_ASSUMED_PERIOD_S - 1 / period_s)
+        else:  # samples dropped in between: about period_s / 0.01 cycles, at least two
+            not_one_cycle += 1
+            cycles = max(2, round(period_s / REPLICA_ASSUMED_PERIOD_S))
+            error_left = error * (1 - a) ** (2 * cycles - 1)
+        error = (1 - a) * error_left
+        corrected.append(s[3] - 0.5 * (error_left + error))
+    if not_one_cycle > MAX_NOT_ONE_CYCLE_FRACTION * (len(samples) - 1):
+        return corrected, (f"{not_one_cycle} of {len(samples) - 1} sample pairs are not one encoder-"
+                           f"replica cycle apart (allowed {MAX_NOT_ONE_CYCLE_FRACTION:.0%}): the "
+                           "replica is not the one in velocity_from_true_periods()"), not_one_cycle
+    return corrected, None, not_one_cycle
 
 
 def check_upright(args):
@@ -758,14 +829,23 @@ def check_velocity_step(args):
     target = args.rise_fraction * args.speed_m_s
     rise_at = next((s[0] for s in after if s[3] >= target), None)
     rise_s = rise_at - step_t if rise_at is not None else None
-    peak_v = max((s[3] for s in after), default=math.nan)
+    # Overshoot is judged on the replica's velocity with each cycle's real length (see
+    # velocity_from_true_periods); the highest exported sample is kept for the record.
+    corrected, replay_problem, sample_gaps = (velocity_from_true_periods(samples) if samples
+                                              else ([], "no samples", 0))
+    peak_v = max((v for s, v in zip(samples, corrected) if s[0] >= step_t), default=math.nan)
     overshoot_pct = 100.0 * (peak_v - args.speed_m_s) / args.speed_m_s
+    peak_exported_v = max((s[3] for s in after), default=math.nan)
+    exported_overshoot_pct = 100.0 * (peak_exported_v - args.speed_m_s) / args.speed_m_s
     peak_pitch = max((abs(s[1]) for s in samples), default=math.nan)
     fell = fell_at(samples, args.tipover_deg)
     metrics = {
         "samples": len(samples), "release_stamp_s": release, "gamepad_messages": state["published"],
         "timed_out_flags_seen": flags, "step_at_s": step_t, "rise_time_s": rise_s,
         "peak_mean_velocity_m_s": peak_v, "overshoot_pct": overshoot_pct,
+        "peak_exported_mean_velocity_m_s": peak_exported_v,
+        "exported_overshoot_pct": exported_overshoot_pct, "replay_problem": replay_problem,
+        "sample_pairs_with_dropped_samples": sample_gaps,
         "min_mean_velocity_after_step_m_s": min((s[3] for s in after), default=math.nan),
         "final_mean_velocity_m_s": samples[-1][3] if samples else None,
         "peak_abs_pitch_deg": peak_pitch, "fell_at_s": fell,
@@ -776,7 +856,8 @@ def check_velocity_step(args):
     }
     print(f"scenario_checks: step to {args.speed_m_s} m/s at {step_t:.3f} s after release; "
           f"{args.rise_fraction:.0%} reached after {rise_s if rise_s is None else round(rise_s, 3)} s; "
-          f"peak mean v {peak_v:.4f} m/s (overshoot {overshoot_pct:.1f} %), lowest "
+          f"peak mean v {peak_v:.4f} m/s with true cycle lengths (overshoot {overshoot_pct:.1f} %; "
+          f"highest exported sample {peak_exported_v:.4f} m/s, {exported_overshoot_pct:.1f} %), lowest "
           f"{metrics['min_mean_velocity_after_step_m_s']:.4f} m/s; peak |pitch| {peak_pitch:.3f} deg; "
           f"|pitch| >= {args.tipover_deg} deg at {fell if fell is None else round(fell, 3)} s")
     if False in flags and True in flags[flags.index(False) + 1:]:
@@ -786,7 +867,7 @@ def check_velocity_step(args):
         return finish(args.out, metrics, FAIL,
                       f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s after "
                       f"release ({fell - step_t:.3f} s after the step; the robot fell)")
-    problem = coverage_problem(samples, args, record_s)
+    problem = coverage_problem(samples, args, record_s) or replay_problem
     if problem:
         return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
     if rise_s is None or rise_s > args.rise_within_s:
@@ -795,13 +876,15 @@ def check_velocity_step(args):
                       f"{args.rise_within_s} s of the step (reached after {rise_s} s)")
     if overshoot_pct > args.max_overshoot_pct:
         return finish(args.out, metrics, FAIL,
-                      f"overshoot {overshoot_pct:.1f} % (limit {args.max_overshoot_pct} %)")
+                      f"overshoot {overshoot_pct:.1f} % (limit {args.max_overshoot_pct} %; highest "
+                      f"exported sample {exported_overshoot_pct:.1f} %)")
     if peak_pitch > args.max_pitch_deg:
         return finish(args.out, metrics, FAIL,
                       f"|pitch| reached {peak_pitch:.3f} deg (limit {args.max_pitch_deg} deg)")
     return finish(args.out, metrics, PASS,
                   f"followed the step: {args.rise_fraction:.0%} in {rise_s:.3f} s, overshoot "
-                  f"{overshoot_pct:.1f} %, peak |pitch| {peak_pitch:.3f} deg")
+                  f"{overshoot_pct:.1f} % (highest exported sample {exported_overshoot_pct:.1f} %), "
+                  f"peak |pitch| {peak_pitch:.3f} deg")
 
 
 def main():

@@ -264,7 +264,10 @@ V_RISE_FRACTION=0.9    # 90 % of the step
 V_RISE_S=3.0           # [s after the step] to reach 90 %. A balancing robot must first lean the
                        #   other way, then accelerate; 3 s to reach a slow walk is the slowest that
                        #   still reads as "following"
-V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x the step
+V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x the step. Since
+                       #   2026-11-07 the peak of the velocity recomputed with each control cycle's
+                       #   real length (scenario_checks.py velocity_from_true_periods); the limit
+                       #   itself is unchanged since it was committed before tuning
 V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degree in steady state; 10
                        #   deg is far below the 35 deg trip and equals the re-arm band (H-4)
 S2B_FALL_S=1.0         # [s] with the pitch loop's sign flipped the linear model diverges at ~20 /s

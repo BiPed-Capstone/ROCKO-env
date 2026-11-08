@@ -325,6 +325,10 @@ Observed:      see sections 3 and 4
    limit was not checked against the over-speed of section 2. If a human thinks the limit or the metric
    should change (for example, judge a moving average, or allow for the replica's noise), that is its own
    commit with a journal paragraph, made **before** any further tuning; it was not done here.
+   **Done 2026-11-07** ([journal](2026-11-07-c3-v-verifier-noise.md), its own commit): the noise is
+   the replica reading a late control cycle (26-30 ms) as a faster wheel. V now judges the velocity
+   recomputed with each cycle's real length; the 30 % limit is unchanged; a moving average was measured
+   and rejected (a window that removes the noise also passes the real corner failure).
 2. **AB's 3.0 s floor depends on the gains.** A larger velocity p makes the H-12 run-away faster; at the
    final gains AB falls at 3.80 s. On the screen (AB's signs, same start) the fall comes at 3.77 s with
    velocity p 25 (the sim: 3.80 s), 3.26 s at 30 and 2.88 s at 35 (9.77 s with the hardware gains; the
