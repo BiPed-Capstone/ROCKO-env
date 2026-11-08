@@ -16,7 +16,10 @@ Each subcommand is one check. It listens (and, for `teleop`, publishes), writes 
                 reference was non-zero while driven and is exactly [0, 0] after the timeout, and
                 /dynamic_joint_states keeps arriving (the plant is still being simulated). All
                 times are SEND times (DDS source timestamps), and the watchdog is judged on every
-                gap between commands, because this script itself can stall and send one late.
+                gap between commands, because this script itself can stall and send one late. A
+                command counts only once it has certainly left (publish() returned) and the node
+                has run two cycles since, because both a publish() call and the node itself have
+                been seen to stall ~0.2-0.3 s in the container.
     feedforward-sends  for check FF (finding H-11): records when each /left_feedforward and
                 /right_feedforward message was sent, so verify_sim.sh can time each controller's
                 time-out from the last one. Exit 0 if both wheels were heard.
@@ -208,6 +211,12 @@ def check_tipover(args):
 
 
 # ---- C-3: teleop watchdog ----------------------------------------------------------------------
+# A command counts as processed by DiffDriveController once the node has run this many of its 10 ms
+# timer cycles after the command left (see handled_by in check_teleop). Two, not one: on a cycle
+# where the timer and a waiting command are both ready, rclpy runs the timer first.
+NODE_CYCLES_TO_HANDLE = 2
+
+
 def check_teleop(args):
     flag_topic = "/diff_drive_controller/command_timed_out"
     reference_topic = "/velocity_pid_controller/reference"
@@ -236,10 +245,12 @@ def check_teleop(args):
     command.twist.linear.x = args.speed_m_s
     commands = round(args.drive_s * args.rate_hz)
     next_publish = time.monotonic()
+    returned_s = []  # [system clock s] when each publish() call returned: the command had left
     for _ in range(commands):
         rec.spin_until(lambda: time.monotonic() >= next_publish, 1.0)
         command.header.stamp = rec.get_clock().now().to_msg()
         gamepad.publish(command)
+        returned_s.append(time.time())
         next_publish += 1.0 / args.rate_hz
     rec.spin_for(args.after_s)  # ... and then the gamepad goes silent
     end_s = time.time()
@@ -251,10 +262,10 @@ def check_teleop(args):
                       COULD_NOT_JUDGE, f"sent {commands} gamepad commands but heard "
                       f"{len(publish_times)} of them back, so their send times are not all known")
 
-    # Every time from here on is when a message was SENT (system clock, seconds): the source
-    # timestamps of our commands and of what DiffDriveController and the controller manager
-    # published. Not arrival times: this process can stall (0.35 s seen in the container,
-    # 2026-11-03), and everything that arrives during a stall would get the same late time.
+    # Every time from here on is on the system clock, in seconds, and is a time a message was SENT
+    # (its source timestamp), or the time one of our publish() calls returned. Not arrival times:
+    # this process can stall (0.35 s seen in the container, 2026-11-03), and everything that
+    # arrives during a stall would get the same late time.
     def sent(topic):
         return list(zip(rec.sent_s[topic], (m for _, m in rec.received[topic])))
     flags, references, plant = sent(flag_topic), sent(reference_topic), sent(plant_topic)
@@ -262,27 +273,51 @@ def check_teleop(args):
     settled = last_pub + args.timeout_s + args.margin_s  # by now the reference must be zero
     early_s = args.timeout_s - 0.01  # less one 10 ms timer period of rounding
     late_s = args.timeout_s + args.margin_s
+    # DiffDriveController publishes the velocity reference once in every 10 ms timer cycle, so
+    # the send times of the references are the moments the node was demonstrably running.
+    node_cycles = sorted(t for t, _ in references)
 
-    # The same stall can hold back one of OUR commands, so a gap between two commands can be longer
-    # than the timeout. Then the watchdog SHOULD fire in the middle of the drive. So the rule is
-    # judged on every silence, the gaps between commands and the silence after the last one:
-    #   - it must never fire sooner than the timeout after the latest command sent before it;
-    #   - in every silence longer than timeout + margin it must fire within [timeout, timeout +
-    #     margin] of the silence starting. The final silence is always one (after_s is 2 s).
+    # What this script can know about one command: it reached the node no sooner than its send
+    # stamp, and it had left once publish() returned. Usually that is under 1 ms later, but the
+    # middleware stamps a message and then sends it, and in the container a publish() has been
+    # seen to block 0.30 s in between (2026-11-07). And the node can only take a command off its
+    # queue while it runs: a DiffDriveController that is itself stalled processes nothing, and on
+    # waking its timer may run before the waiting command (seen: True, then False 1.3 ms later).
+    # So a command counts as HANDLED by time t only if the node ran NODE_CYCLES_TO_HANDLE timer
+    # cycles after publish() returned and before t: the executor runs every callback that is
+    # ready before it waits again, so by its second cycle the command's callback has run.
+    def handled_by(t):
+        """Send stamps of the commands the node had certainly processed before time t."""
+        return [p for p, r in zip(publish_times, returned_s)
+                if sum(1 for c in node_cycles if r <= c < t) >= NODE_CYCLES_TO_HANDLE]
+
+    # The rule, judged on every silence (the gaps between commands and the silence after the
+    # last one), because a stall can hold back a command and make a gap mid-drive:
+    #   - a True may never come sooner than early_s after the latest command HANDLED before it
+    #     (a correct watchdog fires >= timeout after its latest command arrived, which is no
+    #     sooner than that command's send stamp);
+    #   - in every certain silence longer than late_s (from the moment a command had certainly
+    #     left to the earliest the next one could arrive) the node must be timed out by its first
+    #     cycle late_s after the command had left. The final silence is always one (after_s 2 s).
     gaps = [b - a for a, b in zip(publish_times, publish_times[1:])]
-    early = []  # [s after the latest command] for each True sent too soon
+    early = []  # [s after the latest handled command] for each True sent too soon
     for t, m in flags:
         if m.data and t > first_pub:
-            age = t - max(p for p in publish_times if p <= t)
-            if age < early_s:
-                early.append(round(age, 4))
-    stalls = [(a, b) for a, b in zip(publish_times, publish_times[1:]) if b - a > late_s]
-    missed = [round(a - first_pub, 3) for a, b in stalls
-              if not any(m.data and a + early_s <= t <= a + late_s for t, m in flags)]
+            handled = handled_by(t)
+            if handled and t - handled[-1] < early_s:
+                early.append(round(t - handled[-1], 4))
+    silences = [(p, r) for p, r, next_p in zip(publish_times, returned_s, publish_times[1:] + [math.inf])
+                if next_p - r > late_s]
+    missed = []  # [s into the drive] for each silence the node did not time out in
+    for p, r in silences:
+        deadline = next((c for c in node_cycles if c >= r + late_s), None)
+        if deadline is None or not any(m.data and p < t <= deadline for t, m in flags):
+            missed.append(round(p - first_pub, 3))
+    stalls = [s for s in silences if s[0] != last_pub]  # the mid-drive ones, for the note
 
     went_false = [t for t, m in flags if not m.data and first_pub <= t <= last_pub]
     went_true = [t for t, m in flags if m.data and t > last_pub]
-    latency = went_true[0] - last_pub if went_true else None
+    latency = went_true[0] - last_pub if went_true else None  # reported; judged by the two rules
     driven_values = [list(m.values) for t, m in references if first_pub < t <= last_pub]
     after_values = [list(m.values) for t, m in references if t > settled]
     plant_after = [t for t, _ in plant if t > settled]
@@ -296,7 +331,14 @@ def check_teleop(args):
         "timeout_s": args.timeout_s,
         "margin_s": args.margin_s,
         "timed_out_too_early_s": early,
-        "stalls_without_a_timeout_s": missed,
+        "silences_without_a_timeout_s": missed,
+        # How long publish() took after the middleware stamped a command, and the longest the node
+        # published nothing while it should have been running every 10 ms: the two delays the rules
+        # allow for. Both are usually a few ms.
+        "longest_publish_call_s": max(r - p for p, r in zip(publish_times, returned_s)),
+        "longest_node_cycle_gap_s": max(
+            (b - a for a, b in zip(node_cycles, node_cycles[1:]) if first_pub - 0.5 < a < end_s),
+            default=None),
         "references_while_driven": len(driven_values),
         "references_while_driven_equal_to_command": sum(
             v == [args.speed_m_s] * 2 for v in driven_values),
@@ -306,12 +348,14 @@ def check_teleop(args):
         "after_window_s": end_s - settled,
     }
     print(f"scenario_checks: {len(publish_times)} gamepad commands over {metrics['drive_s']:.2f} s "
-          f"(largest gap {max(gaps, default=0.0):.3f} s); "
+          f"(largest gap {max(gaps, default=0.0):.3f} s; longest publish() call "
+          f"{metrics['longest_publish_call_s']:.4f} s; longest gap between the node's cycles "
+          f"{metrics['longest_node_cycle_gap_s']:.3f} s); "
           f"flag (s after first command, value): {metrics['flag_messages']}")
     if stalls:
-        print(f"scenario_checks: note: this script sent {len(stalls)} command(s) more than "
-              f"{late_s:g} s after the one before (a stall of this process, not of the node under "
-              f"test); the watchdog must time out in each gap, and it is judged so")
+        print(f"scenario_checks: note: {len(stalls)} silence(s) longer than {late_s:g} s in the "
+              f"middle of the drive (this script stalled, or a publish() call blocked: not the node "
+              f"under test); the watchdog must time out in each, and it is judged so")
     print(f"scenario_checks: timed out {latency if latency is None else round(latency, 4)} s after "
           f"the last command (need {args.timeout_s:g} to {late_s:g} s); "
           f"references while driven {len(driven_values)} "
@@ -323,21 +367,17 @@ def check_teleop(args):
         return finish(args.out, metrics, FAIL, "command_timed_out never went False while driven")
     if early:
         return finish(args.out, metrics, FAIL,
-                      f"command_timed_out went True only {early} s after a command, sooner than "
-                      f"the {args.timeout_s:g} s timeout")
-    if missed:
-        return finish(args.out, metrics, FAIL,
-                      f"the gamepad went silent for longer than {late_s:g} s at {missed} s into the "
-                      f"drive and command_timed_out did not go True within [{args.timeout_s:g}, "
-                      f"{late_s:g}] s of it")
+                      f"command_timed_out went True only {early} s after a command the node had "
+                      f"processed, sooner than the {args.timeout_s:g} s timeout")
     if latency is None:
         return finish(args.out, metrics, FAIL,
                       f"command_timed_out never went True in the {args.after_s} s after the last "
                       "command")
-    if not (early_s <= latency <= late_s):
+    if missed:
         return finish(args.out, metrics, FAIL,
-                      f"command_timed_out went True {latency:.3f} s after the last command, outside "
-                      f"[{args.timeout_s:g}, {late_s:g}] s")
+                      f"the gamepad went silent for longer than {late_s:g} s at {missed} s into the "
+                      f"drive and command_timed_out was not True within {late_s:g} s of it (first "
+                      f"True after the last command: {latency:.3f} s)")
     if metrics["references_while_driven_equal_to_command"] == 0:
         return finish(args.out, metrics, FAIL,
                       f"no velocity reference equal to the command [{args.speed_m_s}] * 2 while "

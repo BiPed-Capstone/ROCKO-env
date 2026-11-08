@@ -46,8 +46,11 @@
 #        stay active and the plant keep publishing. Every time is a SEND time (DDS source
 #        timestamps), so a stall of the checking script cannot shift what it sees. If the script
 #        stalls and sends a command late, the watchdog must also fire in that gap: it is judged on
-#        every gap (never sooner than the timeout after a command; within the window in every gap
-#        longer than TELEOP_TIMEOUT_S + TELEOP_MARGIN_S). DiffDriveController's log must show 'teleop
+#        every gap (never sooner than the timeout after a command; timed out within
+#        TELEOP_TIMEOUT_S + TELEOP_MARGIN_S in every longer gap). A command counts only once its
+#        publish() call returned and DiffDriveController has run two 10 ms cycles since (seen from
+#        the references it publishes each cycle): both a publish() and the node itself were seen to
+#        stall ~0.3 s in the container (2026-11-07). DiffDriveController's log must show 'teleop
 #        commands resumed' BEFORE its first 'teleop command timed out' (a time-out logged before
 #        any command arrived would not be evidence of the watchdog firing).
 #   C2   IMU fault, two runs. initial_pitch_deg:=2.0 (so a true pitch of exactly 0.0 cannot happen)

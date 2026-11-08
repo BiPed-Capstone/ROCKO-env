@@ -138,12 +138,111 @@ It says nothing new about the model or the robot: on the robot `QuadEncoders.py`
 0.01 s divisor (finding U-2), so a late cycle there gives the same false jump, and that is a property of
 the robot's code that the sim copies on purpose, not something this metric fixes.
 
-## 2. Check C3
+## 2. Check C3: two causes, both delays C3 could not see
 
-In the next commit (this section is written there).
+### Evidence
+
+The failure message was `command_timed_out went True only 0.15-0.16 s after a command, sooner than the
+0.2 s timeout`. Since the [C3/FF fix](2026-11-03-c3-ff-flaky-checks.md) C3 has timed everything by
+**send** stamps (DDS source timestamps, all on the system clock), and the node's watchdog counts from a
+command's **arrival** on a monotonic clock. The two clocks are not the problem (the node's log stamps
+and its messages' source stamps agree to 0.1 ms); the gap between a command's send stamp and the node
+taking it off its queue is.
+
+- **The four kept failures of 2026-11-04** all have the early True inside a long gap between two
+  commands (0.285 to 0.353 s), and the False 8 to 12 ms after the command that ended the gap.
+- **An instrumented copy** (scratch, not committed) recorded, for each command, when `publish()`
+  returned, and ran an independent listener process on the gamepad topic, the flag, the plant and (in
+  the second batch) the node's references. 16 runs: **2 failures, two different causes.**
+  1. *A `publish()` call blocked after the stamp.* Run 8: command 2 has send stamp 0.0525 s, but its
+     `publish()` call returned at 0.3521 s (0.2996 s later); the independent listener received it
+     0.3004 s after the stamp, and the listener's plant stream had no gap above 14 ms, so the listener
+     was not stalled. DiffDriveController timed out at 0.208 s, 0.208 s after command 1, the last one it
+     could have had (correct), and logged `resumed` at 0.3569 s. The checker saw a True 0.156 s after
+     command 2's stamp. In the other 15 runs no `publish()` took over 2 ms.
+  2. *The node under test stalled.* Run 4: every command left within 0.3 ms and reached the listener
+     within 1.7 ms, yet DiffDriveController logged `timed out` at 1.6377 s and `resumed` 1.4 ms later.
+     The True came 0.236 s after the last command sent before 1.4377 s, so the node's own 10 ms timer did
+     not run between ~1.60 and 1.637 s: the node itself was stopped, and on waking ran its timer before
+     the four commands waiting in its queue. The checker saw a True 0.03 s after the latest command.
+- **Reproduced on purpose:** freezing DiffDriveController with `SIGSTOP` for 0.3 s, 1.0 s into the
+  drive (scratch script, no code change), gives the old check `FAIL: command_timed_out went True only
+  [0.0039] s after a command` (True, then False 9 ms later: the run-4 signature).
+- 24 more instrumented runs passed; there the node's longest gap between references was 0.031 s and the
+  longest `publish()` call 2.4 ms.
+
+So the stalls are the same family as in the C3/FF journal (about a third of a second, inside the
+ROS 2 / Fast DDS stack, cause not found), now seen in two more places: inside a `publish()` call
+**after** the middleware has stamped the message, and in DiffDriveController's own process. Neither is
+a watchdog fault, and C3 can tell them apart from one, because both leave traces it can see.
+
+### The fix: count a command only once the node certainly had it (`sim/scenario_checks.py`, `check_teleop`)
+
+- The checker records when each `publish()` call **returned** (the command had left by then).
+- DiffDriveController publishes its velocity reference once in **every** 10 ms timer cycle, so the
+  references' send stamps show when the node was running.
+- A command counts as handled by time t only if the node ran **two** cycles after its `publish()`
+  returned and before t (`NODE_CYCLES_TO_HANDLE`; two because when the timer and a waiting command are
+  ready together, rclpy runs the timer first). A True must not come sooner than 0.19 s after the latest
+  handled command, at any point in the run.
+- Every certain silence longer than 0.3 s (from a command's `publish()` returning to the next command's
+  send stamp; the final silence is one) must hold a True by the node's first cycle 0.3 s after the
+  command left. This replaces both the old per-gap window and the separate final-latency window; when
+  nothing stalls the bounds are the same to within one 10 ms cycle.
+
+**Why it is not looser where it matters:** the allowance is not a fixed tolerance (no "early by less than
+0.1 s is fine"). It applies only while a command had demonstrably not left, or the node demonstrably was
+not running. A watchdog that fires early while the node runs normally is still caught by any margin:
+the 0.03 s break fails, and a 0.15 s timeout would fail at the final silence. The printout now shows the
+longest `publish()` call and the longest gap between the node's cycles, so a run that used either
+allowance says so.
+
+Offline, run 8's numbers under the new rule: command 2's `publish()` had not returned when the True came
+(0.352 > 0.208 s), so the True is judged against command 1: 0.208 s, allowed.
+
+### Results (container, `verify_sim.sh C3`, the committed code)
+
+| What | Runs | Result |
+| --- | --- | --- |
+| C3 as it was (instrumented scratch copy, same judging) | 16 + 24 | 38 pass, **2 fail** (runs 4 and 8 above) |
+| C3 as it was, node frozen 0.3 s mid-drive (`SIGSTOP`) | 1 | `FAIL: ... went True only [0.0039] s after a command` |
+| new C3, the same freeze | 1 | `PASS`; the printout shows the node's longest cycle gap, 0.315 s |
+| **new C3** | **20 consecutive** | **20 pass**: timed out 0.202 to 0.211 s after the last command. Three runs used an allowance and were judged correctly: runs 2 and 17 had a `publish()` call block 0.303 and 0.327 s (the cause-1 signature: the node timed out mid-drive about 0.15 s after the blocked command's stamp, which the old rule would have failed), run 5 had a 0.338 s gap between commands (judged as a silence, the node timed out in it) |
+| break `command_timeout_s:=1000` (scratch copy of `verify_sim.sh`) | 1 | `FAIL: command_timed_out never went True in the 2.0 s after the last command`, exit 1 |
+| break `command_timeout_s:=0.03` | 1 | `FAIL: command_timed_out went True only [0.0405, 0.0397, ...] s after a command the node had processed, sooner than the 0.2 s timeout`, exit 1 (a natural 0.367 s stall in this run too) |
+| break `command_timeout_s:=0.5` | 1 | `FAIL: the gamepad went silent for longer than 0.3 s at [1.95] s into the drive and command_timed_out was not True within 0.3 s of it (first True after the last command: 0.510 s)`, exit 1 |
+| default `verify_sim.sh` (S1 S2a H4 C3 C2 H6 FF) | 1 | `PASS (simulation: S1 S2a H4 C3 C2 H6 FF)`, exit 0 (C3 timed out 0.203 s after the last command) |
+
+**Not shown by a run:** cause 1 cannot be injected (nothing outside Fast DDS can stop a `publish()`
+between its stamp and its send); the new rule's handling of it is shown by runs 2 and 17 above and by
+run 8's numbers offline. How long the node may be stalled before C3 calls it late is not bounded: a
+node that published nothing at all after a silence would fail (`deadline is None`), but one stalled for
+seconds and then timing out at once would pass. That is a stall, not a watchdog fault, but it is not
+reported as anything except the printed longest cycle gap.
+
+## Not verified, and what a human should know
+
+- **Anything about the robot.** On the robot `DiffDriveController.py` is the same Python node: if a Pi
+  shows stalls like these, a gamepad command waiting in its queue can still be counted as "late" and
+  the robot is told to stand still for a moment (the safe direction). Whether a Pi stalls is unknown;
+  the procedure in the [C3/FF journal](2026-11-03-c3-ff-flaky-checks.md) (count `teleop command timed
+  out` lines while driving tethered) also catches this.
+- **What causes the stalls** (now seen inside a `publish()` call and in a whole node process): not found.
+- **The ±30 % sweep was not re-run** with the new V metric; its verdicts in the stage 5c-2 journal were
+  made with the old one. The offline recomputation above covers only the kept (failing) runs.
+- **V runs with the gamepad watchdog firing mid-step** are still judged on the motion they produced;
+  in the sweep two such runs failed (88.3, 63.4 %). Not changed: the robot really did lurch.
+- Review: the reviewer agents were not run in this task (`explainability-reviewer` for
+  `scenario_checks.py`, `docs-reviewer`). No §6 critical-path file changed.
+- Tier 3 is **not** called built.
+
+**Why the run stopped here:** both verifiers are fixed with their evidence and checks recorded; the
+remaining items need a human or a later task.
 
 ## Commits
 
-- The V metric commit: `sim/scenario_checks.py` (V only), this entry's section 1, the links from the
-  stage 5c-1 and 5c-2 entries, the ladder's V paragraph and row 2.3 of next-steps.
+- `70cb870`: the V metric: `sim/scenario_checks.py` (V only), this entry's section 1, the links from
+  the stage 5c-1 and 5c-2 entries, the ladder's V paragraph and row 2.3 of next-steps.
+- The C3 commit: `check_teleop`, the C3 comment in `verify_sim.sh`, this section, the ladder's C3 rows
+  and row 2.3.
 

@@ -197,7 +197,9 @@ case's IMU delay, SimPlant's write quirks) for each case; the table's last colum
   mode of C3 since the C3/FF fix (that journal had C3 20 of 20 green): the watchdog's flag appears
   *earlier* than 0.2 s after a command. The likely cause is the same delivery stall (a command
   stamped and sent, then delivered late, so the node's timer had already run out), but that is not
-  shown. **Not fixed here; left for a later task.**
+  shown. **Not fixed here; left for a later task.** *Fixed 2026-11-07*
+  ([journal](2026-11-07-c3-v-verifier-noise.md)): partly that, a `publish()` call blocking ~0.3 s after
+  the middleware stamped the command, and partly `DiffDriveController` itself stalling.
 
 ## Verification
 

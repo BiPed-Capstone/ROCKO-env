@@ -155,6 +155,9 @@ required.
   robot's normal launch tethered, drive gently for a minute, and count `Feedforward on ... ms old`
   lines in the log; any at all means a stall of 200 ms or more somewhere between the laptop's
   gamepad node and the Pi's controllers.
+- **C3 flaked again later** in a way this fix could not see (a `publish()` call blocking after its
+  stamp, or the node itself stalling): found and fixed in the
+  [2026-11-07 journal](2026-11-07-c3-v-verifier-noise.md).
 - C3's judging of a mid-drive gap was shown only with injected stalls (and one natural stall in a
   break run); none of the 20 green runs happened to contain one.
 - `FF_EXTEND_MAX_S` (5 s) is a guess at "longer than any stall cluster seen"; the extension was seen to fire once (1.0 s) and never to run out.
