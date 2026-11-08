@@ -10,6 +10,11 @@ That page is where each tier's status lives; do not restate it here. Run every t
 record each command and its result in the run journal, and report the highest tier you actually
 reached.
 
+**Shortcut: `tools/run_ladder.sh`** runs the host-side commands below in one call and prints a table of
+PASS/FAIL (`--no-sim` skips Tier 3, `--host` runs only the laptop tests, `--clean` rebuilds from clean). Use it
+instead of typing each command and reading each result back; use the per-tier commands below only to
+investigate one red line. `tools/repeat_check.sh <check> <N>` runs one `verify_sim.sh` check N times.
+
 ## Know which target you are on before you type anything
 
 ```bash

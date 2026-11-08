@@ -90,3 +90,4 @@ Record: commit SHA, launch file and config, battery voltage, surface, where the 
 | [0008](0008-candidate-gains-and-tethered-test.md) | Sim-tuned candidate gains for `rocko_controllers.yaml`, with preconditions and a tethered test (nothing tested on a robot) | hardware gains / on-robot step | Open |
 | [0009](0009-controller-manager-minimum-version.md) | What minimum `controller_manager` version should `find_package` require? | version pin | Open |
 | [0010](0010-c1-imu-uart-and-encoders-in-cpp.md) | Finding C-1: read the BNO055 over UART and the encoders in C++, inside the plugins, with a bounded deadline (the framing helper and its host test have landed, unwired) | on-robot step | Open |
+| [0011](0011-agent-loop-cost-settings.md) | Settings that would make the agent loop cheaper: allow-list entries for the new helper scripts, trimming plugins and MCP servers, a measured model/effort test | guardrail (`.claude/settings.json`) / plugins | Open |

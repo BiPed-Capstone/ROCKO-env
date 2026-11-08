@@ -64,3 +64,6 @@ runtime behavior you cannot see). Do not pad the list — a clean audit stated p
 than invented findings. If a change is genuinely fine, say so and say what you checked.
 
 Never claim you verified on-robot behavior. You have no robot.
+
+**Keep it short.** At most 50 lines, most severe first, each with `file:line` and the evidence. Read with
+`Read`/`Grep` line ranges. You are read-only and never use the container (another agent may be using it).

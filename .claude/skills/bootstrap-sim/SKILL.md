@@ -73,6 +73,27 @@ decision, not mine alone, so step 5 is a proposal. Steps 1–4 and 8 do not depe
   and ADR 0003's follow-on list in the same commit. ADR 0003 stays `Proposed` until the simulator
   actually runs, then becomes `Accepted` in the commit that makes it true.
 
+## Designing a check that does not fail at random
+
+About a third of the 2026-11 run's tokens went on checks that failed at random: C3 and FF (timed from
+when the checker *received* a message), H4 (a fixed 16 s window around a step that takes 3.7 to 19 s), V (the
+single highest of a noisy signal) and S2a (a 0.04 s margin). The dev container pauses processes for about
+0.3 s now and then, so any check that reads its own clock is judging its own pauses. Before you commit a
+timing check, it must satisfy all of these ([the evidence](../../../docs/claude-analysis/agent-loop-efficiency.md)):
+
+1. **Stamp at the source.** Record when an event was *sent* or *published* (and that the call returned), not when
+   the checker noticed it. Judge intervals between source stamps.
+2. **Wait for the event, bounded; never a fixed window** around something whose duration the check does not
+   control (a shell step, a discovery wait, a re-arm). Give the wait a cap so a lost message cannot hang it.
+3. **Do not assume a period.** If a signal depends on the cycle length, recompute it from the stamps.
+4. **Leave a margin bigger than a stall:** 0.3 s or more, or a rule that excuses a gap it can see in its own
+   stamps. A 0.04 s margin on a 0.4 s event is a coin toss in this container.
+5. **A lost message is a possible event.** Re-send a bounded number of times, count a try only if the thing
+   you are testing acted on that same message, and still fail if the thing under test did the wrong thing.
+6. **Prove it:** a deliberate break turns it red (for the right reason), and `tools/repeat_check.sh <check> 20`
+   is 20 of 20 green. A check that has not been run 20 times has not been shown to be stable.
+7. **Report an unjudgeable run as "could not judge" (exit 2),** never as a pass or a fail.
+
 ## Hand-off to a human at step 4
 
 Write `docs/guides/measure-inertia.md` before asking. It must say: which tools (a kitchen scale, a

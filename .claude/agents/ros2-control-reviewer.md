@@ -88,3 +88,7 @@ To check controllers against the mock, see `docs/architecture/verification-ladde
 
 Findings with severity, `file:line`, and the fix. Mark **CONFIRMED** vs **PLAUSIBLE**. Say what you
 checked and found clean. Do not invent findings to look thorough.
+
+**Keep it short.** At most 50 lines, most severe first, each with `file:line` and the evidence. Read with
+`Read`/`Grep` line ranges. You are read-only and never use the container; to try a break, edit a scratch copy
+made with `git archive`, never the repo.

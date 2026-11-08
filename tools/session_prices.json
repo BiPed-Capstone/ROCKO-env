@@ -1,0 +1,6 @@
+{
+  "_comment": "Dollars per MILLION tokens at the price you want to compare against. Left null on purpose: this repo does not know your prices. Fill the four numbers for each model you used, then run tools/session_usage.py with --prices tools/session_prices.json. A Pro/Max plan is charged against limits, not per token, so the result is a list-price estimate, not your bill.",
+  "claude-sonnet-5-5": {"input": null, "cache_write": null, "cache_read": null, "output": null},
+  "claude-opus-5-5": {"input": null, "cache_write": null, "cache_read": null, "output": null},
+  "claude-haiku-5-5": {"input": null, "cache_write": null, "cache_read": null, "output": null}
+}

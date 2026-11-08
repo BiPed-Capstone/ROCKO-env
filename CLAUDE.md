@@ -275,6 +275,10 @@ With AI writing the code, the docs are how a human comes to understand it.
   [`proposals/`](docs/proposals/README.md) (decisions waiting on a human),
   [`claude-analysis/`](docs/claude-analysis/) (AI-produced audits).
 - **A behavior change is not done until its docs change with it, in the same commit.**
+- **A number that changes (a check count, a duration, a sweep tally, a gain) is written in ONE page**
+  (the ladder's status table, the results file, or the YAML); every other page links to it instead of
+  copying it. Five of six docs reviews in the 2026-11 run found a stale copy, and each cost a fix agent
+  ([the measurements](docs/claude-analysis/agent-loop-efficiency.md)).
 - Write for a capstone student in week one. Define jargon on first use. Never write "simply".
 - **State what is not true.** Do not document an aspiration as a fact; and when a limitation is
   fixed, delete the sentence that says it exists.
@@ -366,6 +370,7 @@ in, say so out loud instead of omitting them. A result you got from the mock is 
 | `add-hardware` | Adding a sensor or actuator plugin |
 | `bootstrap-sim` | Building Tier 3, or any check the loop is missing |
 | `write-docs` | Writing or updating anything in `docs/` |
+| `orchestrate-run` | Continuing a multi-stage run, launching more than one subagent, or asked about the cost of the loop |
 
 | Agent | Checks |
 | --- | --- |
@@ -373,3 +378,27 @@ in, say so out loud instead of omitting them. A result you got from the mock is 
 | `ros2-control-reviewer` | Plugin registration, interface names, chaining, mock parity, version lock |
 | `explainability-reviewer` | Simplicity and whether a student can follow it |
 | `docs-reviewer` | Docs accuracy against the code, reproducibility |
+
+---
+
+## 12. Running the loop cheaply
+
+What a run costs is roughly *model calls x the size of the conversation each call re-reads*. Measured on
+the 2026-10 to 2026-11 runs: 96 % of tokens were cache reads, about a third of the last run went on timing
+checks that failed at random, and 46 % of the orchestrator's turns were replies to "still waiting" notices
+([the page](docs/claude-analysis/agent-loop-efficiency.md)). So:
+
+- **Run the ladder with `tools/run_ladder.sh`** (once, one table out), a check N times with
+  `tools/repeat_check.sh <check> <N>`, links with `tools/check_doc_links.py`, a run's token use with
+  `tools/session_usage.py <session-id>`. Do not write your own wait loop or link scanner; two hand-written
+  loops cost hours (a `pgrep` that matched itself, runs that overlapped).
+- **A timing check stamps at the source** and never uses a fixed window around an event whose duration it does
+  not control (`bootstrap-sim`, "Designing a check that does not fail at random"). A red result stays red until
+  a cause is found: rerunning it (`tools/repeat_check.sh <check> 10`) gathers evidence and reports the tally,
+  it never clears the failure.
+- **An agent never ends its turn with work still running,** and an orchestrator keeps its context small: reports
+  of at most 25 lines, details in the journal, a fresh session per stage. The playbook, with a brief template
+  and which model for which job, is the `orchestrate-run` skill.
+- **Use `Read` and `Grep` with line ranges** instead of `cat`/`grep` through Bash, and do not read a
+  1,000-line journal when its last section is the handoff.
+- Before launching a long agent, check the plan window (`get_usage`); a limit kills agents mid-edit.
