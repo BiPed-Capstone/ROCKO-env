@@ -98,14 +98,18 @@ same way; it just had not been seen.
     logged. A controller that accepts any attempt logs `RE-ARMED`, which fails the check as before.
   - `TIPOVER_RECORD_S` (16) became `TIPOVER_RECORD_MAX_S` (120, a cap).
 
-What it proves is unchanged or stricter: tripped in the first cycle, every command past 35 deg exactly
+What it proves: unchanged, plus two new checks, and one thing weaker (below). Unchanged: tripped in the first cycle, every command past 35 deg exactly
 0.0, both controllers refuse one re-arm message, nobody re-arms, commands watched at least 1 s after
-the later refusal, controllers active. New: no refusal before a re-arm was sent, and each refusal is
+the later refusal, controllers active. Two new checks: no refusal before a re-arm was sent, and each refusal is
 tied to its attempt. What is shorter: the recording now ends 1 s after the refusal (618 to 1458
 samples in the 20 runs below, against about 1600 before) instead of at a fixed 16 s, which used to
 watch up to 11 s more than the rule asked for (0.2 s more in the closest run). Nothing was claimed about that extra time. What is
-weaker, said plainly: a single lost message no longer fails the run; two lost in a row still cost a
-retry each, and three fail it.
+weaker, said plainly: one or two lost messages in a row no longer fail the run; three in a row do.
+Also tolerated now: a controller that receives only some of the messages (the message is re-sent
+until one reaches both). `REARM_ATTEMPTS` = 3 because a message lost twice running is still chance at
+about once in 30 runs, three in a row points at a real fault, and more attempts would hide a broken
+subscription. A controller that accepts any attempt stops the sending at once (the loop breaks on
+`RE-ARMED`), so it is not re-armed again, and the check fails with the `RE-ARMED` message.
 
 ## Verification
 
@@ -148,8 +152,9 @@ touches no §6 file. `explainability-reviewer` (code) and `docs-reviewer` (docs)
 ## Not verified — needs a human
 
 Nothing here touches the robot. Not shown: why one re-arm message was lost (the mechanism above is a
-guess); whether a lost message can also reach only ONE controller (not seen; the check would re-send
-and require both to refuse the new message). Still wall time: the 5 s wait for each refusal after the
+guess); whether a lost message can also reach only ONE controller (not seen). If it did, the check would
+re-send and PASS once both refuse a later message, where the old check (one message, both must
+refuse it) would have failed. Still wall time: the 5 s wait for each refusal after the
 publish returned, which a stall would have to exceed by about 4.7 s to matter. The re-send path ran
 once on purpose (break d), never on its own in the 20 runs. The check still does not test an accepted re-arm in the sim or the 10
 to 35 deg re-arm band (the host test `tools/tipover_latch_test.cpp` does), and its other blind spots are

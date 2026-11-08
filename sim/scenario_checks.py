@@ -179,11 +179,9 @@ def check_tipover(args):
 
         verify_sim.sh writes that file (one epoch-seconds stamp, the controllers' own clock) when
         it has seen both refusals of the re-arm: the later refusal's log stamp + REARM_OBSERVED_S.
-        Until 2026-11-07 this recorded a fixed time instead, and failed whenever the shell's steps
-        before the re-arm (the wiring check, the publisher's discovery wait) took longer than
-        usual: the re-arm was refused 3.7 to 19 s after the first write in the kept runs. Stopping on
-        a sample's STAMP means a slow shell or a stall of this script can only make the recording
-        longer, never cut it short."""
+        It used to record a fixed time, which was too short (docs/journal/2026-11-07-h4-verifier-fix.md).
+        Stopping on a sample's STAMP means a slow shell or a stall of this script can only make the
+        recording longer, never cut it short."""
         collect_new()
         try:
             with open(args.until_file) as f:

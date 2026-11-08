@@ -32,6 +32,9 @@
 >   the later journals ([V metric and C3](2026-11-07-c3-v-verifier-noise.md),
 >   [sweep re-run](2026-11-07-stage5c2-sweep-rerun.md), [review fixes](2026-11-07-stage5c-review-fixes.md)).
 >   Tier 3 is still not marked built and stage 6 is still not started (true on 2026-11-04; superseded by the bullets above).
+> - Updated 2026-11-08: stages 4 and 5 pushed (4374d5c); stage 6 partly done (framing helper, host test
+>   389 checks, proposal 0010; plugin unchanged); H4/C3/FF/V verifiers made robust (journals
+>   2026-11-03..11-07); Tier 3 built with limits; robot-side items all need a human (proposals 0006-0010).
 
 > **The strongest claim in this whole report is "balances in simulation under an estimated
 > model".** The balancing of the real robot was not checked and cannot be by an agent (CLAUDE.md §4).

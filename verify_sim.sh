@@ -32,7 +32,8 @@
 #        left_ and right_add_feedforward_controller must log 'TIPOVER CUTOFF TRIPPED' before the
 #        robot is released (so in the first cycle they write); every wheel command written while
 #        |pitch| > TIPOVER_DEG must be exactly 0.0 (from controller_manager's introspection topic,
-#        the value the plant receives); ONE re-arm published on the shared /tipover_rearm topic
+#        the value the plant receives); one re-arm message that reaches both controllers (re-sent,
+#        up to REARM_ATTEMPTS, if it reaches neither or only one), published on the shared /tipover_rearm topic
 #        while still past the limit must be refused by BOTH controllers (each refusal logged within
 #        REARM_REPLY_WAIT_S of the publish returning, and stamped after it started; a message not
 #        answered by both is treated as lost and sent again, up to REARM_ATTEMPTS, and an attempt
@@ -182,20 +183,20 @@ TIPOVER_START_DEG=40   # [deg] H4's start: 5 deg past the limit, so the cutoff m
                        #   and stays past the limit, so the re-arm must be refused
 TIPOVER_RECORD_MAX_S=120  # [s] a cap only. H4 records the commands from the first write until a
                        #   sample is stamped REARM_OBSERVED_S after the later refusal (the script
-                       #   tells the checker when, through a file). Until 2026-11-07 it recorded a
-                       #   FIXED 16 s, and 2 of 4 runs failed because the re-arm, sent after the
-                       #   wiring check and the publisher's discovery wait, was refused later than
-                       #   that (3.7 to 19 s after the first write in the kept runs)
-                       #   (docs/journal/2026-11-07-h4-verifier-fix.md). The cap only stops the
-                       #   checker waiting forever if its samples stop coming; then the refusal was
-                       #   not watched for REARM_OBSERVED_S, which is a FAIL
+                       #   tells the checker when, through a file). It used to be a fixed 16 s,
+                       #   which was too short: docs/journal/2026-11-07-h4-verifier-fix.md. The cap
+                       #   only stops the checker waiting forever if its samples stop; that is a FAIL
 REARM_OBSERVED_S=1     # [s] the commands must be seen at 0.0 at least this long after the refusal
 REARM_REPLY_WAIT_S=5   # [s] wait this long for each controller's 'Tipover re-arm refused' line: the
                        #   next 10 ms cycle answers, so this is all DDS delivery and log flushing
                        #   (measured 2026-11-07: the line was stamped 0.24-0.27 s BEFORE
-                       #   `ros2 topic pub` returned, in 10 of 10 runs)
+                       #   `ros2 topic pub` returned, in 10 of 10 runs; 5 s is about 18 times
+                       #   the measured delay)
 REARM_ATTEMPTS=3       # re-arm messages sent at most, each judged on its own, when one is LOST
-                       #   (neither controller logs anything: seen once in 30 runs, 2026-11-07)
+                       #   (neither controller logs anything: seen once in 30 runs, 2026-11-07).
+                       #   A message lost twice running still passes: at about once in 30 runs that
+                       #   is chance. Three in a row points at a real fault (so it FAILS); more
+                       #   attempts would hide a broken subscription
 TELEOP_TIMEOUT_S=0.2   # [s] DiffDriveController's command_timeout_s default (and the launch arg's)
 TELEOP_MARGIN_S=0.1    # [s] allowed lateness of the timeout: the node checks every 10 ms, plus
                        #   Python executor and DDS delivery in the container; 0.1 s is 10 cycles
@@ -572,8 +573,9 @@ check_tipover() {
   elif [ -n "$trip_line" ] && [ "$trip_line" -gt "$release_line" ]; then
     failures+=("the cutoff tripped only after the robot was released, not in the first cycle")
   fi
-  # ONE deliberate re-arm message on the shared topic, while the robot is still past the limit: BOTH
-  # wheel controllers must receive that one message and refuse it. -w 2: publish only once both
+  # One re-arm message that reaches both controllers (re-sent, up to REARM_ATTEMPTS, if it reaches
+  # neither or only one) on the shared topic, while the robot is still past the limit: BOTH
+  # wheel controllers must receive that message and refuse it. -w 2: publish only once both
   # have subscribed. Every time below is an epoch-seconds stamp on the system clock, the clock the
   # controllers' log lines and the checker's samples are stamped with, so they can be compared.
   #
@@ -606,10 +608,14 @@ check_tipover() {
     while :; do
       left_at="$(stamp_after "$log" "\[left_add_feedforward_controller\]: $refusal_re" "$publish_start")"
       right_at="$(stamp_after "$log" "\[right_add_feedforward_controller\]: $refusal_re" "$publish_start")"
-      { [ -n "$left_at" ] && [ -n "$right_at" ]; } || [ $SECONDS -ge $deadline ] && break
-      sleep 0.5
+      [ -n "$left_at" ] && [ -n "$right_at" ] && break   # both refused
+      [ "$SECONDS" -ge "$deadline" ] && break            # gave up
+      sleep 0.5   # poll twice a second: the launch log is a file, so this costs nothing
     done
     echo "    re-arm attempt $attempt: refused by left at ${left_at:-never}, by right at ${right_at:-never}"
+    # A controller accepted it: that is the failure (reported below as 'RE-ARMED'). Sending more
+    # messages would re-arm it again and let more non-zero commands through.
+    grep -q "RE-ARMED" "$log" && break
     if [ -n "$left_at" ] && [ -n "$right_at" ]; then
       refused="$(awk -v a="$left_at" -v b="$right_at" 'BEGIN {print (a > b ? a : b)}')"  # the later
       break
