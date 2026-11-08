@@ -443,7 +443,7 @@ def slow_and_fast(z_list):
 #    nonlinear sim (verify_sim.sh scenarios) before anyone believes it.
 # ------------------------------------------------------------------------------------------------
 SCEN_PITCH_SIGN, SCEN_ENCODER_SIGN, SCEN_DELAY_MS = -1, -1, 20
-DIFFDRIVE_WHEEL_RADIUS_M = 0.06  # [m] DiffDriveController.py's wheel_radius_meters (its feedforward)
+DIFFDRIVE_WHEEL_RADIUS_M = 0.06  # [m] DiffDriveController.py's wheel_radius_meters (its feedforward); equals the plant's r today but is a separate fact
 
 
 def verify_sim_values(names):

@@ -17,7 +17,8 @@ verify_urdf.sh runs it. It fails when two files that must agree have drifted apa
      simulator (stage 5c-1), and only they may differ. Until 2026-11-03 every p, i, d and clamp
      could differ unchecked, so a gain changed in either file passed silently. Each entry pins the
      hardware value it was tuned away from, so a change to that gain in rocko_controllers.yaml fails
-     file). A tuned gain must be present for every joint in dof_names in both files, and in the
+     here as well (the sim gains were tuned against the old hardware value). A tuned gain must be
+     present for every joint in dof_names in both files, and in the
      sim file it must be a finite number, the same for every joint of the controller (the analysis
      in cascade_linearisation.py treats the two wheels as one loop).
   3. DEFAULTS. A simulator setting's default is written in up to three places:

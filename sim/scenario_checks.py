@@ -319,7 +319,8 @@ def check_teleop(args):
         deadline = next((c for c in node_cycles if c >= left_s + late_s), None)
         if deadline is None or not any(m.data and sent_s < t <= deadline for t, m in flags):
             missed.append(round(sent_s - first_pub, 3))
-    mid_drive_silences = [s for s in silences if s[0] != last_pub]  # all but the final one, for the note
+    mid_drive_silences = [(sent_s, left_s) for sent_s, left_s in silences
+                          if sent_s != last_pub]  # all but the final one, for the note
 
     went_false = [t for t, m in flags if not m.data and first_pub <= t <= last_pub]
     went_true = [t for t, m in flags if m.data and t > last_pub]
@@ -659,7 +660,7 @@ def write_samples(out_dir, samples):
         writer = csv.writer(f)
         writer.writerow(SAMPLES_CSV_HEADER)
         for s in samples:
-            writer.writerow([f"{s.t_s:.4f}"] + [repr(x) for x in s[1:]])
+            writer.writerow([f"{s.t_s:.4f}"] + [repr(x) for x in s[1:]])  # s[1:] = every field after t_s
 
 
 def coverage_problem(samples, args, record_s):
