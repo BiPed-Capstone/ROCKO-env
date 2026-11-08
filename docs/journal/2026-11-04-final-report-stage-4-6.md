@@ -35,6 +35,11 @@
 > - Updated 2026-11-08: stages 4 and 5 pushed (4374d5c); stage 6 partly done (framing helper, host test
 >   389 checks, proposal 0010; plugin unchanged); H4/C3/FF/V verifiers made robust (journals
 >   2026-11-03..11-07); Tier 3 built with limits; robot-side items all need a human (proposals 0006-0010).
+> - Still open, 2026-11-08: check S2a (no torque, passes 35 deg within 0.48 s) failed once in a default
+>   `verify_sim.sh` run at 0.749 s, then passed 6 of 6 alone at 0.430 to 0.440 s. Its margin is about 0.04 s,
+>   and a 0.3 s container stall explains the one failure; the cause was not shown and the check was not
+>   changed. It is the fifth timing-based check seen to fail at random (C3, FF, V, H4, S2a): until the
+>   stalls are understood, a single red in the default run is not proof of a regression.
 
 > **The strongest claim in this whole report is "balances in simulation under an estimated
 > model".** The balancing of the real robot was not checked and cannot be by an agent (CLAUDE.md §4).
