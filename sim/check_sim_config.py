@@ -17,9 +17,9 @@ verify_urdf.sh runs it. It fails when two files that must agree have drifted apa
      simulator (stage 5c-1), and only they may differ. Until 2026-11-03 every p, i, d and clamp
      could differ unchecked, so a gain changed in either file passed silently. Each entry pins the
      hardware value it was tuned away from, so a change to that gain in rocko_controllers.yaml fails
-     here as well (the sim gains were tuned against a cascade that no longer matches the robot's
-     file), and in the sim file a tuned gain must be a finite number, the same for every joint of
-     the controller (the analysis in cascade_linearisation.py treats the two wheels as one loop).
+     file). A tuned gain must be present for every joint in dof_names in both files, and in the
+     sim file it must be a finite number, the same for every joint of the controller (the analysis
+     in cascade_linearisation.py treats the two wheels as one loop).
   3. DEFAULTS. A simulator setting's default is written in up to three places:
        SimPlantParams in SimPlantModel.hpp  (used by the unit test),
        <xacro:arg> in rocko.urdf.xacro      (used by the plugin: the real source of truth),
@@ -178,10 +178,13 @@ def is_number(value):
 def check_gains(root):
     problems = []
     settings = {}  # file -> {flattened key: value} for every gains key except SIM_TUNED_GAINS
-    tuned = {}  # file -> {(controller, key): [value for each dof]}
+    tuned = {}  # file -> {(controller, key): [(dof, value) for each dof that has the key]}
+    dof_names = {}  # file -> {controller: its dof_names}
     for file_name in ("rocko_controllers.yaml", "rocko_sim_controllers.yaml"):
         side, tuned_side = {}, {}
-        for controller, entry in gains_of(load_controllers(root, file_name)).items():
+        found = gains_of(load_controllers(root, file_name))
+        dof_names[file_name] = {controller: entry["dof_names"] for controller, entry in found.items()}
+        for controller, entry in found.items():
             gains = entry["gains"]
             if not isinstance(gains, dict):
                 problems.append(f"{file_name}: {controller} has dof_names but no `gains` map")
@@ -211,6 +214,15 @@ def check_gains(root):
                             f"{'rocko_controllers.yaml' if not hardware else 'rocko_sim_controllers.yaml'} "
                             "has no such gain: remove the entry or restore the gain")
             continue
+        # Every joint must have the gain in BOTH files: a joint with no `p` gets p = 0, and a
+        # non-empty list above would not notice one wheel missing it.
+        for file_name, values in (("rocko_controllers.yaml", hardware), ("rocko_sim_controllers.yaml", sim)):
+            missing = [dof for dof in dof_names[file_name].get(controller, [])
+                       if dof not in {d for d, _ in values}]
+            if missing:
+                problems.append(f"{file_name}: {controller} `{key}` (SIM_TUNED_GAINS) is missing for "
+                                f"{', '.join(missing)}; every joint in dof_names needs it (a joint "
+                                f"with no `{key}` gets {key} = 0)")
         for dof, value in hardware:
             if repr(value) != repr(pinned):
                 problems.append(

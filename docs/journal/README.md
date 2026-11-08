@@ -82,3 +82,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-04 | [Final report, stages 4 to 6: tiers reached, failures, declined findings, proposals 0003 to 0009, what was not verified, the tethered procedure, the sim's omissions](2026-11-04-final-report-stage-4-6.md) |
 | 2026-11-07 | [Two noisy verifiers: scenario V's overshoot metric (limit unchanged) and check C3's second flake](2026-11-07-c3-v-verifier-noise.md) |
 | 2026-11-07 | [Stage 5c-2 sweep re-run with V's corrected overshoot metric: PASS 18, MARGINAL 4, FAIL 2, COULD NOT JUDGE 1](2026-11-07-stage5c2-sweep-rerun.md) |
+| 2026-11-07 | [Stage 5c review fixes (a tuned gain on every joint; simpler sim scripts) and why V could not judge two `d+` runs](2026-11-07-stage5c-review-fixes.md) |
