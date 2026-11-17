@@ -117,8 +117,8 @@
 #        outer loop is positive feedback at DC for any positive velocity gains). "ok" if it falls no
 #        sooner than AB_MIN_FALL_S; the time to fall is printed. A run that does NOT fall is a FAIL:
 #        the signs or the gains changed, and finding H-12's docs must be revisited.
-# U, I, V and S2b run with encoder_sign:=SCENARIO_ENCODER_SIGN, an ASSUMPTION (see its comment).
-# Scenarios exit status: 0 only if U, I and V pass AND S2b and AB are ok; 1 if any is not; 2 if a run
+# U, I, V, K and S2b run with encoder_sign:=SCENARIO_ENCODER_SIGN, an ASSUMPTION (see its comment).
+# Scenarios exit status: 0 only if U, I, V and K pass AND S2b and AB are ok; 1 if any is not; 2 if a run
 # could not be judged and nothing failed. While SCENARIOS_EXPECTED_RED=1 a failing U, I or V is
 # printed "FAIL (expected until the sim gains are tuned)", but it still counts: the exit status is 1.
 # Two environment variables, both empty by default and read only in scenarios mode, exist for the
@@ -149,6 +149,11 @@ SWEEPABLE="body_mass_kg com_height_m motor_stall_torque_Nm imu_delay_ms"
 read -r -a overrides <<<"${SIM_PLANT_OVERRIDES:-}"
 if [ ${#overrides[@]} -ne 0 ] && [ "$mode" != scenarios ]; then
   echo "ERROR: SIM_PLANT_OVERRIDES is only for 'verify_sim.sh scenarios'; the default checks' limits assume the default model." >&2
+  exit 2
+fi
+# K_MAX_LINEAR_ACCEL_M_S2 (see its comment below): a number or unset, checked before anything starts.
+if [ -n "${K_MAX_LINEAR_ACCEL_M_S2:-}" ] && ! [[ "$K_MAX_LINEAR_ACCEL_M_S2" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+  echo "ERROR: K_MAX_LINEAR_ACCEL_M_S2='$K_MAX_LINEAR_ACCEL_M_S2' is not a positive number" >&2
   exit 2
 fi
 for o in ${overrides[@]+"${overrides[@]}"}; do
@@ -297,6 +302,12 @@ K_RISE_S=5.0           # [s after the step] to reach 90 % of K_STEP_M_S. Longer 
                        #   DiffDriveController ramps the command, and five times the step needs more
                        #   lean time. Set on 2026-11-16 BEFORE the ramp was written or tuned; the
                        #   overshoot and pitch limits are V's, unchanged
+K_WATCHDOG_S=1.0       # [s] the teleop watchdog's timeout for K's launch only (the robot's is 0.2 s):
+                       #   long enough that a ~0.3 s container stall does not fire it mid-step. If it
+                       #   fires anyway, K exits 2 (could not judge)
+# K_MAX_LINEAR_ACCEL_M_S2 [m/s^2]: optional, from the ENVIRONMENT, not set here. Overrides the command
+                       #   ramp for K's launch only; unset = the launch default. 1000 = ramp
+                       #   effectively off, which must make K fail
 S2B_FALL_S=1.0         # [s] with the pitch loop's sign flipped the linear model diverges at ~20 /s
                        #   (1.218 per cycle, sim-plant.md §7.2): 2 -> 35 deg in ~0.2 s. 1.0 s is
                        #   generous and far below AB_MIN_FALL_S, so a slow drift cannot pass for it
@@ -972,14 +983,24 @@ scenario_velocity_step() {
 # K: scenario V with a larger step and a longer rise time (see K_STEP_M_S). Everything else is V.
 scenario_key_press() {
   new_run "K-key-press"
+  # Say what K ran with, next to its verdict: neither is the robot's value by default-and-silence.
+  echo "    K: teleop watchdog timeout ${K_WATCHDOG_S} s for this launch (the robot's is ${TELEOP_TIMEOUT_S} s)"
+  if [ -n "${K_MAX_LINEAR_ACCEL_M_S2:-}" ]; then
+    echo "    RAMP CHANGED for this run (K_MAX_LINEAR_ACCEL_M_S2): ${K_MAX_LINEAR_ACCEL_M_S2} m/s^2, not the launch default"
+  fi
   start_check velocity-step --launch-log "$dir/launch.log" --tipover-deg "$TIPOVER_SCENARIO_DEG" \
     --speed-m-s "$K_STEP_M_S" --before-s "$V_BEFORE_S" --step-s "$V_STEP_S" \
     --rise-fraction "$V_RISE_FRACTION" --rise-within-s "$K_RISE_S" \
-    --max-overshoot-pct "$V_OVERSHOOT_PCT" --max-pitch-deg "$V_PITCH_DEG"
+    --max-overshoot-pct "$V_OVERSHOOT_PCT" --max-pitch-deg "$V_PITCH_DEG" \
+    --watchdog-trip-cannot-judge
   local pid="$check_pid"
   # teleop:=true: the real DiffDriveController.py turns the fake gamepad into the velocity reference
   # and the feedforwards, as on the robot (no zero_reference here).
-  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN"
+  # command_timeout_s:=K_WATCHDOG_S: K is about the ramp, and check C3 owns the watchdog. With the
+  # robot's 0.2 s the watchdog often fired mid-drive, because the container stalls the fake gamepad
+  # or the node for ~0.3 s; each such run could not be judged. K_MAX_LINEAR_ACCEL_M_S2: see its comment.
+  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$K_WATCHDOG_S" \
+    ${K_MAX_LINEAR_ACCEL_M_S2:+max_linear_accel_m_s2:="$K_MAX_LINEAR_ACCEL_M_S2"}
   wait_for_wiring
   wait "$pid"; local status=$?
   sed 's/^/    /' "$dir/check.log"

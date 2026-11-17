@@ -74,6 +74,17 @@ def generate_launch_description():
                 "zeroes the velocity reference (finding C-3). Default = the node's default."
             ),
         ),
+        # The drive command's ramp (finding H-13), passed to DiffDriveController.py. As above, the
+        # default MUST equal the node's own default (DEFAULT_MAX_LINEAR_ACCEL_M_S2). It is an
+        # argument so scenario K can be shown to fail with the ramp effectively off (a huge value).
+        DeclareLaunchArgument(
+            "max_linear_accel_m_s2",
+            default_value="0.35",
+            description=(
+                "teleop:=true only: the most the forward command may change per second [m/s^2] "
+                "(finding H-13). Default = the node's default."
+            ),
+        ),
     ]
     for name, (default, description) in SIM_ARGUMENTS.items():
         declared_arguments.append(DeclareLaunchArgument(name, default_value=default, description=description))
@@ -140,8 +151,12 @@ def generate_launch_description():
         executable="DiffDriveController.py",
         # value_type=float: "1000" would otherwise arrive as an integer, which the node's
         # declare_parameter (default 0.2, a float) refuses.
-        parameters=[{"command_timeout_s": ParameterValue(
-            LaunchConfiguration("command_timeout_s"), value_type=float)}],
+        parameters=[{
+            "command_timeout_s": ParameterValue(
+                LaunchConfiguration("command_timeout_s"), value_type=float),
+            "max_linear_accel_m_s2": ParameterValue(
+                LaunchConfiguration("max_linear_accel_m_s2"), value_type=float),
+        }],
         condition=IfCondition(teleop),
     )
     joystick = Node(

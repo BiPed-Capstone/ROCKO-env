@@ -96,13 +96,6 @@ def install_stubs():
         mod.__dict__.update(attrs)
         sys.modules[name] = mod
 
-    class RateLimiter:
-        def __init__(self, **kwargs):
-            pass
-
-        def limit(self, *args):
-            return 0.0
-
     module("rclpy")
     module("rclpy.node", Node=FakeNode)
     module("rclpy.qos", QoSProfile=lambda **kw: kw, DurabilityPolicy=SimpleNamespace(TRANSIENT_LOCAL="tl"))
@@ -117,7 +110,6 @@ def install_stubs():
     module("rocko_env")
     module("rocko_env.controllers")
     module("rocko_env.controllers.utils")
-    module("rocko_env.controllers.utils.RateLimiter", RateLimiter=RateLimiter)
 
 
 def load(name, path):
@@ -206,8 +198,15 @@ def test_nan_timeout_counts_as_expired():
 
 
 # --- DiffDriveController ----------------------------------------------------------------
-def make_controller(timeout_param=None):
-    FakeNode.param_overrides = {} if timeout_param is None else {"command_timeout_s": timeout_param}
+NO_RAMP = 1e9  # [m/s^2] a ramp limit so large that a command applies in one cycle
+
+
+def make_controller(timeout_param=None, accel_param=None):
+    FakeNode.param_overrides = {}
+    if timeout_param is not None:
+        FakeNode.param_overrides["command_timeout_s"] = timeout_param
+    if accel_param is not None:
+        FakeNode.param_overrides["max_linear_accel_m_s2"] = accel_param
     node = diffdrive.DiffDriveController()
     clock = Clock()
     node.command_watchdog.now = clock
@@ -230,7 +229,8 @@ def send_command(node, linear_x, angular_z):
 
 
 def test_node_zeroes_reference_and_feedforward_but_keeps_publishing():
-    node, clock = make_controller()
+    # NO_RAMP: this test is about the watchdog, so commands apply at once (the ramp has its own tests).
+    node, clock = make_controller(accel_param=NO_RAMP)
     log = node.logger.lines
     bools = node.publishers["~/command_timed_out"].sent
     reference = node.publishers["velocity_pid_controller/reference"].sent
@@ -476,6 +476,93 @@ def test_bytes_read_per_tick_are_capped():
             break
     check(sent - waiting == js.MAX_BYTES_PER_TICK,
           f"one tick must read exactly MAX_BYTES_PER_TICK bytes from a flood, it read {sent - waiting}")
+
+
+# --- the command ramp (finding H-13) --------------------------------------------------------------
+def feedforwards(node):
+    return node.publishers["left_feedforward"].sent[-1].data, node.publishers["right_feedforward"].sent[-1].data
+
+
+def test_step_toward_moves_by_at_most_the_step_and_stops_on_the_target():
+    check(diffdrive.step_toward(0.0, 1.0, 0.25) == 0.25, "up by one step")
+    check(diffdrive.step_toward(0.0, -1.0, 0.25) == -0.25, "down by one step")
+    check(diffdrive.step_toward(0.9, 1.0, 0.25) == 1.0, "lands exactly on a target closer than one step")
+    check(diffdrive.step_toward(1.0, 1.0, 0.25) == 1.0, "stays on the target")
+
+
+def test_forward_command_is_ramped_not_stepped():
+    accel = diffdrive.DEFAULT_MAX_LINEAR_ACCEL_M_S2
+    node, clock = make_controller()
+    send_command(node, 0.5, 0.0)
+    previous = 0.0
+    for cycle in range(1, 400):
+        cycles(node, clock, 1)
+        send_command(node, 0.5, 0.0)  # the gamepad keeps sending, so the watchdog stays quiet
+        value = last_reference(node)[0]
+        check(value - previous <= accel * 0.01 + 1e-12, f"cycle {cycle}: rose by more than accel * 10 ms")
+        check(value <= 0.5, f"cycle {cycle}: the ramp must not pass the command")
+        previous = value
+    check(previous == 0.5, "the ramp must arrive exactly at the command")
+    left, right = feedforwards(node)
+    check(left == right == 0.5 / node.wheel_radius_meters, "the feedforward follows the ramped value")
+    # Reversing ramps down through zero at the same rate.
+    send_command(node, -0.5, 0.0)
+    cycles(node, clock, 1)
+    check(abs(last_reference(node)[0] - (0.5 - accel * 0.01)) < 1e-12, "a reversal ramps down, it does not jump")
+
+
+def test_first_cycle_of_a_command_is_one_ramp_step():
+    node, clock = make_controller(accel_param=2.0)
+    send_command(node, 1.0, 0.0)
+    cycles(node, clock, 1)
+    check(abs(last_reference(node)[0] - 0.02) < 1e-12, "2 m/s^2 for 10 ms is 0.02 m/s")
+
+
+def test_timeout_is_a_step_to_zero_and_driving_resumes_from_zero():
+    node, clock = make_controller(accel_param=1.0)
+    for _ in range(50):  # 0.5 s of driving: the ramp reaches 0.5 m/s
+        send_command(node, 0.5, 0.0)
+        cycles(node, clock, 1)
+    check(abs(last_reference(node)[0] - 0.5) < 1e-9, "set-up: ramp reached the command")
+    cycles(node, clock, 25)  # silence, past the 0.2 s timeout
+    check(last_reference(node) == [0.0, 0.0], "the watchdog's zero is immediate, not ramped")
+    send_command(node, 0.5, 0.0)
+    cycles(node, clock, 1)
+    check(abs(last_reference(node)[0] - 0.01) < 1e-12, "after a time-out the ramp restarts from zero")
+
+
+def test_turn_command_is_not_ramped():
+    node, clock = make_controller()
+    send_command(node, 0.0, 0.3)
+    cycles(node, clock, 1)
+    left, right = feedforwards(node)
+    check(left == -0.3 / node.wheel_radius_meters and right == 0.3 / node.wheel_radius_meters,
+          "the turn command reaches the feedforwards in the first cycle")
+    check(last_reference(node) == [0.0, 0.0], "a pure turn leaves the velocity reference at zero")
+
+
+def test_non_finite_command_is_ignored_and_does_not_feed_the_watchdog():
+    node, clock = make_controller()
+    for bad in (math.nan, math.inf, -math.inf):
+        send_command(node, bad, 0.0)
+        send_command(node, 0.0, bad)
+    cycles(node, clock, 5)
+    check(last_reference(node) == [0.0, 0.0], "a NaN or infinite command must not move the reference")
+    check(feedforwards(node) == (0.0, 0.0), "a NaN or infinite command must not reach the feedforwards")
+    check(not node.command_watchdog.has_received(), "a dropped command must not count as an arrival")
+    # After a good command, a bad one leaves the good target in place (until the watchdog times out).
+    send_command(node, 0.5, 0.0)
+    send_command(node, math.nan, 0.0)
+    cycles(node, clock, 1)
+    check(last_reference(node)[0] > 0.0, "the last good command still applies after a bad one")
+
+
+def test_bad_ramp_parameter_falls_back_to_default():
+    for bad in (0.0, -1.0, math.inf, math.nan):
+        node, _ = make_controller(accel_param=bad)
+        check(node.max_linear_accel_m_s2 == diffdrive.DEFAULT_MAX_LINEAR_ACCEL_M_S2,
+              f"bad ramp limit {bad} must fall back to DEFAULT_MAX_LINEAR_ACCEL_M_S2")
+        check(any(level == "error" for level, _ in node.logger.lines), f"bad ramp limit {bad} must log an error")
 
 
 # --- runner -----------------------------------------------------------------------------

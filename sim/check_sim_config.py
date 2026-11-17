@@ -39,6 +39,9 @@ verify_urdf.sh runs it. It fails when two files that must agree have drifted apa
   6. FEEDFORWARD AGE LIMIT. The limit (finding H-11) is written twice: kMaxFeedforwardAgeNs in
      AddFeedforwardController.hpp (nanoseconds) and FF_AGE_S in verify_sim.sh (seconds). They must be
      the same time, or check FF would time a different limit than the controller applies.
+  7. DRIVE COMMAND RAMP. The ramp limit (finding H-13) is written twice: the launch argument
+     max_linear_accel_m_s2 and DEFAULT_MAX_LINEAR_ACCEL_M_S2 in DiffDriveController.py. They must be
+     equal, or a plain sim launch would ramp differently from the robot.
 
 Usage:  check_sim_config.py [--root DIR]     (DIR defaults to the repo root, above sim/)
 Exit status: 0 = all agree   1 = a difference (printed)   2 = could not run (a file could not be
@@ -412,6 +415,23 @@ def check_feedforward_age(root):
     return [], f"feedforward age limit equal in AddFeedforwardController.hpp and verify_sim.sh ({script_s} s)"
 
 
+# ---- 7. drive command ramp -----------------------------------------------------------------------
+def check_command_ramp(root):
+    """The sim launch's default ramp must be the node's default (finding H-13), or a plain sim launch
+    would not test what the robot runs (rocko.launch.py passes no value, so the robot gets the node's)."""
+    launch = re.search(r'"max_linear_accel_m_s2",\s*default_value\s*=\s*"([0-9.eE+-]+)"', read(root, LAUNCH))
+    node = re.search(r"^DEFAULT_MAX_LINEAR_ACCEL_M_S2\s*=\s*([0-9.eE+-]+)", read(root, DIFFDRIVE), re.MULTILINE)
+    if launch is None:
+        return ["could not find the max_linear_accel_m_s2 default in rocko_sim.launch.py"], ""
+    if node is None:
+        return ["could not find DEFAULT_MAX_LINEAR_ACCEL_M_S2 in DiffDriveController.py"], ""
+    if float(launch.group(1)) != float(node.group(1)):
+        return [f"the drive command ramp differs: rocko_sim.launch.py defaults to {launch.group(1)} m/s^2, "
+                f"DEFAULT_MAX_LINEAR_ACCEL_M_S2 in DiffDriveController.py is {node.group(1)} m/s^2 "
+                "(they must be equal)"], ""
+    return [], f"drive command ramp equal in rocko_sim.launch.py and DiffDriveController.py ({node.group(1)} m/s^2)"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."),
@@ -420,7 +440,7 @@ def main():
 
     failed = False
     for check in (check_wiring, check_gains, check_defaults, check_imu_limit,
-                  check_teleop_timeout, check_feedforward_age):
+                  check_teleop_timeout, check_feedforward_age, check_command_ramp):
         try:
             problems, summary = check(args.root)
         except (OSError, ValueError, KeyError, yaml.YAMLError, ET.ParseError) as error:

@@ -119,6 +119,7 @@ period and feedback age *before* any tuning time is spent.
 | 1.14 | **Remove the duplicated tipover block** in `AddFeedforwardController.cpp`, and put the tipover keys under the hook (new, found 2026-11-02) | human (the guard hook denied the agent) | T1 build and T3 `verify_sim.sh H4` after the change | blocked on human; the proposal is to be written by the integrator. The file holds the inline tipover block that **runs** (about lines 299 to 352) and an **unused** duplicate, the helper `tipover_tripped_this_cycle()` (about line 445), because the hook denied replacing the inline block with a call (it counts safety words and cannot tell a move from a removal). A human deletes the helper and its declaration in the `.hpp`, or finishes the move. Separately, `tipover_pitch_deg`, `rearm_max_pitch_deg` and `pitch_interface` exist only as defaults in `add_feedforward_controller_parameters.yaml`, which the hook does not watch; `rocko_controllers.yaml` is untouched. The proposal asks to add the three keys to the hook's key list and to set them explicitly in the real YAML. Critical path |
 | 1.13 | **L-8**: `pid_controller` sets the rate reference once, at activation (new, found 2026-11-02) | agent + robot | T3 hides it (the sim robot is still at activation); no tier shows it | blocked on human: it has to be handled in the proposal for row 1.2's real-YAML change. [L-8](claude-analysis/balance-loop-findings.md) |
 | 1.15 | **H-11**: nothing aged out the feedforward (new, found 2026-11-03 in review round 3; called H-A there) | agent + robot | T3 check `FF` (the model); host test `tools/feedforward_timeout_test.cpp` (not a tier); T0 `sim/check_sim_config.py` ties `FF_AGE_S` to the code's limit | done, awaiting robot. [H-11](claude-analysis/balance-loop-findings.md). `AddFeedforwardController` adds 0.0 instead of the feedforward once its last message is older than `kMaxFeedforwardAgeNs` (200 ms, **proposed**, [proposal 0004](proposals/0004-safety-thresholds.md); `FeedforwardTimeout.hpp`, a steady clock, lock-free); only that term, the pitch loop's reference still goes through; one `WARN` per wheel when a time-out starts, at most one a second per wheel (later ones in that second are counted, and the count is in the line); a fresh message ends it at once. Checked: host test 7 test functions, red on 2 deliberate breaks; check `FF` (both wheels logged the time-out once, 0.1 to 0.5 s after the publisher was killed, controllers stayed active; red with the limit infinite and with 50 ms); full `verify_sim.sh` PASS `S1 S2a H4 C3 C2 H6 FF`, 9 launches, 157 s. **Observation, cause not established:** in the container the right wheel sometimes timed out while its Python publisher was running (a gap above 200 ms): 1 of 1 at 20 Hz, 2 of 6 `FF` runs at 100 Hz; `FF` prints a note and does not fail. Not checked: anything on a robot; that 200 ms is right; DDS gaps on the Pi; what zeroing the term does to a leaning robot. Round 4 reviewed it (no Critical or High; its findings fixed, the fixes not reviewed again: journal, *Stage 4, review round 4*). Touches `AddFeedforwardController.cpp` (critical path, `CLAUDE.md` §6) |
+| 1.16 | **H-13**: a drive command reached the cascade as a step (new, found 2026-11-16) | agent + robot | T3 scenario `K` (the model); host test `tools/teleop_watchdog_test.py` (not a tier); T0 `sim/check_sim_config.py` ties the sim launch's default to the node's | done, awaiting robot. [H-13](claude-analysis/balance-loop-findings.md). `DiffDriveController.py` ramps the forward command at `max_linear_accel_m_s2` (**proposed**; the value is in that file); the unused limiter code is gone. Not done: the turn command (no tier can check it) and the watchdog's step to zero, which leaned the model 16 to 20 deg when it fired mid-drive: [proposal 0012](proposals/0012-command-ramp-and-watchdog-step.md). Evidence and what was not checked: the [journal](journal/2026-11-16-teleop-dashboard-logging.md) |
 
 ## Wave 2 — simulation, then the safeguards that should be built against it
 
@@ -143,6 +144,18 @@ period and feedback age *before* any tuning time is spent.
 **A hardware decision is pending** (findings, "Related hardware work"): brushless motors with ODrive
 controllers. It would obviate H-1 and M-2 and partly C-1. The audit says **not to wait for it**: the
 other fixes are independent, and several are needed to judge it.
+
+## Wave 4 — operator tools (keyboard driving, dashboard, logging)
+
+Asked for by the person on 2026-11-16, with the choices recorded in the [journal](journal/2026-11-16-teleop-dashboard-logging.md). That
+journal's HANDOFF box is the live status of this wave; a new session starts there.
+
+| # | Item | Who | Best check today | Status and what to know |
+| --- | --- | --- | --- | --- |
+| 4.1 | **Keyboard driving** from the laptop over the existing TCP gamepad protocol | agent + robot | T3 (a sim launch with the real `Joystick.py`), host test | open |
+| 4.2 | **Logging**: `record:=true` on the launch files, a bag in MCAP on the Pi with a metadata file | agent + robot | T3 (record in the sim, every listed topic has messages) | open |
+| 4.3 | **Web dashboard** on the Pi (replaces the Flask stub), with Record/Stop | agent + robot | T3 (the sim; its values against `/dynamic_joint_states`) | open. Its CPU cost on the Pi cannot be measured here |
+| 4.4 | **Foxglove layout** and guides | agent + human (a person looks at it in Foxglove) | T3 (every topic the layout names exists in the sim) | open |
 
 ## Decisions waiting on the maintainer
 
@@ -198,6 +211,8 @@ Not agent work. Each is recorded where it was raised.
 - Whether the sim-tuned candidate gains go into the real `rocko_controllers.yaml`, and the tethered test
   that would check them: [proposal 0008](proposals/0008-candidate-gains-and-tethered-test.md) (open;
   its preconditions include proposals 0004, 0006 and 0007).
+- The drive command's ramp limit, and whether the teleop watchdog's zero should ramp too (row 1.16):
+  [proposal 0012](proposals/0012-command-ramp-and-watchdog-step.md) (open).
 - Measuring the robot's mass, centre of mass, inertia and wheel radius (rows 0.7 and 2.2):
   [proposal 0007](proposals/0007-measure-robot-parameters.md), with the procedure in
   [measure-inertia.md](guides/measure-inertia.md).

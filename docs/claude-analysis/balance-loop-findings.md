@@ -51,6 +51,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | H-10 | High (not fixed; unmeasured) | Upstream PID integrators keep winding while the tipover cutoff is latched, so a re-arm can produce a large command (found 2026-11-02) |
 | H-11 | High | Nothing aged out the feedforward: if `DiffDriveController.py` died mid-turn, the wheels kept opposite biases and the gamepad could not stop them (found 2026-11-03; called H-A in the round-3 review and in code comments) — **fixed on `ai-forward`, awaiting robot** (2026-11-03; checked in the sim; the 200 ms limit is proposed) |
 | H-12 | High (shown in the model; unknown on the robot) | With every gain positive, the outer velocity loop is positive feedback unless the encoder reads negative when a positive wheel command drives the robot; under the sim's default signs it runs away and tips the model in about 10 s (found 2026-11-03, stage 5) — **not fixed**: the robot sign check is [proposal 0006](../proposals/0006-velocity-loop-sign-check.md) |
+| H-13 | High (shown in the model; unknown on the robot) | A drive command reached the cascade as a step: a 0.5 m/s step, the smallest the gamepad path can send, leaned the model 21 deg and a 1.0 m/s step toppled it (found 2026-11-16) — **forward command ramped on `ai-forward`, awaiting robot**; the watchdog's step to zero is not ramped ([proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md)) |
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
 | M-3 | Medium | PWM value is never clamped to its valid range — **clamped on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31) |
@@ -287,7 +288,7 @@ It went red with `command_timeout_s=1000`. The check also requires `teleop comma
 deliberate breaks when it had 13 checks) and `tools/computer_joystick_heartbeat_test.py` (5/5); whether the
 later checks were made to fail was not recorded. Not checked: the TCP path in a
 launch, anything on a robot, and what the step to zero does to a leaning robot (the reference goes to 0 in
-one cycle with no ramp; `RateLimiter` is unused). Procedure: the
+one cycle with no ramp, on purpose: finding H-13 ramps commands, not the watchdog's zero). Procedure: the
 [stage 4 journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md).
 
 **The node's own death (2026-11-03):** this watchdog lives inside `DiffDriveController.py`, so it cannot
@@ -841,6 +842,54 @@ themselves are a separate question for the sim scenarios (stage 5) and a tethere
 done, the sim's balance scenarios run with `encoder_sign:=-1` as a labelled assumption, and the scenario
 `AB` keeps the as-built signs and is expected to fall, so this finding stays visible on the ladder
 (`verify_sim.sh scenarios`). Queue: [next-steps row 2.7](../next-steps.md).
+
+---
+
+### H-13 — A drive command reaches the cascade as a step
+
+**Found** 2026-11-16, in the readiness review ([journal](../journal/2026-11-16-teleop-dashboard-logging.md)). **Forward command ramped on
+`ai-forward` the same day; checked in the model only, awaiting robot.**
+
+**Where** `DiffDriveController.command_controller()` and `Joystick.convert_to_twist()`.
+
+**What**
+
+`DiffDriveController.py` built two `RateLimiter` objects and called them every cycle, but on
+`self.left_vel` and `self.right_vel`, which were always 0, and it never used the result. What it
+published was the gamepad's `linear.x`, unchanged: as the velocity loop's reference and, divided by the
+wheel radius, as a feedforward added straight to both wheel commands. A stick movement therefore arrived
+as a step in both.
+
+`Joystick.py` makes the step large. It zeroes anything under a 0.05 deadband and multiplies by
+`linear_scale = -10`, so the smallest non-zero forward command is 0.5 "m/s", five times the only step
+the sim scenarios tested (scenario V, 0.1 m/s).
+
+**Why it matters**
+
+A balancing robot cannot change speed at once: to speed up it must first lean, and the feedforward step
+drives the wheels out from under the body before it has. In the model (estimated parameters, sim gains,
+`encoder_sign:=-1` assumed), one run each: a 0.5 m/s step stays up but leans 21.1 deg (scenario V's limit
+is 10 deg); a 1.0 m/s step reaches the 35 deg cutoff 0.17 s after the step. Whether the robot does the
+same is not known. It matters most for keyboard driving, where every key press is a step.
+
+**Fix (done for the forward command)**
+
+`DiffDriveController.py` now moves the forward command toward what the operator asked by at most
+`max_linear_accel_m_s2` per second (a ROS parameter; default `DEFAULT_MAX_LINEAR_ACCEL_M_S2`, a
+**proposed** value chosen in the sim, in that file and nowhere else). The unused limiter code is gone;
+`RateLimiter.py` is still in the tree and nothing imports it. Scenario `K` of `verify_sim.sh scenarios`
+holds it: red with the ramp off, green with it. The numbers are in the [journal](../journal/2026-11-16-teleop-dashboard-logging.md).
+
+**Not fixed**
+
+- The **turn** command is not ramped. The sim is planar, so no tier could check it, and the smallest
+  turn command is also large (0.05 x `angular_scale` 35).
+- The **watchdog's zero** (finding C-3) is still a step. In the sim, a watchdog trip in the middle of a
+  0.5 m/s drive leaned the model 16 to 20 deg (seen when the test harness stalled). Ramping it changes a
+  safety behavior, so it is a human's decision:
+  [proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md).
+- A ramp bounds how fast the command changes, not how large it is: full stick still asks for 10 "m/s"
+  (sim-plant.md U-5).
 
 ---
 

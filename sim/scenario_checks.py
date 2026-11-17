@@ -959,6 +959,14 @@ def check_velocity_step(args):
     if False in flags and True in flags[flags.index(False) + 1:]:
         print("scenario_checks: note: command_timed_out went True while the gamepad was driving "
               "(a delivery gap longer than the watchdog's timeout)")
+        if args.watchdog_trip_cannot_judge:
+            # The scenario's input is "a command held steady". The watchdog firing replaced it with
+            # a step to zero and a second ramp, so the run measured a different input. In the
+            # container this happens when the fake gamepad or the node stalls.
+            return finish(args.out, metrics, COULD_NOT_JUDGE,
+                          "the teleop watchdog fired while the fake gamepad was driving, so the "
+                          "command was not the held step this scenario judges (the metrics above "
+                          "are of that disturbed run)")
     if fell is not None:
         return finish(args.out, metrics, FAIL,
                       f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s after "
@@ -1059,6 +1067,8 @@ def main():
     p.add_argument("--rise-within-s", type=float, required=True, help="[s after the step]")
     p.add_argument("--max-overshoot-pct", type=float, required=True, help="[%% of the step]")
     p.add_argument("--max-pitch-deg", type=float, required=True, help="limit on |pitch| [deg]")
+    p.add_argument("--watchdog-trip-cannot-judge", action="store_true",
+                   help="exit 2 instead of judging when command_timed_out went True during the step")
     args = parser.parse_args()
 
     rclpy.init()

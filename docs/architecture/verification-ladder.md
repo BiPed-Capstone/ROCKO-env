@@ -171,11 +171,15 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios U S2b   # only some
 ```
 
-Five launches: **U** (hold upright 10 s from a 2 deg start), **I** (recover from a 100 deg/s push to the
-lean rate), **V** (follow a 0.1 m/s velocity step sent through the real `DiffDriveController.py`), **S2b**
+Six launches: **U** (hold upright 10 s from a 2 deg start), **I** (recover from a 100 deg/s push to the
+lean rate), **V** (follow a 0.1 m/s velocity step sent through the real `DiffDriveController.py`), **K**
+(since 2026-11-16, finding H-13: V with a 0.5 m/s step, the smallest non-zero command the gamepad path can
+send, and 5 s to reach 90 %; red with the command ramp off, `K_MAX_LINEAR_ACCEL_M_S2=1000`; launched
+with a 1 s watchdog timeout instead of the robot's 0.2 s, because K is about the ramp and a container
+stall fired the watchdog mid-step in about 1 run in 3; if it fires anyway K exits 2, could not judge; [journal](../journal/2026-11-16-teleop-dashboard-logging.md)), **S2b**
 (U with the pitch loop's sign flipped, `pitch_sign:=1`: it must fail by the pitch diverging within 1 s)
 and **AB** (U with the as-built signs, `encoder_sign:=1`: a characterisation of finding H-12, expected to
-fall by the slow run-away, no sooner than 3 s; its time to fall is printed). U, I, V and S2b run with
+fall by the slow run-away, no sooner than 3 s; its time to fall is printed). U, I, V, K and S2b run with
 `encoder_sign:=-1`, an **assumption** printed with every result (proposal 0006 asks a human for the real
 sign). The thresholds, and why each is what it is, are in one place, the scenario block at the top of
 `verify_sim.sh`; the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md) has them as a
@@ -183,7 +187,7 @@ table, committed before any tuning. Each run writes `samples.csv` (pitch, pitch 
 velocity, wheel travel and the right wheel's velocity against time since release) and `metrics.json`.
 
 Each scenario prints `SCENARIO <name>: PASS`, `FAIL` or `COULD NOT JUDGE` (S2b and AB print `ok` when they
-behave as expected). Exit 0 only if U, I and V pass and S2b and AB are `ok`; 1 if any is not; 2 if a run
+behave as expected). Exit 0 only if U, I, V and K pass and S2b and AB are `ok`; 1 if any is not; 2 if a run
 could not be judged and none failed. Until the sim gains were tuned, a failing U, I or V printed
 `FAIL (expected until the sim gains are tuned)` (the switch is `SCENARIOS_EXPECTED_RED` in the script, 0 since
 stage 5c-1), and the exit status was 1 either way. With the hardware gains U, I and V fail (seen 2026-11-03,
@@ -226,7 +230,7 @@ nothing makes anyone run them.
 ```bash
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include \
     tools/tipover_latch_test.cpp -o /tmp/tipover_latch_test && /tmp/tipover_latch_test      # all TipoverLatch tests passed
-python3 -I tools/teleop_watchdog_test.py                                                    # 22 of 22 checks
+python3 -I tools/teleop_watchdog_test.py                                                    # 29 of 29 checks
 python3 -I tools/computer_joystick_heartbeat_test.py                                        # 5 of 5 checks
 python3 -I tools/imu_node_test.py                                                           # 7 of 7 checks
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include \
@@ -236,7 +240,7 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
 | Test | Checks | Cannot show |
 | --- | --- | --- |
 | `tools/tipover_latch_test.cpp` (12 test functions) | `TipoverLatch.hpp`, the trip and re-arm decision of finding H-4: trips above the limit and not at it; a NaN pitch neither trips nor re-arms; no automatic re-arm; a re-arm needs a request **and** `\|pitch\|` at or below the re-arm band (`rearm_max_pitch_deg`, 10 deg in the test), so a pitch between the band and the limit is refused; `is_valid_rearm_max` accepts only a value above 0 and below the limit; a request is used up by the next update; a limit of 0 or NaN disables it | That `AddFeedforwardController` calls it correctly (the sim check H4 looks at that), the IMU, the motors, the robot |
-| `tools/teleop_watchdog_test.py` (22 checks) | `CommandWatchdog` and the command path of `DiffDriveController.py` and `Joystick.py`, loaded with stand-ins for `rclpy` and a fake clock: age counted from a command's arrival on a monotonic clock; the velocity reference and feedforwards are published as zero past the timeout and publishing never stops; log and `Bool` topic change only on a transition; `Joystick.py` publishes only commands that really arrived and survives a clean disconnect, and drops a connection that sends a non-finite or out-of-range value | ROS timing, DDS, a real TCP link from the laptop, the robot |
+| `tools/teleop_watchdog_test.py` (29 checks) | `CommandWatchdog` and the command path of `DiffDriveController.py` and `Joystick.py`, loaded with stand-ins for `rclpy` and a fake clock: the forward command is ramped (finding H-13: at most `max_linear_accel_m_s2` x 10 ms per cycle, arriving exactly on the command; a time-out is a step to zero and driving resumes from zero; the turn command is not ramped; a command that is not finite is dropped and does not feed the watchdog; red on 3 deliberate breaks, 2026-11-16); age counted from a command's arrival on a monotonic clock; the velocity reference and feedforwards are published as zero past the timeout and publishing never stops; log and `Bool` topic change only on a transition; `Joystick.py` publishes only commands that really arrived and survives a clean disconnect, and drops a connection that sends a non-finite or out-of-range value | ROS timing, DDS, a real TCP link from the laptop, the robot |
 | `tools/computer_joystick_heartbeat_test.py` (5 checks) | `send_loop()` in `joystick/computer_joystick.py`, over a socket pair with a fake clock and no gamepad: an unchanging stick is resent every 0.05 s, a change is sent at once, a packet is still 40 bytes | Network timing, a real gamepad, pygame |
 | `tools/feedforward_timeout_test.cpp` (7 test functions) | `FeedforwardTimeout.hpp`, the age decision of finding H-11: nothing arrived gives 0.0 and is not a time-out; a value is used up to and at the 200 ms limit and is 0.0 one nanosecond past it, logged once (`just_timed_out()` is true for one update only); a fresh message after a time-out is used at once; a steady 100 Hz stream never times out; a stamp a little later than the loop's `now` counts as age 0; a real value of 0.0 is not confused with "none" | That the controller calls it, that its subscription callback stamps the message, DDS delivery, the clock on the Pi, that 200 ms is a good limit |
 | `tools/imu_node_test.py` (7 checks) | `ICM20948.py`'s service reply (findings C-2, H-6 and M-7), loaded with stand-ins for `rclpy`, the sensor libraries and the service type, and a fake BNO055: started with no parameters (as the launch files do), `read_pitch_rate` is false, the node makes one sensor read (the Euler angles, no gyro read), sends `pitch_rate_deg_s` as NaN and warns about nothing; with `read_pitch_rate` true: good angles and gyro give `success` and `rate = sign * degrees(gyro[axis])`; a bad gyro (None, an exception, NaN) makes only `pitch_rate_deg_s` NaN while the angles and `success` stay good; so does a rate beyond +/-2000 deg/s (`MAX_ABS_PITCH_RATE_DEG_S`, which must equal the plugin's `kMaxAbsPitchRateDegS`), and the node logs it; a still gyro (0, 0, 0) is a real reading, not a failure; bad angles give `success = false` and NaN angles whatever the gyro says | The real driver's units or timing, the I2C bus, the C++ plugin's separate rate handling, the robot |
@@ -502,8 +506,9 @@ because they show what each tier is for.
   - *C3 (watchdog).* The fake gamepad publishes `TwistStamped` straight to
     `/diffbot_base_controller/cmd_vel`, so the TCP path (`Joystick.py`'s socket handling and the laptop
     sender's heartbeat) is only covered by the host tests with stand-ins, not by a launch. The timeout (0.2
-    s) is a proposal. The reference steps to zero with no ramp (the `RateLimiter` is unused); what that
-    does to a robot that is leaning was not measured.
+    s) is a proposal. The reference steps to zero with no ramp (commands are ramped since 2026-11-16,
+    finding H-13; the watchdog's zero is not); in the sim a trip in the middle of a 0.5 m/s drive leaned the
+    model 16 to 20 deg ([journal](../journal/2026-11-16-teleop-dashboard-logging.md), [proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md)).
   - *H6 (pitch rate).* The sim's rate has no delay and an assumed sign (`pitch_sign`), so the check shows
     the wiring (the D term reads the exported rate) and not that the benefit exists. The real YAML
     still says `["pitch"]`; the gyro axis and sign (`pitch_rate_axis`, `pitch_rate_sign` in

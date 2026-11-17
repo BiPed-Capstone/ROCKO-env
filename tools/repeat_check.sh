@@ -2,7 +2,8 @@
 # Run one verify_sim.sh check N times in the dev container and print a tally. Run on the LAPTOP:
 #   tools/repeat_check.sh C3 20            # check name, count
 #   tools/repeat_check.sh scenarios 5      # the scenarios mode
-#   SIM_PLANT_OVERRIDES="body_mass_kg:=2.6" tools/repeat_check.sh V 3   # environment is passed through
+#   tools/repeat_check.sh "scenarios K" 5  # one scenario: quote the two words
+#   SIM_PLANT_OVERRIDES="body_mass_kg:=2.6" tools/repeat_check.sh "scenarios V" 3   # environment is passed through
 #
 # Why it exists: "run it 20 times and show it is stable" was done by agents one call at a time, with loops they
 # wrote on the spot. Two of those loops cost hours: one waited on a `pgrep` pattern that matched its own command
@@ -25,7 +26,7 @@ case "$COUNT" in ''|*[!0-9]*) echo "count must be a whole number" >&2; exit 2 ;;
 LOG_DIR="${LOG_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/repeat.XXXXXX")}"
 CTR=(docker compose -f docker/compose.yml exec -T)
 ENV_ARGS=()
-for v in SIM_PLANT_OVERRIDES SCENARIO_METRICS_DIR SCENARIOS_EXPECTED_RED; do
+for v in SIM_PLANT_OVERRIDES SCENARIO_METRICS_DIR SCENARIOS_EXPECTED_RED K_MAX_LINEAR_ACCEL_M_S2; do
   [ -n "${!v:-}" ] && ENV_ARGS+=(-e "$v=${!v}")
 done
 pass=0; fail=0; cannot=0; failing=()
@@ -36,7 +37,7 @@ for n in $(seq 1 "$COUNT"); do
   done
   log="$LOG_DIR/run_$n.log"
   # ${ENV_ARGS[@]+...}: macOS bash 3.2 treats an empty array as unset under `set -u`.
-  "${CTR[@]}" ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh "$CHECK" >"$log" 2>&1
+  "${CTR[@]}" ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh $CHECK >"$log" 2>&1  # unquoted: "scenarios K" is two arguments
   case $? in
     0) pass=$((pass + 1)) ;;
     2) cannot=$((cannot + 1)); failing+=("run $n: COULD NOT RUN: $(tail -1 "$log")") ;;

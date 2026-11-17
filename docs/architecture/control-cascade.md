@@ -95,6 +95,10 @@ robot has fallen, the opposite of the rule below for a lost gamepad. The other s
 sits at the other end of the chain, in `DiffDriveController.py`: when no gamepad command has arrived
 for 0.2 s (proposed) it makes the velocity reference zero and keeps the cascade running, because for a
 robot that stands only while the wheels keep chasing its lean, stopping the motors is falling over.
+`DiffDriveController.py` also **ramps the forward command** (finding H-13): each 10 ms cycle the value it
+sends moves toward the operator's by at most `max_linear_accel_m_s2` x 0.01 s, because a robot that must
+lean before it can speed up is pushed over by a command that jumps. The turn command and the watchdog's
+zero are not ramped.
 A third guard covers the watchdog's own blind spot: if `DiffDriveController.py` itself dies, nothing would
 replace the last feedforward it sent, so each `AddFeedforwardController` remembers when its feedforward last
 arrived and, once it is older than `kMaxFeedforwardAgeNs` (200 ms, proposed; finding H-11), adds `0.0` instead.

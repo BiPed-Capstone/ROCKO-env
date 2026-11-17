@@ -5,7 +5,6 @@ from rclpy.node import Node
 
 from geometry_msgs.msg import TwistStamped, Twist, Vector3
 from control_msgs.msg import MultiDOFCommand
-from rocko_env.controllers.utils.RateLimiter import RateLimiter
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import Bool, Float64
 import math
@@ -17,6 +16,25 @@ import time
 # still), or a steady stick looks like a dropped link. Overridable with the command_timeout_s
 # parameter; this one literal is the default and the fallback for a bad value.
 DEFAULT_COMMAND_TIMEOUT_S = 0.2
+
+# Command ramp (finding H-13) [m/s^2]: the most the drive command may change per second.
+# An upper bound: the ramp moves one step per timer cycle, so if this node runs late the command
+# changes more slowly, never faster.
+# Why it exists: a balancing robot cannot change speed at once. To speed up it must first lean, and
+# a command that jumps asks the wheels to run out from under the body. In the simulation a bare
+# 0.5 m/s step leaned the model 21 deg and a 1.0 m/s step toppled it
+# (docs/journal/2026-11-16-teleop-dashboard-logging.md).
+# PROPOSED value, chosen in the simulation (a model with estimated parameters), not on the robot;
+# a human confirms it. Overridable with the max_linear_accel_m_s2 parameter.
+# Only the forward command is ramped. The turn command is NOT: turning speeds one wheel up and the
+# other down, which is ASSUMED not to tip the body the way a forward step does. Not checked: the
+# simulation is planar, so no tier could test a turn ramp.
+DEFAULT_MAX_LINEAR_ACCEL_M_S2 = 0.35
+
+
+def step_toward(current, target, max_step):
+    """Return `current` moved toward `target` by at most `max_step` (>= 0). Same unit for all three."""
+    return current + max(-max_step, min(target - current, max_step))
 
 
 class CommandWatchdog:
@@ -77,6 +95,18 @@ class DiffDriveController(Node):
             Bool, '~/command_timed_out',
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
+        # Command ramp (finding H-13); see DEFAULT_MAX_LINEAR_ACCEL_M_S2. Read once at startup.
+        self.declare_parameter('max_linear_accel_m_s2', DEFAULT_MAX_LINEAR_ACCEL_M_S2)
+        self.max_linear_accel_m_s2 = self.get_parameter('max_linear_accel_m_s2').value
+        if not (0.0 < self.max_linear_accel_m_s2 < math.inf):  # also rejects NaN
+            # <= 0 or NaN would freeze or reverse the ramp; inf would switch it off.
+            self.get_logger().error(
+                f"max_linear_accel_m_s2={self.max_linear_accel_m_s2} is not a positive number; "
+                f"using {DEFAULT_MAX_LINEAR_ACCEL_M_S2} m/s^2")
+            self.max_linear_accel_m_s2 = DEFAULT_MAX_LINEAR_ACCEL_M_S2
+        # The forward speed sent last cycle [m/s]; the ramp starts from here.
+        self.ramped_linear_vel = 0.0
+
         self.timer = self.create_timer(self.timer_period, self.command_controller)
         
         # Set up subscriber to get robot body vector
@@ -92,29 +122,6 @@ class DiffDriveController(Node):
         # Robot character numbers
         self.wheel_radius_meters = 0.06
         
-        # Configure RateLimiter
-        # TODO: all of these are completely arbitrary rn. use foxglove to moderate
-        # 1st derivative limits should represent the "acceleration limit"
-        # 2nd derivative limits should represent the limit for "jerk" (del a/ del t)
-        # min/max values should be whatever our intended min and max values are
-        self.left_limiter = RateLimiter(
-            min_value=-1000, max_value=1000,
-            min_first_derivative_neg=-150, max_first_derivative_pos=150,
-            min_second_derivative=-150, max_second_derivative=150            
-        )
-        self.right_limiter = RateLimiter(
-            min_value=-1000, max_value=1000,
-            min_first_derivative_neg=-150, max_first_derivative_pos=150,
-            min_second_derivative=-150, max_second_derivative=150
-        )
-        
-        # Set up variables for holding data
-        self.left_vel = 0
-        self.right_vel = 0
-        self.left_v0 = 0
-        self.left_v1 = 0
-        self.right_v0 = 0
-        self.right_v1 = 0
         self.init = False # error-proofing for not importing an automatic 0
         self.wheel_distance = 0.356 # meters
         
@@ -135,19 +142,6 @@ class DiffDriveController(Node):
         self.command_timed_out_topic.publish(Bool(data=timed_out))
 
     def command_controller(self):
-        # self.desired_robot_body_vector.linear.x = 1
-        
-        # apply ratelimit
-        smooth_left_vel = self.left_limiter.limit(self.left_vel, self.left_v0, self.left_v1, self.timer_period)
-        smooth_right_vel = self.right_limiter.limit(self.right_vel, self.right_v0, self.right_v1, self.timer_period)
-
-        #  smooth_left_vel = self.left_vel
-        #  smooth_right_vel = self.right_vel   
-
-        # back-propogate
-        self.left_v1, self.left_v0 = self.left_v0, smooth_left_vel
-        self.right_v1, self.right_v0 = self.right_v0, smooth_right_vel
-         
         # Calculate velocities from body vector
         #
         # COMMS LOSS (C-3): the safe response is to command ZERO VELOCITY, and nothing else.
@@ -161,13 +155,21 @@ class DiffDriveController(Node):
         # already fallen past the tipover angle, when driving the wheels can no longer help.
         self.update_timed_out_state(self.command_watchdog.expired())
         if self.command_timed_out:
-            # A timeout is a step to zero (the limiter result is not used): the commands below
-            # come from linear_vel/angular_vel directly, not from smooth_left/right_vel.
+            # A timeout is a STEP to zero, on purpose NOT ramped: the watchdog (C-3) promises a
+            # zero reference within its timeout, and check C3 holds it to that. Whether it should
+            # ramp instead is a human's decision (it changes a safety behavior). Driving then
+            # resumes from zero.
             linear_vel = 0.0
             angular_vel = 0.0
         else:
-            linear_vel = self.desired_robot_body_vector.twist.linear.x
+            # Ramp (finding H-13): each cycle the forward command moves at most
+            # max_linear_accel_m_s2 * timer_period (10 ms) toward what the operator asked. The turn command is not
+            # ramped (see DEFAULT_MAX_LINEAR_ACCEL_M_S2).
+            linear_vel = step_toward(
+                self.ramped_linear_vel, self.desired_robot_body_vector.twist.linear.x,
+                self.max_linear_accel_m_s2 * self.timer_period)
             angular_vel = self.desired_robot_body_vector.twist.angular.z
+        self.ramped_linear_vel = linear_vel
         left_vel = linear_vel - angular_vel
         right_vel = linear_vel + angular_vel
         
@@ -195,6 +197,13 @@ class DiffDriveController(Node):
         # Keep the whole TwistStamped: command_controller reads .twist.linear.x from it.
         # (This line used to store msg.twist, which has no .twist attribute, so the first
         # command would have raised AttributeError inside the timer.)
+        # A command that is not a finite number is dropped, and does NOT count as an arrival, so
+        # the watchdog treats its sender as silent. (min() and max() in step_toward do not
+        # propagate NaN: a NaN target would ramp the command backwards without limit.)
+        if not (math.isfinite(msg.twist.linear.x) and math.isfinite(msg.twist.angular.z)):
+            self.get_logger().warning(
+                "ignored a drive command that is not a finite number", throttle_duration_sec=1.0)
+            return
         self.desired_robot_body_vector = msg
         self.command_watchdog.update()  # time of arrival, from a monotonic clock
         self.init = True

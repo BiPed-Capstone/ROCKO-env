@@ -151,7 +151,7 @@ ROCKO-env
 │       │   ├── add_feedforward/        C++ controller that adds a feedforward term
 │       │   ├── diffdrive/              Turns steering commands into per-wheel targets
 │       │   ├── joystick/               TCP server that receives laptop gamepad input
-│       │   └── utils/                  RateLimiter.py smooths out sudden changes
+│       │   └── utils/                  RateLimiter.py (not used by any node)
 │       ├── description/
 │       │   ├── urdf/                   The robot's physical shape and joints (xacro files)
 │       │   ├── ros2_control/           Which hardware plugin drives which joint, and GPIO pins; also the mock
