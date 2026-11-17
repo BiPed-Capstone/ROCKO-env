@@ -1,0 +1,171 @@
+{
+  "configById": {
+    "Plot!pitch": {
+      "paths": [
+        {
+          "value": "/pitch_pid_controller/controller_state.dof_states[0].feedback",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "measured pitch [deg]"
+        },
+        {
+          "value": "/pitch_pid_controller/controller_state.dof_states[0].reference",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "target pitch [deg]"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30,
+      "foxglovePanelTitle": "Pitch [deg]: measured and target"
+    },
+    "Plot!speed": {
+      "paths": [
+        {
+          "value": "/velocity_pid_controller/controller_state.dof_states[0].feedback",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "measured velocity [m/s]"
+        },
+        {
+          "value": "/velocity_pid_controller/controller_state.dof_states[0].reference",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "velocity reference [m/s]"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30,
+      "foxglovePanelTitle": "Speed [m/s]: measured and reference"
+    },
+    "Plot!command": {
+      "paths": [
+        {
+          "value": "/pitch_pid_controller/controller_state.dof_states[0].output",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "pitch loop output [rad/s]"
+        },
+        {
+          "value": "/left_feedforward.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "left feedforward [rad/s]"
+        },
+        {
+          "value": "/right_feedforward.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "right feedforward [rad/s]"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30,
+      "foxglovePanelTitle": "Wheel command [rad/s]: pitch loop output and feedforward"
+    },
+    "Plot!error": {
+      "paths": [
+        {
+          "value": "/pitch_pid_controller/controller_state.dof_states[0].error",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "pitch error [deg]"
+        },
+        {
+          "value": "/velocity_pid_controller/controller_state.dof_states[0].error",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "velocity error [m/s]"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30,
+      "foxglovePanelTitle": "Loop errors"
+    },
+    "StateTransitions!watchdog": {
+      "paths": [
+        {
+          "value": "/diff_drive_controller/command_timed_out.data",
+          "timestampMethod": "receiveTime"
+        }
+      ],
+      "isSynced": true,
+      "foxglovePanelTitle": "Teleop watchdog: command_timed_out"
+    },
+    "RosOut!log": {
+      "searchTerms": [],
+      "minLogLevel": 3,
+      "foxglovePanelTitle": "Warnings and errors (/rosout)"
+    },
+    "RawMessages!reference": {
+      "topicPath": "/velocity_pid_controller/reference",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false,
+      "foxglovePanelTitle": "Velocity reference (raw)"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "splitPercentage": 62,
+    "first": {
+      "direction": "column",
+      "splitPercentage": 50,
+      "first": {
+        "direction": "column",
+        "first": "Plot!pitch",
+        "second": "Plot!speed"
+      },
+      "second": {
+        "direction": "column",
+        "first": "Plot!command",
+        "second": "Plot!error"
+      }
+    },
+    "second": {
+      "direction": "column",
+      "splitPercentage": 25,
+      "first": "StateTransitions!watchdog",
+      "second": {
+        "direction": "column",
+        "splitPercentage": 65,
+        "first": "RosOut!log",
+        "second": "RawMessages!reference"
+      }
+    }
+  }
+}

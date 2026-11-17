@@ -24,6 +24,7 @@ from launch_ros.substitutions import FindPackageShare
 
 from rocko_env.recording.launch_recording import real_or_mock, recording_arguments, recorder_process
 from rocko_env.webserver.launch_dashboard import dashboard_arguments, dashboard_node
+from rocko_env.webserver.launch_foxglove import foxglove_arguments, foxglove_bridge_process
 
 
 def generate_launch_description():
@@ -57,6 +58,8 @@ def generate_launch_description():
     # dashboard:=true starts the web dashboard (docs/guides/use-the-dashboard.md). Off by default on
     # the robot: launch_dashboard.py says why.
     declared_arguments += dashboard_arguments(default="false")
+    # foxglove:=false leaves foxglove_bridge out. It defaults to true: this launch always started it.
+    declared_arguments += foxglove_arguments(default="true")
 
     # Initialize Arguments
     gui = LaunchConfiguration("gui")
@@ -101,7 +104,7 @@ def generate_launch_description():
         output="both",
         parameters=[robot_description],
     )
-    foxglove_bridge = ExecuteProcess(cmd=["ros2", "launch", "foxglove_bridge", "foxglove_bridge_launch.xml"])
+    foxglove_bridge = foxglove_bridge_process()
     
     controller_spawner = Node(
         package="controller_manager",

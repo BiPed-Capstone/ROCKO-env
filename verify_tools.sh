@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Check the operator tools against the simulated robot: that record:=true makes a usable recording,
-# and that the web dashboard shows the robot's values and can record. Run INSIDE the dev container,
+# that the web dashboard shows the robot's values and can record, and that the Foxglove bridge
+# starts and the committed Foxglove layout names only signals that exist. Run INSIDE the dev container,
 # after a Tier 1 build:
 #   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_tools.sh
 #
@@ -23,6 +24,7 @@ STOP_WAIT_S=30         # [s] how long the launch may take to shut down and close
 REQUIRED_TOPICS="/dynamic_joint_states /joint_states /pitch_pid_controller/controller_state
   /velocity_pid_controller/controller_state /velocity_pid_controller/reference /left_feedforward
   /right_feedforward /diff_drive_controller/command_timed_out /rosout /robot_description"
+FOXGLOVE_PORT=8765     # foxglove_bridge's port (its launch file's default)
 DASH_PORT=8080         # the dashboard's default port
 DASH_START_S=7         # [s] waited before checking the dashboard: the cascade is up after about 3 s
 DASH_RECORD_S=7        # [s] the recording started over HTTP runs this long. `ros2 bag record` needs about
@@ -45,6 +47,8 @@ if pgrep -x ros2_control_no >/dev/null 2>&1 || pgrep -f ros2_control_node >/dev/
 fi
 
 out="$(mktemp -d)"
+# What the launches here start, as a pattern for pgrep: none of it may be running afterwards.
+LAUNCHED="RecordRun.py|ros2 bag record|ros2_control_node|Dashboard.py|foxglove_bridge"
 
 # start_launch <args...>: rocko_sim.launch.py in the background; sets launch_pid.
 # env --default-signal=INT: a program started in the background by a script inherits "ignore SIGINT",
@@ -68,11 +72,11 @@ stop_launch() {
     echo "FAIL: the launch did not shut down within $STOP_WAIT_S s of SIGINT (log: $out/launch.log)"; exit 1
   fi
   sleep 1
-  if pgrep -f "RecordRun.py|ros2 bag record|ros2_control_node|Dashboard.py" >/dev/null 2>&1; then
+  if pgrep -f "$LAUNCHED" >/dev/null 2>&1; then
     echo "FAIL: processes outlived the launch:"
-    pgrep -af "RecordRun.py|ros2 bag record|ros2_control_node|Dashboard.py" | cut -c1-120
+    pgrep -af "$LAUNCHED" | cut -c1-120
     pkill -INT -f "RecordRun.py" 2>/dev/null; sleep 3
-    pkill -KILL -f "RecordRun.py|ros2 bag record|ros2_control_node|Dashboard.py" 2>/dev/null
+    pkill -KILL -f "$LAUNCHED" 2>/dev/null
     echo "FAIL (tools). Kept as evidence (inside the dev container): $out"; exit 1
   fi
 }
@@ -97,19 +101,26 @@ fi
 # --- 2. the dashboard: its values against the robot's, and Record/Stop over HTTP ---
 # initial_pitch_deg:=2.0 with the scenarios' encoder sign: the robot starts leaning and stands up,
 # so there is a pitch transient to compare (see DASH_MIN_PITCH_DEG).
+# foxglove:=true: the same launch also serves part 3.
 start_launch dashboard:=true dashboard_port:="$DASH_PORT" log_root:="$out/dashlogs" \
-  initial_pitch_deg:=2.0 encoder_sign:=-1
+  initial_pitch_deg:=2.0 encoder_sign:=-1 foxglove:=true
 sleep "$DASH_START_S"
 python3 "$here/sim/check_dashboard.py" --port "$DASH_PORT" --record-s "$DASH_RECORD_S" \
   --tolerance-deg "$DASH_TOLERANCE_DEG" --min-pitch-deg "$DASH_MIN_PITCH_DEG"
 dash_status=$?
+# --- 3. Foxglove: the bridge listens, and every message path in the layout is real ---
+python3 "$here/sim/check_foxglove_layout.py" "$here/foxglove/rocko_balance_layout.json" --bridge-port "$FOXGLOVE_PORT"
+fox_status=$?
 stop_launch
 if [ "$dash_status" -eq 2 ]; then echo "COULD NOT JUDGE (tools: dashboard). Kept: $out"; exit 2; fi
 # shellcheck disable=SC2086
+if [ "$fox_status" -ne 0 ]; then
+  echo "FAIL (tools: foxglove). Kept as evidence (inside the dev container): $out"; exit 1
+fi
 if [ "$dash_status" -eq 0 ] && python3 "$here/sim/check_recording.py" "$out/dashlogs" --label dashboard \
      --hardware sim --launch rocko_sim.launch.py --battery-v 12.3 --surface simulated \
      --min-state-messages "$MIN_STATE_MESSAGES" --require $REQUIRED_TOPICS; then
-  echo "PASS (tools: record dashboard). This is the SIMULATION: it shows the tools work, not what they cost on the Pi."
+  echo "PASS (tools: record dashboard foxglove). This is the SIMULATION: it shows the tools work, not what they cost on the Pi."
   rm -rf "$out"; exit 0
 fi
 echo "FAIL (tools: dashboard). Kept as evidence (inside the dev container): $out"

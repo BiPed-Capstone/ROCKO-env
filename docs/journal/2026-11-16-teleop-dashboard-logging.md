@@ -19,21 +19,22 @@
 > | B | Keyboard driving from the laptop (`joystick/keyboard_teleop.py`) | done, awaiting robot ([Stage B](#stage-b--keyboard-driving)); guide: [drive-with-keyboard.md](../guides/drive-with-keyboard.md) |
 > | C | Bag recording on the Pi (`record:=true`), metadata, `tools/fetch_logs.sh` | done, awaiting robot ([Stage C](#stage-c--logging)); guide: [record-a-run.md](../guides/record-a-run.md) |
 > | D | Web dashboard (replaces the Flask stub), with Record/Stop | done, awaiting robot ([Stage D](#stage-d--web-dashboard)); guide: [use-the-dashboard.md](../guides/use-the-dashboard.md) |
-> | E | Foxglove layout and guides | not started |
+> | E | Foxglove layout and guides | **partly done, NOT reviewed** ([Stage E](#stage-e--foxglove)): the code and the check are committed; the guide, the other docs and the review are not written |
 >
-> **Next action:** start stage E (Foxglove). Facts already established: `rocko.launch.py` and
-> `rocko_tank_mode.launch.py` start `foxglove_bridge` unconditionally (an `ExecuteProcess` of
-> `ros2 launch foxglove_bridge foxglove_bridge_launch.xml`; the same `ros2`-wrapper pattern that kept
-> the recorder alive in stage C, so check that it stops with the launch); `rocko_sim.launch.py` starts
-> none; the container has `foxglove_bridge` installed; recorded runs are MCAP, which Foxglove opens
-> directly; the topics worth a layout are the ones in `RECORDED_TOPICS` (`RecordRun.py`) and the
-> dashboard's table ([use-the-dashboard.md](../guides/use-the-dashboard.md)). Wanted: a committed
-> layout file, `foxglove:=true` on the sim launch, a guide, and a check that every topic the layout
-> names exists in the sim. An agent cannot open the Foxglove app: say so.
+> **Next action:** finish stage E. The run stopped here on 2026-11-17 because the session's usage
+> limit was reached, not because anything failed. Left to do, in order: (1) show
+> `sim/check_foxglove_layout.py` red on a deliberate break (misspell one field in
+> `foxglove/rocko_balance_layout.json`) and restore it; (2) write `docs/guides/use-foxglove.md`
+> (connect to `ws://<robot-ip>:8765`, import the layout, open a recorded `.mcap`, and a table of the
+> layout's message paths so the panels can be rebuilt by hand, because **the layout's JSON structure
+> was written from memory and has never been opened in Foxglove**); (3) update the ladder's
+> `verify_tools.sh` section, `docs/guides/README.md`, the README and next-steps row 4.4; (4) run
+> `tools/run_ladder.sh`; (5) review with `ros2-control-reviewer`, `explainability-reviewer` and
+> `docs-reviewer`, fix, commit, push.
 >
-> **Uncommitted work when this was written:** none. Stages A, B, C and D are committed and pushed. (If
-> `git status` is not clean or `git log origin/ai-forward..HEAD` lists commits, that did not happen:
-> the section of the first stage not marked done says what was in flight.)
+> **Uncommitted work when this was written:** none. Stages A to D and the stage E code below are
+> committed and pushed. (If `git status` is not clean or `git log origin/ai-forward..HEAD` lists
+> commits, that did not happen.)
 >
 > **Decisions the person made (2026-11-16), so nobody asks again:** keyboard = a laptop script on the
 > existing TCP protocol (not the browser, not ROS on the laptop); web view = a custom dashboard on the
@@ -467,4 +468,26 @@ tools/run_ladder.sh          # includes verify_tools.sh (record, dashboard)
 
 ## Stage E — Foxglove
 
-Not started.
+Built on `b4af7ef`. **Unfinished and unreviewed**: see the HANDOFF box for what is left.
+
+### What changed so far
+
+| File | What and why |
+| --- | --- |
+| `rocko_env/webserver/launch_foxglove.py` (new), the three launch files | `foxglove:=`. Default `true` on the two robot launch files, which always started `foxglove_bridge` (a plain launch is unchanged), and `false` in the sim |
+| `foxglove/rocko_balance_layout.json` (new) | A layout: four plots (pitch and target, speed and reference, wheel command and feedforwards, loop errors), the watchdog's state, the log, the raw velocity reference. **Its JSON structure is from memory of Foxglove's exported layouts and has not been opened in Foxglove** |
+| `sim/check_foxglove_layout.py` (new), `verify_tools.sh` | Part 3 of the tools check: the bridge accepts a connection on port 8765, and every message path in the layout names a published topic and fields its message type really has |
+
+### Verification so far
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| 1 build | `build_ros.sh` | exit 0 |
+| 3 sim | `verify_tools.sh` | `PASS (tools: record dashboard foxglove)`: `all 11 message paths ... name a published topic and real fields; the bridge listens on port 8765` |
+| 3 sim, by hand | the sim with `foxglove:=true`, then SIGINT to the launch | the bridge accepted a connection; nothing outlived the launch |
+| the rest of the ladder | | **not run** after these changes |
+
+Not done: the check has **not** been shown to fail on a deliberate break; no guide; no review.
+Nothing can show here that Foxglove accepts or draws the layout: that needs a person with Foxglove.
+
+**Why the run stopped:** the session's usage limit, 2026-11-17, in the middle of stage E.

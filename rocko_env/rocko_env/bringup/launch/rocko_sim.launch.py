@@ -11,7 +11,8 @@
 #   - joint_state_broadcaster is spawned first, so pitch and wheel velocity can be watched on
 #     /dynamic_joint_states before the robot is released; the four cascade controllers are spawned
 #     as one group, exactly as on the robot, once it is running;
-#   - no ICM20948.py / QuadEncoders.py (the plugin is the sensor) and no foxglove_bridge.
+#   - no ICM20948.py / QuadEncoders.py (the plugin is the sensor), and foxglove_bridge only with
+#     foxglove:=true.
 #
 # THE SIMULATOR'S PHYSICAL PARAMETERS ARE ESTIMATES, NOT MEASUREMENTS. A result here is a result
 # about a model (docs/architecture/sim-plant.md).
@@ -28,6 +29,7 @@ from launch_ros.substitutions import FindPackageShare
 
 from rocko_env.recording.launch_recording import recording_arguments, recorder_process
 from rocko_env.webserver.launch_dashboard import dashboard_arguments, dashboard_node
+from rocko_env.webserver.launch_foxglove import foxglove_arguments, foxglove_bridge_process
 
 # Simulator settings that can be set from the command line, passed straight to the xacro (and from
 # there to SimPlant as <param>s). Each default MUST equal the xacro arg's default in
@@ -96,6 +98,9 @@ def generate_launch_description():
     # The web dashboard (docs/guides/use-the-dashboard.md). On by default HERE, unlike on the robot:
     # the simulation is where it can be tried at no risk to a balance loop.
     declared_arguments += dashboard_arguments(default="true")
+    # foxglove:=true starts foxglove_bridge as on the robot (docs/guides/use-foxglove.md). Off by
+    # default here: the checks do not need it.
+    declared_arguments += foxglove_arguments(default="false")
 
     teleop = LaunchConfiguration("teleop")
 
@@ -192,5 +197,6 @@ def generate_launch_description():
     # Only with record:=true. run.yaml says "sim", so a simulated run is never mistaken for the robot.
     nodes.append(recorder_process("rocko_sim.launch.py", "sim", robot_controllers))
     nodes.append(dashboard_node("rocko_sim.launch.py", "sim", robot_controllers))
+    nodes.append(foxglove_bridge_process())
 
     return LaunchDescription(declared_arguments + nodes)
