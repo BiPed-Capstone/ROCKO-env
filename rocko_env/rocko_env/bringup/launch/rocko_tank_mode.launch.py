@@ -23,6 +23,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 from rocko_env.recording.launch_recording import real_or_mock, recording_arguments, recorder_process
+from rocko_env.webserver.launch_dashboard import dashboard_arguments, dashboard_node
 
 def generate_launch_description():
     # Declare arguments
@@ -52,6 +53,9 @@ def generate_launch_description():
 
     # record:=true records a rosbag and a run.yaml (docs/guides/record-a-run.md). Off by default.
     declared_arguments += recording_arguments()
+    # dashboard:=true starts the web dashboard (docs/guides/use-the-dashboard.md). Off by default on
+    # the robot: launch_dashboard.py says why.
+    declared_arguments += dashboard_arguments(default="false")
 
     # Initialize Arguments
     gui = LaunchConfiguration("gui")
@@ -168,6 +172,7 @@ def generate_launch_description():
     # Only with record:=true. "mock" or "real" goes into run.yaml so a mock run is never mistaken
     # for a measurement.
     nodes.append(recorder_process("rocko_tank_mode.launch.py", real_or_mock(use_mock_hardware), robot_controllers))
+    nodes.append(dashboard_node("rocko_tank_mode.launch.py", real_or_mock(use_mock_hardware), robot_controllers))
 
     return LaunchDescription(declared_arguments + nodes)
 

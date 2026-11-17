@@ -109,7 +109,6 @@ Heads up: **none of these are pinned**. There's no `requirements.txt` yet, so `p
 | Library | What uses it | Needs real Pi hardware? |
 | --- | --- | --- |
 | `numpy` | encoders, IMU, calibration | no |
-| `flask` | the telemetry web server | no |
 | `pygame` | the laptop gamepad script | no |
 | `tqdm`, `ahrs` | IMU calibration scripts | no |
 | `Adafruit-Blinka` (imported as `board`) | IMU | **yes**, needs real I²C |
@@ -165,7 +164,8 @@ ROCKO-env
 │       │   └── sensors/
 │       │       ├── icm20948/           IMU driver + calibration scripts
 │       │       └── quadEncoder/        Wheel encoder readers
-│       └── webserver/                  Small Flask app for live plots in a browser
+│       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
+│       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
 ├── rocko_interfaces/                   Custom message and service definitions
 └── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), the gamepad heartbeat (computer_joystick_heartbeat_test.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
 ```
@@ -256,6 +256,11 @@ only.
 To keep a recording of a test, add `record:=true` to any of the launches above
 (`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):
 [Record a run](docs/guides/record-a-run.md). Checked in the simulation only.
+
+To watch the robot's values from another machine, add `dashboard:=true` and open
+`http://<robot-ip>:8080` in a browser: [the dashboard](docs/guides/use-the-dashboard.md). It is off by
+default on the robot, because what it costs the Pi's CPU has not been measured. Checked in the
+simulation only.
 
 ### Handy debugging commands
 

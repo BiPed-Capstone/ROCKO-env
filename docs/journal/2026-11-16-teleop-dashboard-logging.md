@@ -18,19 +18,20 @@
 > | A | Ramp the drive commands in `DiffDriveController.py`; sim scenario `K` | done, awaiting robot ([Stage A](#stage-a--ramp-the-drive-commands)); [proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md) open |
 > | B | Keyboard driving from the laptop (`joystick/keyboard_teleop.py`) | done, awaiting robot ([Stage B](#stage-b--keyboard-driving)); guide: [drive-with-keyboard.md](../guides/drive-with-keyboard.md) |
 > | C | Bag recording on the Pi (`record:=true`), metadata, `tools/fetch_logs.sh` | done, awaiting robot ([Stage C](#stage-c--logging)); guide: [record-a-run.md](../guides/record-a-run.md) |
-> | D | Web dashboard (replaces the Flask stub), with Record/Stop | not started |
+> | D | Web dashboard (replaces the Flask stub), with Record/Stop | done, awaiting robot ([Stage D](#stage-d--web-dashboard)); guide: [use-the-dashboard.md](../guides/use-the-dashboard.md) |
 > | E | Foxglove layout and guides | not started |
 >
-> **Next action:** start stage D (the web dashboard). Facts already established: the container has no
-> Flask or aiohttp, so use the standard library (`http.server`, server-sent events), no CDN; the
-> existing stub is `rocko_env/rocko_env/webserver/` (Flask, subscribes to PWM topics nothing
-> publishes) and is to be replaced; Record/Stop must start **`RecordRun.py`** as a subprocess (stage C;
-> stop it with SIGINT) so the dashboard and `record:=true` record the same thing; the launch argument
-> is `dashboard:=`, default off on the robot launches and on in the sim; the dashboard must not be able
-> to drive the robot; extend `verify_tools.sh` with its check (compare its data endpoint with
-> `/dynamic_joint_states`, press Record and Stop over HTTP, judge the bag with `sim/check_recording.py`).
+> **Next action:** start stage E (Foxglove). Facts already established: `rocko.launch.py` and
+> `rocko_tank_mode.launch.py` start `foxglove_bridge` unconditionally (an `ExecuteProcess` of
+> `ros2 launch foxglove_bridge foxglove_bridge_launch.xml`; the same `ros2`-wrapper pattern that kept
+> the recorder alive in stage C, so check that it stops with the launch); `rocko_sim.launch.py` starts
+> none; the container has `foxglove_bridge` installed; recorded runs are MCAP, which Foxglove opens
+> directly; the topics worth a layout are the ones in `RECORDED_TOPICS` (`RecordRun.py`) and the
+> dashboard's table ([use-the-dashboard.md](../guides/use-the-dashboard.md)). Wanted: a committed
+> layout file, `foxglove:=true` on the sim launch, a guide, and a check that every topic the layout
+> names exists in the sim. An agent cannot open the Foxglove app: say so.
 >
-> **Uncommitted work when this was written:** none. Stages A, B and C are committed and pushed. (If
+> **Uncommitted work when this was written:** none. Stages A, B, C and D are committed and pushed. (If
 > `git status` is not clean or `git log origin/ai-forward..HEAD` lists commits, that did not happen:
 > the section of the first stage not marked done says what was in flight.)
 >
@@ -404,7 +405,65 @@ python3 -I tools/record_run_test.py
 
 ## Stage D — web dashboard
 
-Not started.
+Built on `e873e26`.
+
+### What changed
+
+| File | What and why |
+| --- | --- |
+| `rocko_env/webserver/Dashboard.py` (new) | A ROS node plus Python's built-in web server in one process. Subscribes to four 100 Hz topics **raw**, keeps the newest bytes, and decodes one message per topic 20 times a second; keeps 60 s of history; serves the page, `/api/state`, `/api/history`, `/api/runs` and a run's `.tar`; `POST /api/record/start` and `/stop` run and stop `RecordRun.py`. No publisher, no service client. Lowers its own priority (`os.nice(10)`) |
+| `rocko_env/webserver/dashboard.html` (new) | The page: tiles, three canvas plots, the record form, the run list, warnings. One file, no outside scripts or fonts |
+| `rocko_env/webserver/launch_dashboard.py` (new), the three launch files | `dashboard:=` (default `false` on the robot's two launch files, `true` in the sim) and `dashboard_port:=` |
+| `rocko_env/webserver/app.py`, `templates/` (deleted) | The Flask stub: it subscribed to two PWM topics nothing publishes, and its pages loaded a script from a CDN |
+| `CMakeLists.txt` | Installs `Dashboard.py` and the page (`share/rocko_env/web/`) |
+| `verify_tools.sh`, `sim/check_dashboard.py` (new) | The dashboard part of the check |
+| docs | [use-the-dashboard.md](../guides/use-the-dashboard.md); README (the `flask` dependency row is gone); the ladder; next-steps row 4.3 |
+
+**Why the standard library and polling:** the Pi's Python dependencies are unpinned (issue #14) and
+the container has no Flask, so nothing new is installed; a page that asks for JSON a few times a second
+is the simplest thing a student can read, against websockets or server-sent events.
+
+### Verification
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| 3 sim | `verify_tools.sh` | first run **FAIL**: `only 37 history points overlap the 6.0 s`. Real: decoding every 100 Hz message in Python, the node fell behind and its 20 Hz history timer ran at about 6 Hz. Fixed by raw subscriptions (decode the newest message at 20 Hz): 19.6 points a second. Second run **FAIL**: `/dynamic_joint_states has 122 messages` (the HTTP recording ran 4 s; now 7 s). Then PASS: `110 history points within 0.011 deg of the robot's pitch (start-up lean 2.00 deg seen); publishes nothing; Record/Stop made ..._dashboard (3.74 MB); foreign Origin, a second Record and a climbing path refused` |
+| 3 sim, by hand | the sim for 11 s, then `ps` | `Dashboard.py` 21 % of one core averaged since its start (start-up included); `DiffDriveController.py` 14 %, `Joystick.py` 10.5 %, `ros2_control_node` 19 %. One measurement, in the container, on a laptop: not the Pi |
+| by hand, laptop | the real `dashboard.html` served by a throwaway mock with made-up data, in a browser | tiles, plots, the record form, the run list and the warnings render; log text containing `<b>` is shown as text; Record and Stop enable each other; no console errors |
+| all | `tools/run_ladder.sh` (before the review fixes) | `RESULT: PASS`: build 0 warnings, urdf, both mocks, compile-only, `verify_sim.sh` (149 s), `verify_tools.sh (record, dashboard)` (34 s), scenarios `U I V K KB` pass with `S2b`, `AB` ok, every host test, hook tests, drift check, links |
+| 1 and 3 sim, after the review fixes | `build_ros.sh`; `verify_tools.sh` | build exit 0; `PASS (tools: record dashboard)` (the download is now streamed; a POST with a foreign `Host` is refused). The rest of the ladder was **not** re-run after the fixes: they touch only `Dashboard.py`, the page, `RecordRun.py`'s start-up order, `package.xml` and comments |
+| 4 robot | | **not run** |
+
+A fault on the way: stopped with the launch, the first raw-subscription version died with a
+`TypeError` from `deserialize_message`, because its timer ran once more after ROS had shut down.
+`sample()` now returns when `rclpy.ok()` is false.
+
+### Not verified — needs a human
+
+- Anything on the Pi, a phone, or over Wi-Fi.
+- **The dashboard's cost to the 100 Hz loop on the Pi.** Unknown; it is off by default on the robot for
+  that reason. Procedure: on a stand, run the same test with and without `dashboard:=true` and compare
+  the spread of cycle times in `/controller_manager/statistics/full` (record both runs with
+  `record:=true`). Do this before trusting a balance run that had the dashboard on.
+- The tipover tile reads log lines; if the dashboard starts after the trip it shows `armed`.
+- No login: anyone on the network can press Record and download runs.
+- The page's look was checked once, by eye, with made-up data; the real server's page was fetched by
+  the check but not rendered.
+
+### Review rounds
+
+| Round | Reviewer | Findings | Fixed / declined (why) |
+| --- | --- | --- | --- |
+| 1 | `ros2-control-reviewer` | 2 Medium, 5 Low. (M) a run's download was built whole in memory: hundreds of MB of RAM per download on the Pi, and a run still being recorded could be downloaded; (M) **the tipover tile said `armed` when the state was unknown** (no log line seen yet, or a trip logged before the dashboard started), and one wheel's re-arm cleared a trip the other still had: a safe-looking value on a safety display, finding C-2's mistake; (L) the Origin check could be passed by pointing a foreign domain name at the robot; (L) a negative `Content-Length` read without limit; (L) two races in stopping a recording, one of which could leave `ros2 bag record` running alone; (L) two comments about `ros2 run` contradicted each other; (L) three imports not declared in `package.xml` | All fixed: the tar is streamed and an open run is refused (409); the tile keeps a state per controller, shows `TRIPPED` if any is, and `no trip seen` when nothing is known; the `Host` header must be an IP address, `localhost` or the machine's own name (in the check); `0 <= length`; `ProcessLookupError` handled and `RecordRun.py` installs its signal handlers before starting the recorder; comment; three `exec_depend`s |
+| 1 | `explainability-reviewer` | 5 Medium, 5 Low: the log folder default copied from `RecordRun.py`; no recipe for adding a signal, and a comment naming a list that does not exist; signs and the rad/s against m/s difference not stated; the page's script had no outline and bare pixel and millisecond numbers; `WINDOW_S` against `HISTORY_S`; the tipover phrases copied from the C++ without saying so; a repeated "not measured" claim | Fixed (the constant is imported; a recipe in the code and the guide; signs marked "not verified on the robot"; named constants and a header in the script). **Declined:** moving the request handler out of `make_handler` (it works, is commented, and class attributes set from `main()` are no easier to follow) |
+| 1 | `docs-reviewer` | 2 Medium, 4 Low: `architecture/README.md` and `reproducing-results.md` still described the Flask app and a "webserver capture"; the banner's colours; ADR 0004 names "the telemetry webserver" | Fixed, except ADR 0004 (**declined**: an ADR is a record; its point, Python off the control path, still holds) |
+| 2 | not run | | The fixes were re-verified as the Verification table says but **not re-reviewed** |
+
+### Reproduce
+
+```bash
+tools/run_ladder.sh          # includes verify_tools.sh (record, dashboard)
+```
 
 ## Stage E — Foxglove
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Record one run of the robot: a rosbag (MCAP) plus a small file that says what was run.
 
-Started by the launch files when given record:=true. By hand, on the machine running the robot code, in a shell with the workspace sourced:
+Started by the launch files when given record:=true, and by the web dashboard's Record button
+(webserver/Dashboard.py). By hand, on the machine running the robot code, in a shell with the workspace sourced:
 
     ros2 run rocko_env RecordRun.py --label pitch_step --battery-v 12.1 --surface tile
 
@@ -174,16 +175,6 @@ def main():
 
     # start_new_session: the recorder is stopped by US (below), once, not also by the terminal's
     # Ctrl-C, so the bag is always closed the same way.
-    # preexec_fn: make sure the recorder LISTENS to SIGINT. A program started in the background by a
-    # script (or by some service managers) inherits "ignore SIGINT", and would then never close
-    # the bag when asked: seen in verify_tools.sh, where the bag had no metadata.yaml.
-    recorder = subprocess.Popen(
-        ["ros2", "bag", "record", "--storage", "mcap", "--output", os.path.join(run_dir, "bag"),
-         *RECORDED_TOPICS],
-        start_new_session=True,
-        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
-    print(f"RecordRun: recording to {run_dir}", flush=True)
-
     stop_reason = None   # why the recording ended, for run.yaml and the log
     failed = False       # True if it did not end the way it should (decides the exit status)
 
@@ -193,6 +184,18 @@ def main():
 
     signal.signal(signal.SIGINT, ask_to_stop)
     signal.signal(signal.SIGTERM, ask_to_stop)
+
+    # The handlers above are installed BEFORE the recorder is started: a stop that arrived in
+    # between would end this program with the recorder still running and nobody left to stop it.
+    # preexec_fn: make sure the recorder LISTENS to SIGINT. A program started in the background by a
+    # script (or by some service managers) inherits "ignore SIGINT", and would then never close
+    # the bag when asked: seen in verify_tools.sh, where the bag had no metadata.yaml.
+    recorder = subprocess.Popen(
+        ["ros2", "bag", "record", "--storage", "mcap", "--output", os.path.join(run_dir, "bag"),
+         *RECORDED_TOPICS],
+        start_new_session=True,
+        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+    print(f"RecordRun: recording to {run_dir}", flush=True)
 
     last_disk_check_s = time.monotonic()
     while recorder.poll() is None and stop_reason is None:

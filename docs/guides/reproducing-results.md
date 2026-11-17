@@ -26,7 +26,7 @@ Battery:       <volts at start, volts at end>
 Surface:       <carpet / tile / plywood / ...>
 Robot:         <which physical unit, if there is more than one>
 Payload:       <anything added or removed from the chassis>
-Logs:          <where the rosbag / webserver capture / video lives>
+Logs:          <where the recording (~/rocko_logs/<run folder>/) and any video live>
 Observed:      <what actually happened, in plain words>
 ```
 

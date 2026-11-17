@@ -27,6 +27,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 from rocko_env.recording.launch_recording import recording_arguments, recorder_process
+from rocko_env.webserver.launch_dashboard import dashboard_arguments, dashboard_node
 
 # Simulator settings that can be set from the command line, passed straight to the xacro (and from
 # there to SimPlant as <param>s). Each default MUST equal the xacro arg's default in
@@ -92,6 +93,9 @@ def generate_launch_description():
         declared_arguments.append(DeclareLaunchArgument(name, default_value=default, description=description))
     # record:=true records a rosbag and a run.yaml, as on the robot (docs/guides/record-a-run.md).
     declared_arguments += recording_arguments()
+    # The web dashboard (docs/guides/use-the-dashboard.md). On by default HERE, unlike on the robot:
+    # the simulation is where it can be tried at no risk to a balance loop.
+    declared_arguments += dashboard_arguments(default="true")
 
     teleop = LaunchConfiguration("teleop")
 
@@ -187,5 +191,6 @@ def generate_launch_description():
 
     # Only with record:=true. run.yaml says "sim", so a simulated run is never mistaken for the robot.
     nodes.append(recorder_process("rocko_sim.launch.py", "sim", robot_controllers))
+    nodes.append(dashboard_node("rocko_sim.launch.py", "sim", robot_controllers))
 
     return LaunchDescription(declared_arguments + nodes)

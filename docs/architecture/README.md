@@ -25,4 +25,7 @@ Honest list of gaps, so nobody assumes a missing page means a missing subsystem:
   calibration procedure, what the exported interfaces mean. See
   [`../claude-analysis/bno055-improvements.md`](../claude-analysis/bno055-improvements.md) for the
   known issues in the meantime.
-- **Telemetry webserver** — the Flask app in `rocko_env/rocko_env/webserver/`.
+- **Dashboard and recording** — `rocko_env/rocko_env/webserver/Dashboard.py` (standard library; the
+  Flask app it replaced is gone) and `rocko_env/rocko_env/recording/RecordRun.py`. No architecture page;
+  each guide ends with how its tool works: [use-the-dashboard.md](../guides/use-the-dashboard.md),
+  [record-a-run.md](../guides/record-a-run.md).

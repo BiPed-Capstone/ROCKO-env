@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROCKO dashboard</title>
+<!-- One file, no outside scripts or fonts: it must work on a network with no internet.
+     It asks the robot for /api/state and /api/history a few times a second and draws them.
+     Served by Dashboard.py; what each value means is in docs/guides/use-the-dashboard.md. -->
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2330; --dim:#667085; --line:#d9dee7;
+          --good:#18794e; --warn:#b54708; --bad:#b42318; --a:#1f6feb; --b:#d1491f; --c:#6b46c1; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --card:#1b2029; --ink:#e7eaf0; --dim:#98a2b3; --line:#2c3441;
+            --good:#3fb97f; --warn:#f0a243; --bad:#f97066; --a:#6aa6ff; --b:#ff8a5c; --c:#b69cf5; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
+         font:15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:14px; margin:0 0 8px; color:var(--dim); font-weight:600; }
+  .sub { color:var(--dim); margin-bottom:14px; }
+  .banner { padding:8px 12px; border-radius:8px; margin-bottom:12px; font-weight:600; display:none; }
+  .banner.bad { display:block; background:var(--bad); color:#fff; }
+  .banner.warn { display:block; background:var(--warn); color:#fff; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-bottom:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .value { font-size:24px; font-variant-numeric:tabular-nums; font-weight:600; }
+  .unit { font-size:13px; color:var(--dim); font-weight:400; }
+  .stale .value { color:var(--dim); }
+  .ok { color:var(--good); } .bad-text { color:var(--bad); } .warn-text { color:var(--warn); }
+  .plots { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:10px; margin-bottom:12px; }
+  canvas { width:100%; height:180px; display:block; }
+  .legend { font-size:12px; color:var(--dim); } .legend b { font-weight:600; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
+  label { font-size:12px; color:var(--dim); display:block; }
+  input { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px;
+          background:var(--bg); color:var(--ink); width:150px; }
+  button { font:inherit; font-weight:600; padding:7px 14px; border-radius:6px; border:1px solid var(--line);
+           background:var(--card); color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--a); color:#fff; border-color:var(--a); }
+  button.stop { background:var(--bad); color:#fff; border-color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
+  .logs { max-height:220px; overflow:auto; font:12px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  .two { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:10px; }
+</style>
+</head>
+<body>
+<h1>ROCKO</h1>
+<div class="sub" id="mode">connecting…</div>
+<div class="banner" id="banner"></div>
+
+<div class="grid" id="tiles"></div>
+
+<div class="plots">
+  <div class="card"><h2>Pitch [deg] (sign as the IMU reports it; not verified on the robot)</h2><canvas id="plot-pitch"></canvas>
+    <div class="legend"><b style="color:var(--a)">■</b> measured pitch &nbsp; <b style="color:var(--b)">■</b> target pitch (from the velocity loop)</div></div>
+  <div class="card"><h2>Speed [m/s]</h2><canvas id="plot-speed"></canvas>
+    <div class="legend"><b style="color:var(--a)">■</b> left wheel &nbsp; <b style="color:var(--c)">■</b> right wheel &nbsp; <b style="color:var(--b)">■</b> velocity reference</div></div>
+  <div class="card"><h2>Wheel command from the pitch loop [rad/s]</h2><canvas id="plot-command"></canvas>
+    <div class="legend"><b style="color:var(--a)">■</b> pitch loop output, before the feedforward is added</div></div>
+</div>
+
+<div class="two">
+  <div class="card">
+    <h2>Record a run</h2>
+    <div class="row">
+      <div><label for="label">label</label><input id="label" value="run" maxlength="60"></div>
+      <div><label for="battery">battery [V]</label><input id="battery" placeholder="12.1" maxlength="20"></div>
+      <div><label for="surface">surface</label><input id="surface" placeholder="tile" maxlength="60"></div>
+      <button class="primary" id="record">Record</button>
+      <button class="stop" id="stop" disabled>Stop</button>
+    </div>
+    <div class="sub" id="record-status" style="margin:8px 0"></div>
+    <table><thead><tr><th>run</th><th>size</th><th></th></tr></thead><tbody id="runs"></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Warnings and errors (newest first)</h2>
+    <div class="logs" id="logs"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// How this page works, top to bottom:
+//   every STATE_PERIOD_MS    ask the robot for /api/state, fill the tiles, the banner and the log;
+//   every HISTORY_PERIOD_MS  ask for the history points newer than the last one we have, redraw the plots;
+//   every RUNS_PERIOD_MS     ask for the list of recorded runs;
+//   Record / Stop            send one POST each; the robot's Dashboard.py starts or stops the recorder.
+// To show one more signal: Dashboard.py must send it under some name (see its *_values functions);
+// add a row with that name to TILES, and to a plot's list in PLOTS if it should be drawn.
+// The tiles: [key in /api/state values, title, unit, digits, which topic group must be fresh].
+const TILES = [
+  ["pitch_deg", "Pitch", "deg", 1, "joint_states"],
+  ["target_pitch_deg", "Target pitch", "deg", 1, "pitch_pid"],
+  ["pitch_rate_deg_s", "Pitch rate", "deg/s", 0, "joint_states"],
+  ["left_velocity_m_s", "Left wheel", "m/s", 2, "joint_states"],
+  ["right_velocity_m_s", "Right wheel", "m/s", 2, "joint_states"],
+  ["velocity_reference_m_s", "Velocity reference", "m/s", 2, "reference"],
+  ["wheel_command_rad_s", "Pitch loop output", "rad/s", 1, "pitch_pid"],
+];
+const PLOTS = [
+  ["plot-pitch", [["pitch_deg", "--a"], ["target_pitch_deg", "--b"]]],
+  ["plot-speed", [["left_velocity_m_s", "--a"], ["right_velocity_m_s", "--c"], ["velocity_reference_m_s", "--b"]]],
+  ["plot-command", [["wheel_command_rad_s", "--a"]]],
+];
+const WINDOW_S = 30;       // [s] how much history the plots show. Must be <= HISTORY_S in Dashboard.py (60 s)
+const KEEP_EXTRA_S = 5;    // [s] points kept beyond the window, so a redraw never starts with a gap
+const STATE_PERIOD_MS = 250, HISTORY_PERIOD_MS = 500, RUNS_PERIOD_MS = 5000;
+const LABEL_MARGIN_PX = 44; // room on a plot's left edge for the axis numbers
+
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+let history = [];          // [{t, key: value, ...}], oldest first
+let lastHistoryT = 0;
+let lastStateMs = 0;       // when the robot last answered
+
+function buildTiles() {
+  const parts = TILES.map(([key, title, unit]) =>
+    `<div class="card" id="tile-${key}"><h2>${title}</h2><div class="value"><span id="v-${key}">–</span> <span class="unit">${unit}</span></div></div>`);
+  parts.push(`<div class="card"><h2>Teleop link</h2><div class="value" id="v-link">–</div></div>`);
+  parts.push(`<div class="card"><h2>Tipover cutoff</h2><div class="value" id="v-tipover">–</div></div>`);
+  $("tiles").innerHTML = parts.join("");
+}
+
+function showState(state) {
+  lastStateMs = Date.now();
+  $("mode").textContent = `${state.launch || "launch not named"} · hardware: ${state.hardware || "not named"}`;
+  for (const [key, , , digits, group] of TILES) {
+    const value = state.values[key];
+    const age = state.age_s[group];
+    $("v-" + key).textContent = (value === null || value === undefined) ? "–" : value.toFixed(digits);
+    $("tile-" + key).classList.toggle("stale", age === undefined || age > state.stale_after_s);
+  }
+  const timedOut = state.values.command_timed_out;
+  $("v-link").innerHTML = timedOut === undefined ? "–" :
+    timedOut ? '<span class="warn-text">no commands</span>' : '<span class="ok">driving</span>';
+  const tripped = state.values.tipover_tripped;
+  // undefined = no trip or re-arm line seen since the dashboard started: NOT the same as "armed".
+  $("v-tipover").innerHTML = tripped === undefined ? '<span class="unit">no trip seen</span>' :
+    tripped ? '<span class="bad-text">TRIPPED</span>' : '<span class="ok">re-armed</span>';
+  const jointAge = state.age_s.joint_states;
+  const banner = $("banner");
+  if (tripped) { banner.className = "banner bad"; banner.textContent = "Tipover cutoff tripped: the wheels are stopped until someone re-arms it on the robot."; }
+  else if (jointAge === undefined || jointAge > state.stale_after_s) { banner.className = "banner warn"; banner.textContent = "No robot state is arriving: the controllers are not running, or have stopped."; }
+  else { banner.className = "banner"; }
+  $("logs").innerHTML = state.logs.slice().reverse().map(line => {
+    const time = new Date(line.t * 1000).toLocaleTimeString();
+    const cls = line.level === "WARN" ? "warn-text" : "bad-text";
+    return `<div><span class="${cls}">${time} ${line.level}</span> ${escapeHtml(line.node)}: ${escapeHtml(line.text)}</div>`;
+  }).join("") || '<span class="sub">none</span>';
+  $("record").disabled = state.recording.running;
+  $("stop").disabled = !state.recording.running;
+  if (state.recording.running) $("record-status").textContent = `recording "${state.recording.label}" …`;
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function drawPlot(canvasId, series) {
+  const canvas = $(canvasId), ratio = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  if (canvas.width !== width * ratio) { canvas.width = width * ratio; canvas.height = height * ratio; }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  // 1. The time window, and the lowest and highest value in it (the vertical range).
+  const now = history.length ? history[history.length - 1].t : 0;
+  const points = history.filter(p => p.t >= now - WINDOW_S);
+  let low = Infinity, high = -Infinity;
+  for (const p of points) for (const [key] of series) {
+    if (typeof p[key] === "number") { low = Math.min(low, p[key]); high = Math.max(high, p[key]); }
+  }
+  if (!isFinite(low)) { ctx.fillStyle = css("--dim"); ctx.fillText("no data yet", 8, 16); return; }
+  if (high - low < 1e-6) { high += 0.5; low -= 0.5; }       // a flat line still gets a visible band
+  const pad = (high - low) * 0.1; low -= pad; high += pad;   // 10 % of headroom above and below
+  // 2. The grid: three horizontal lines with their values, and the zero line if it is in view.
+  const left = LABEL_MARGIN_PX, bottom = height - 16;
+  const x = t => left + (t - (now - WINDOW_S)) / WINDOW_S * (width - left - 4);
+  const y = v => bottom - (v - low) / (high - low) * (bottom - 6);
+  ctx.strokeStyle = css("--line"); ctx.fillStyle = css("--dim"); ctx.lineWidth = 1; ctx.font = "11px system-ui";
+  for (const v of [low + pad, (low + high) / 2, high - pad]) {
+    ctx.beginPath(); ctx.moveTo(left, y(v)); ctx.lineTo(width - 4, y(v)); ctx.stroke();
+    ctx.fillText(v.toFixed(Math.abs(v) < 10 ? 2 : 0), 2, y(v) + 4);
+  }
+  if (low < 0 && high > 0) { ctx.strokeStyle = css("--dim"); ctx.beginPath(); ctx.moveTo(left, y(0)); ctx.lineTo(width - 4, y(0)); ctx.stroke(); }
+  ctx.fillText(`last ${WINDOW_S} s`, left, height - 3);
+  // 3. One line per signal.
+  ctx.lineWidth = 1.6;
+  for (const [key, colour] of series) {
+    ctx.strokeStyle = css(colour); ctx.beginPath();
+    let pen = false;
+    for (const p of points) {
+      if (typeof p[key] !== "number") { pen = false; continue; }   // a gap in the data is a gap in the line
+      if (pen) ctx.lineTo(x(p.t), y(p[key])); else { ctx.moveTo(x(p.t), y(p[key])); pen = true; }
+    }
+    ctx.stroke();
+  }
+}
+
+async function pollState() {
+  try { showState(await (await fetch("/api/state")).json()); }
+  catch (error) { /* shown by the "not answering" check below */ }
+  if (Date.now() - lastStateMs > 2000) {
+    $("banner").className = "banner bad";
+    $("banner").textContent = "The robot's dashboard is not answering. Is the launch still running, and is this machine on its network?";
+  }
+}
+
+async function pollHistory() {
+  try {
+    const fresh = await (await fetch("/api/history?since=" + lastHistoryT)).json();
+    if (fresh.length) {
+      history = history.concat(fresh);
+      lastHistoryT = fresh[fresh.length - 1].t;
+      const oldest = lastHistoryT - WINDOW_S - KEEP_EXTRA_S;
+      history = history.filter(p => p.t >= oldest);
+    }
+  } catch (error) { /* keep the old plot */ }
+  for (const [id, series] of PLOTS) drawPlot(id, series);
+}
+
+async function refreshRuns() {
+  try {
+    const runs = await (await fetch("/api/runs")).json();
+    $("runs").innerHTML = runs.map(run =>
+      `<tr><td>${escapeHtml(run.name)}${run.closed ? "" : ' <span class="warn-text">(open or not closed)</span>'}</td>` +
+      `<td>${run.size_mb} MB</td><td>${run.closed ? `<a href="/api/runs/${encodeURIComponent(run.name)}.tar">download</a>` : ""}</td></tr>`
+    ).join("") || '<tr><td colspan="3" class="sub">no runs recorded yet</td></tr>';
+  } catch (error) { /* try again later */ }
+}
+
+async function post(path, body) {
+  const response = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return response.json();
+}
+
+$("record").onclick = async () => {
+  $("record").disabled = true;
+  const answer = await post("/api/record/start", {label: $("label").value, battery_v: $("battery").value, surface: $("surface").value});
+  $("record-status").textContent = answer.ok ? "recording …" : "could not start: " + answer.message;
+  refreshRuns();
+};
+$("stop").onclick = async () => {
+  $("stop").disabled = true;
+  $("record-status").textContent = "closing the recording …";
+  const answer = await post("/api/record/stop", {});
+  $("record-status").textContent = answer.ok ? "stopped; the run is in the list below" : "could not stop: " + answer.message;
+  refreshRuns();
+};
+
+buildTiles();
+pollState(); pollHistory(); refreshRuns();
+setInterval(pollState, STATE_PERIOD_MS);
+setInterval(pollHistory, HISTORY_PERIOD_MS);
+setInterval(refreshRuns, RUNS_PERIOD_MS);
+</script>
+</body>
+</html>

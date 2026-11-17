@@ -159,8 +159,11 @@ install(PROGRAMS
   rocko_env/controllers/utils/RateLimiter.py
   rocko_env/controllers/joystick/Joystick.py
   rocko_env/recording/RecordRun.py
+  rocko_env/webserver/Dashboard.py
   DESTINATION lib/${PROJECT_NAME}
 )
+# The dashboard's one page; Dashboard.py reads it from share/rocko_env/web/.
+install(FILES rocko_env/webserver/dashboard.html DESTINATION share/${PROJECT_NAME}/web)
 
 ## EXPORTS
 ament_export_targets(export_rocko_env HAS_LIBRARY_TARGET)

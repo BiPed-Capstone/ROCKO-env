@@ -9,6 +9,7 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 | [`verify-in-container.md`](verify-in-container.md) | Building and checking a change on your laptop with no robot: build, static checks, the mock, and the simulated robot (`verify_sim.sh`) |
 | [`drive-with-keyboard.md`](drive-with-keyboard.md) | Driving the robot from a laptop keyboard instead of a gamepad: what to run, the keys, what stops the robot, what goes wrong |
 | [`record-a-run.md`](record-a-run.md) | Recording a run on the robot with `record:=true`: what is recorded, the `run.yaml` that describes it, copying runs to a laptop |
+| [`use-the-dashboard.md`](use-the-dashboard.md) | Watching the robot's values in a browser on another machine, and recording from the page (`dashboard:=true`) |
 | [`measure-inertia.md`](measure-inertia.md) | Measuring the robot (mass, centre of mass, inertia, wheel radius, motor constants, IMU delay, encoder scale) to replace the simulator's estimates |
 
 Building and running the robot code, and the Docker dev container, are in the
@@ -30,4 +31,3 @@ without the robot; it repeats only the commands and what to expect.
 
 - Bringing up the robot from cold: power-on order, network, finding the Pi's IP.
 - IMU calibration, start to finish.
-- Reading the telemetry webserver's plots.

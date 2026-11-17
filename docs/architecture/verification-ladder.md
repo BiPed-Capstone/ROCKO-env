@@ -219,7 +219,7 @@ trivially (seen, in a scratch copy; see the table of deliberate breaks below).
 ### The operator-tools check, `verify_tools.sh` (uses the Tier 3 simulation)
 
 `verify_tools.sh` (repo root, runs in the container, after a Tier 1 build) checks the tools around the
-robot against the simulated robot. Today that is recording. Run it from the repo root on the laptop:
+robot against the simulated robot: recording and the web dashboard. Run it from the repo root on the laptop:
 
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_tools.sh
@@ -228,8 +228,9 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 It starts `rocko_sim.launch.py record:=true`, lets it run 8 s, stops it with SIGINT sent to the launch
 process alone (Ctrl-C in a terminal signals every process at once, which hides a recorder the launch
 fails to stop), requires that nothing the launch started is still running, and reads the run folder with
-`sim/check_recording.py`. Exit 0 prints `PASS (tools: record)` after one `ok` line
-with the message count and the size; 1 is a failure (one `FAIL` line per problem, the folder is kept);
+`sim/check_recording.py`. Then it starts the launch again with the dashboard and runs
+`sim/check_dashboard.py` (below). Exit 0 prints `PASS (tools: record dashboard)` after an `ok` line per
+part; 1 is a failure (one `FAIL` line per problem, the folder is kept);
 2 means it could not run. It passes when exactly one run folder was made, its `run.yaml` holds the
 label, `sim`, the launch file, the battery and surface that were passed, a commit, and a config hash
 that matches the file, the bag was closed properly (`bag/metadata.yaml` exists, storage `mcap`), and every
@@ -242,8 +243,21 @@ started from a background script, so the bag was never closed: `bag/metadata.yam
 second real fault a reviewer found: started through `ros2 run`, the recorder never received the launch's
 stop and kept recording after it (`FAIL: processes outlived the launch`; fixed in `launch_recording.py`).
 
-It cannot show anything about the Pi: not that recording works there, and not what it costs the control
-loop or the SD card. `tools/record_run_test.py` (host, 3 checks, no ROS) covers the folder name, the
+**The dashboard part** starts the sim leaning 2 deg, so there is a pitch transient to compare, and passes
+when: the page loads and names no outside address; `/api/state` has fresh values and says `sim`; every
+pitch point in the dashboard's history is within 0.5 deg of the pitch the checker itself heard on
+`/dynamic_joint_states` at that moment, and the history shows the start-up lean (at least 1 deg, or two
+flat lines at zero would prove nothing); the dashboard node publishes on no topic but ROS's own two and
+has no service client; a POST from another site's `Origin`, a second Record and a path that climbs out of
+the log folder are refused; and Record then Stop over HTTP make one closed run, listed and downloadable,
+that `check_recording.py` accepts. Seen to fail (2026-11-16), each for a real fault since fixed: `only 37
+history points overlap the 6.0 s` (the node decoded every 100 Hz message in Python and fell behind: its
+history got about 6 points a second, not 20), and `/dynamic_joint_states has 122 messages` (a 4 s
+recording; the recorder needs about 3 s to find the topics). How the page looks is not checked here; it
+was looked at once in a browser with made-up data.
+
+It cannot show anything about the Pi: not that recording or the dashboard work there, and not what they
+cost the control loop or the SD card. `tools/record_run_test.py` (host, 3 checks, no ROS) covers the folder name, the
 contents of `run.yaml` and the refusal to record on a nearly full disk.
 
 ### The host unit test of the plant model (not a tier)
