@@ -16,19 +16,19 @@
 > | --- | --- | --- |
 > | 0 | Readiness review and the full ladder | done (this file, [Stage 0](#stage-0--readiness-review-2026-11-16)) |
 > | A | Ramp the drive commands in `DiffDriveController.py`; sim scenario `K` | done, awaiting robot ([Stage A](#stage-a--ramp-the-drive-commands)); [proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md) open |
-> | B | Keyboard driving from the laptop (`joystick/keyboard_teleop.py`) | not started |
+> | B | Keyboard driving from the laptop (`joystick/keyboard_teleop.py`) | done, awaiting robot ([Stage B](#stage-b--keyboard-driving)); guide: [drive-with-keyboard.md](../guides/drive-with-keyboard.md) |
 > | C | Bag recording on the Pi (`record:=true`), metadata, `tools/fetch_logs.sh` | not started |
 > | D | Web dashboard (replaces the Flask stub), with Record/Stop | not started |
 > | E | Foxglove layout and guides | not started |
 >
-> **Next action:** start stage B (keyboard driving). Read `joystick/computer_joystick.py`,
-> `Joystick.py` and `tools/computer_joystick_heartbeat_test.py` first. Note for B: the keyboard's
-> commands now pass through stage A's ramp, and `Joystick.py`'s deadband and `linear_scale` make the
-> smallest gamepad command 0.5 m/s, which is why B adds a "precise mode".
+> **Next action:** start stage C (logging). Read [reproducing-results.md](../guides/reproducing-results.md)
+> and the three launch files first. Facts already established: the container has `rosbag2`,
+> `rosbag2_storage_mcap` and `foxglove_bridge`, and has **no** Flask or aiohttp (so stage D uses the
+> standard library); `rocko_sim.launch.py` starts no `foxglove_bridge` today.
 >
-> **Uncommitted work when this was written:** `joystick/keyboard_teleop.py`, a first draft for stage
-> B, untested and not wired to anything (`Joystick.py` has no precise mode yet). Stage A is committed
-> (the commit after `8af19dd`) and pushed.
+> **Uncommitted work when this was written:** none. Stages A and B are committed and pushed. (If
+> `git status` is not clean or `git log origin/ai-forward..HEAD` lists commits, that did not happen:
+> the section of the first stage not marked done says what was in flight.)
 >
 > **Decisions the person made (2026-11-16), so nobody asks again:** keyboard = a laptop script on the
 > existing TCP protocol (not the browser, not ROS on the laptop); web view = a custom dashboard on the
@@ -238,7 +238,71 @@ K_MAX_LINEAR_ACCEL_M_S2=1000 tools/repeat_check.sh "scenarios K" 1    # must fai
 
 ## Stage B — keyboard driving
 
-Not started.
+Built on `f9fedbc`.
+
+### What changed
+
+| File | What and why |
+| --- | --- |
+| `joystick/keyboard_teleop.py` (new, laptop) | Standard library only. `KeyboardState` turns keys into a forward and a turn level (-5 to +5); `drive()` sends the gamepad's 40-byte packet on a change and every 0.05 s, and a stop on quit. It imports `pack` and the constants from `computer_joystick.py` instead of copying them |
+| `controllers/joystick/Joystick.py` | Precise mode: when button byte 15 is 1, the axis is multiplied by `precise_linear_scale_m_s` / `precise_angular_scale_m_s` (ROS parameters; defaults are named constants, **proposed**) with no expo curve and no deadband. Gamepad packets take the old path, unchanged |
+| `sim/scenario_checks.py`, `verify_sim.sh` | Scenario `KB`: the laptop script itself, with scripted keys, over TCP into the real `Joystick.py` |
+| `tools/keyboard_teleop_test.py` (new), `tools/teleop_watchdog_test.py` | Host tests of the keys and the sending loop, and of `Joystick.py`'s two mappings |
+| docs | The guide [drive-with-keyboard.md](../guides/drive-with-keyboard.md); README; the ladder; next-steps row 4.1; proposal 0012, decision 3 |
+
+**Why a button byte and not a second port or a new packet:** it needs no protocol change, an old
+`Joystick.py` simply ignores it, and the robot, not the laptop, decides how fast "full" is.
+**Why keys set a speed:** a terminal reports no key releases.
+
+### Verification
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| all | `tools/run_ladder.sh` | `RESULT: PASS` (build 0 warnings, urdf, both mocks, compile-only, `verify_sim.sh` 153 s, scenarios `U I V K KB` pass with `S2b`, `AB` ok, every host test, hook tests, drift check, links) |
+| 3 sim | `tools/repeat_check.sh "scenarios KB" 5` | pass 5 of 5; peak lean 5.30 to 5.37 deg for three presses (0.3 m/s) |
+| host | `tools/keyboard_teleop_test.py`; `tools/teleop_watchdog_test.py` | 5 of 5; 32 of 32 (4 and 31 before the review fixes) |
+| by hand, laptop | the script in a pseudo-terminal against a local TCP listener, keys `w`, `wa`, `q` | 19 packets of 40 bytes, forward axis 0, -0.2, -0.4, button 15 always set, last packet a stop, exit 0, terminal restored |
+| by hand, laptop, after the review fixes | the same, keys up-arrow, left-arrow, `ww`, Ctrl-C | 22 packets; forward axis 0, -0.2, -0.4 only; turn axis 0 only (the arrows did nothing); last packet a stop; exit 0 |
+| 3 sim, after the review fixes | `verify_sim.sh scenarios` | PASS: `U I V K KB` pass, `S2b` and `AB` ok |
+| 4 robot | | **not run** |
+
+Seen to fail: `KB` with the precise button not set (`FAIL: ... speeds off the 0.1 m/s grid [1.14, 2.49,
+4.27]`: the gamepad mapping) and with the precise scale doubled (`FAIL: 3 presses must command 0.3 m/s;
+the peak was 0.6`); the host tests with the heartbeat removed, with quit not zeroing, and with each of
+those two breaks.
+
+A mistake on the way: the first pseudo-terminal test hung. The cause was the test, which did not read
+the terminal's output, together with `tcsetattr(TCSADRAIN)` waiting for that output on exit. The script
+now restores the terminal with `TCSANOW`, and reads keys with `os.read` instead of `sys.stdin.read`
+(whose buffer could hold a second key back; plausible, not demonstrated).
+
+### Not verified — needs a human
+
+- Anything on the robot or over a real network, including whether the heartbeat keeps the 0.2 s
+  watchdog quiet over Wi-Fi (`KB` runs with a 1 s timeout, for the reason K does).
+- Turning: `a`/`d` reach `Joystick.py` (host test), but the sim is planar, so what a turn does to
+  balance is unknown, and the turn scale has no evidence behind it.
+- Windows. A real terminal beyond the one pseudo-terminal run.
+- Whether "positive `linear.x`" is forward on the robot (the keyboard follows the gamepad's signs).
+- Procedure: [drive-with-keyboard.md](../guides/drive-with-keyboard.md), first under the tethered
+  conditions of proposal 0008; proposal 0012 asks a person to confirm the speeds.
+
+### Review rounds
+
+| Round | Reviewer | Findings | Fixed / declined (why) |
+| --- | --- | --- | --- |
+| 1 | `ros2-control-reviewer` | 1 Medium, 3 Low. (M) an arrow key arrives as ESC `[` and a letter, and the letter was read as a key: up-arrow turned left and left-arrow turned **right**; (L) Ctrl-C raised `KeyboardInterrupt` and never sent the stop (the `\x03` branch was dead); (L) the precise scale parameters were not checked (a positive value reverses the keys); (L) `KB` did not check that the keyboard thread finished | All fixed: an ESC sequence is discarded (`read_key_from`, host test, red with the handling removed); `main()` sends a stop on Ctrl-C (seen in a pseudo-terminal: last packet zero, exit 0); a scale outside [-`MAX_PRECISE_SCALE_M_S`, 0) falls back to the default with an error (host test); `KB` exits 2 if the thread is still alive |
+| 1 | `explainability-reviewer` | 3 Medium, 4 Low: `check_keyboard_drive` too long; a cryptic flags expression; axis and button indices written in two files; `KB_STEP_M_S` derived by hand; "angular" for a value in m/s; a repeated port number; injected `now` | Fixed: `connect_when_listening` extracted, `watchdog_fired` named, comments say KB fails if the indices or the step drift, the unit comment. **Declined:** promoting `Joystick.py`'s `linear_axis`/`angular_axis` locals to constants (it edits the gamepad path for no behavior; KB guards the drift); dropping `now` (the host test uses it) |
+| 1 | `docs-reviewer` | 5 Low: a README scenario list; `--port` undocumented; the two laptop files must stay together; the 0.5 s replace rule; the HANDOFF box's "committed and pushed" | Fixed |
+| 2 | not run | | The fixes were re-verified (host tests 5 of 5 and 32 of 32, `verify_sim.sh scenarios` and the pseudo-terminal run below) but **not re-reviewed** |
+
+### Reproduce
+
+```bash
+tools/run_ladder.sh
+tools/repeat_check.sh "scenarios KB" 5
+python3 -I tools/keyboard_teleop_test.py
+```
 
 ## Stage C — logging
 

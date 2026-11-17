@@ -565,6 +565,53 @@ def test_bad_ramp_parameter_falls_back_to_default():
         check(any(level == "error" for level, _ in node.logger.lines), f"bad ramp limit {bad} must log an error")
 
 
+# --- Joystick: gamepad mapping and precise mode (keyboard) ---------------------------------------
+def twist_for(axes, buttons):
+    """What Joystick.convert_to_twist publishes for one gamepad message: (linear.x, angular.z)."""
+    js, gamepad = make_joystick_with_socket()
+    gamepad.close()
+    js.linear_scale, js.angular_scale, js.deadband = -10.0, -35.0, 0.05  # as Joystick.__init__ sets them
+    js.precise_linear_scale = joystick.Joystick.DEFAULT_PRECISE_LINEAR_SCALE_M_S
+    js.precise_angular_scale = joystick.Joystick.DEFAULT_PRECISE_ANGULAR_SCALE_M_S
+    js.robot_body_vector_updated_topic = FakePublisher("cmd_vel")
+    js.convert_to_twist(Msg(axes=axes, buttons=buttons))
+    sent = js.robot_body_vector_updated_topic.sent[-1].twist
+    return sent.linear.x, sent.angular.z
+
+
+def test_precise_mode_uses_the_low_scales_with_no_deadband_or_expo():
+    precise = [0] * 15 + [1]
+    linear, angular = twist_for([0.0, -0.2, 0, 0, 0, 0], precise)  # one keyboard step forward
+    check(abs(linear - 0.1) < 1e-9, f"one fifth of full axis must be 0.1 m/s forward, got {linear}")
+    check(angular == 0.0, "no turn was asked for")
+    linear, angular = twist_for([-1.0, -1.0, 0, 0, 0, 0], precise)  # full forward, full left
+    check(abs(linear - 0.5) < 1e-9 and abs(angular - 0.3) < 1e-9, "full axis must be the precise scales")
+    linear, angular = twist_for([0.02, 0.02, 0, 0, 0, 0], precise)
+    check(linear != 0.0 and angular != 0.0, "precise mode has no deadband: a small axis is a small command")
+
+
+def test_gamepad_mapping_is_unchanged_without_the_precise_button():
+    gamepad_buttons = [0] * 16
+    linear, angular = twist_for([0.0, -1.0, 0, 0, 0, 0], gamepad_buttons)
+    check(abs(linear - 10.0) < 1e-9, "full stick is still 10 'm/s' for a gamepad")
+    linear, _ = twist_for([0.0, -0.05, 0, 0, 0, 0], gamepad_buttons)
+    check(linear == 0.0, "the gamepad's deadband still applies")
+    # The other 15 buttons do not switch the mode.
+    linear, _ = twist_for([0.0, -1.0, 0, 0, 0, 0], [1] * 15 + [0])
+    check(abs(linear - 10.0) < 1e-9, "only button 15 selects precise mode")
+
+
+def test_precise_scale_parameter_is_bounded():
+    js, gamepad = make_joystick_with_socket()
+    gamepad.close()
+    default = joystick.Joystick.DEFAULT_PRECISE_LINEAR_SCALE_M_S
+    for value, expected in ((-0.2, -0.2), (-1.0, -1.0), (0.5, default), (0.0, default),
+                            (-1.5, default), (math.nan, default)):
+        js.get_parameter = lambda name, v=value: SimpleNamespace(value=v)
+        got = js.precise_scale("precise_linear_scale_m_s", default)
+        check(got == expected, f"precise scale {value} must give {expected}, got {got}")
+
+
 # --- runner -----------------------------------------------------------------------------
 def main():
     tests = [(name, fn) for name, fn in sorted(globals().items()) if name.startswith("test_") and callable(fn)]

@@ -9,7 +9,7 @@
 
 ## The change
 
-Two decisions. The first is already in the code as a proposed value; the second is not in the code.
+Three decisions. The first and third are in the code as proposed values; the second is not in the code.
 
 1. **Confirm or change `DEFAULT_MAX_LINEAR_ACCEL_M_S2`** in
    `rocko_env/rocko_env/controllers/diffdrive/DiffDriveController.py`. The value is written in the
@@ -20,6 +20,12 @@ Two decisions. The first is already in the code as a proposed value; the second 
    alternative: ramp them to zero at a limit of their own (a "stop" limit, probably larger than the drive
    limit). Check `C3` would then have to judge "ramping down by the deadline and zero by a later one"
    instead of "exactly zero".
+
+3. **Confirm or change the keyboard's speeds** (added in stage B): `DEFAULT_PRECISE_LINEAR_SCALE_M_S`
+   and `DEFAULT_PRECISE_ANGULAR_SCALE_M_S` in `rocko_env/rocko_env/controllers/joystick/Joystick.py`,
+   the forward speed and the wheel-speed difference that a full keyboard axis (five key presses) means.
+   The forward value was set to the speed scenario `K` drives the model at; the turn value has no
+   evidence behind it at all (the sim is planar).
 
 ## Why
 

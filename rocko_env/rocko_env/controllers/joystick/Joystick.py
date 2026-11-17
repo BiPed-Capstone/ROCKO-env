@@ -32,6 +32,25 @@ class Joystick(Node):
     # executor it shares) busy forever. Under a flood the backlog waits in the kernel's buffer and
     # the commands get older; DiffDriveController's watchdog only sees that commands still ARRIVE.
     MAX_BYTES_PER_TICK = 4096
+    # PRECISE MODE. A sender that sets this button byte to 1 asks for the low-speed mapping in
+    # convert_to_twist(): no expo curve, no deadband, and the precise_* scales below instead of
+    # linear_scale / angular_scale. joystick/keyboard_teleop.py sets it on every packet (it MUST use
+    # the same index). Why it exists: with the gamepad mapping the smallest non-zero command is
+    # 0.05 (deadband) x 10 (linear_scale) = 0.5 m/s, too coarse for key presses. A gamepad that
+    # happens to have a 16th button gets the slow mapping while it is held, which errs on the safe side.
+    PRECISE_BUTTON = 15
+    # Speeds a FULL axis (+/-1) means in precise mode. PROPOSED values, not tried on a robot.
+    # Negative for the same reason as linear_scale/angular_scale: a gamepad reports "forward" and
+    # "left" as negative axis values, and the keyboard script imitates that.
+    MAX_PRECISE_SCALE_M_S = 1.0               # [m/s] a precise_* parameter larger than this (or not
+                                              #   negative) is refused: the mode exists to be slow
+    DEFAULT_PRECISE_LINEAR_SCALE_M_S = -0.5   # [m/s] forward speed at full axis. The simulation's
+                                              #   scenario K drives the model at this speed.
+    DEFAULT_PRECISE_ANGULAR_SCALE_M_S = -0.3  # [m/s], NOT rad/s despite "angular": at full axis the
+                                              #   right wheel is commanded this much faster and the
+                                              #   left this much slower (a left turn);
+                                              #   DiffDriveController adds it to each wheel's speed.
+                                              #   NOT checked by any tier: the sim is planar.
 
     def __init__(self):
         super().__init__('joystick')
@@ -65,7 +84,26 @@ class Joystick(Node):
         self.linear_scale = -10.0  
         self.angular_scale = -35.0  
         self.deadband = 0.05 
+        # Precise mode's scales (see PRECISE_BUTTON). ROS parameters, so a launch file can lower
+        # them for a first test without editing this file.
+        self.declare_parameter('precise_linear_scale_m_s', self.DEFAULT_PRECISE_LINEAR_SCALE_M_S)
+        self.declare_parameter('precise_angular_scale_m_s', self.DEFAULT_PRECISE_ANGULAR_SCALE_M_S)
+        self.precise_linear_scale = self.precise_scale(
+            'precise_linear_scale_m_s', self.DEFAULT_PRECISE_LINEAR_SCALE_M_S)
+        self.precise_angular_scale = self.precise_scale(
+            'precise_angular_scale_m_s', self.DEFAULT_PRECISE_ANGULAR_SCALE_M_S)
 
+
+    def precise_scale(self, name, default):
+        """The parameter's value if it is in [-MAX_PRECISE_SCALE_M_S, 0), otherwise `default` with
+        an error. Positive would reverse the keys; large would make "precise" mode fast; NaN is
+        not a speed."""
+        value = self.get_parameter(name).value
+        if not (-self.MAX_PRECISE_SCALE_M_S <= value < 0.0):  # also rejects NaN
+            self.get_logger().error(
+                f"{name}={value} is not in [-{self.MAX_PRECISE_SCALE_M_S}, 0); using {default}")
+            return default
+        return value
 
     def receive_joystick_data(self):
         self.accept_new_client()
@@ -188,6 +226,14 @@ class Joystick(Node):
 
         linear_axis = 1
         angular_axis = 0
+        if msg.buttons[self.PRECISE_BUTTON] == 1:
+            # Precise mode (see PRECISE_BUTTON): the axis is used as it is. No expo curve and no
+            # deadband, because the keyboard sends exact steps, not a noisy stick.
+            twist.twist.linear.x = msg.axes[linear_axis] * self.precise_linear_scale
+            twist.twist.angular.z = msg.axes[angular_axis] * self.precise_angular_scale
+            self.robot_body_vector_updated_topic.publish(twist)
+            return
+
         # linear_value = msg.axes[linear_axis]
         # angular_value = msg.axes[angular_axis]
         linear_value  = expo_curve(msg.axes[linear_axis])

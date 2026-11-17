@@ -152,7 +152,7 @@ journal's HANDOFF box is the live status of this wave; a new session starts ther
 
 | # | Item | Who | Best check today | Status and what to know |
 | --- | --- | --- | --- | --- |
-| 4.1 | **Keyboard driving** from the laptop over the existing TCP gamepad protocol | agent + robot | T3 (a sim launch with the real `Joystick.py`), host test | open |
+| 4.1 | **Keyboard driving** from the laptop over the existing TCP gamepad protocol | agent + robot | T3 scenario `KB` (the model, the real `Joystick.py` over TCP); host tests `tools/keyboard_teleop_test.py` and `tools/teleop_watchdog_test.py` (not tiers) | done, awaiting robot. `joystick/keyboard_teleop.py` (standard library; keys set a speed in steps, space stops) sends the gamepad's packet with button byte 15 set; `Joystick.py` then uses the precise scales (**proposed**, in that file) with no expo curve or deadband; the gamepad's mapping is unchanged. Not checked: a robot, a real network, turning (planar sim), Windows. Guide: [drive-with-keyboard.md](guides/drive-with-keyboard.md); evidence: the [journal](journal/2026-11-16-teleop-dashboard-logging.md) |
 | 4.2 | **Logging**: `record:=true` on the launch files, a bag in MCAP on the Pi with a metadata file | agent + robot | T3 (record in the sim, every listed topic has messages) | open |
 | 4.3 | **Web dashboard** on the Pi (replaces the Flask stub), with Record/Stop | agent + robot | T3 (the sim; its values against `/dynamic_joint_states`) | open. Its CPU cost on the Pi cannot be measured here |
 | 4.4 | **Foxglove layout** and guides | agent + human (a person looks at it in Foxglove) | T3 (every topic the layout names exists in the sim) | open |
@@ -197,6 +197,8 @@ Not agent work. Each is recorded where it was raised.
   | `rearm_max_pitch_deg` | 10.0 deg (a read-only ROS parameter; must be above 0 and below `tipover_pitch_deg`) | `add_feedforward_controller_parameters.yaml` |
   | `command_timeout_s` | 0.2 s (a ROS parameter of `DiffDriveController.py`; 20 control cycles, 4 x `HEARTBEAT_PERIOD_S`) | `DiffDriveController.py`, `rocko_sim.launch.py` |
   | `HEARTBEAT_PERIOD_S` | 0.05 s | `joystick/computer_joystick.py` |
+  | `DEFAULT_MAX_LINEAR_ACCEL_M_S2` | see the file ([proposal 0012](proposals/0012-command-ramp-and-watchdog-step.md)) | `DiffDriveController.py` |
+  | `DEFAULT_PRECISE_LINEAR_SCALE_M_S`, `DEFAULT_PRECISE_ANGULAR_SCALE_M_S` | see the file (keyboard driving; proposal 0012) | `Joystick.py` |
   | `kMaxAbsPitchRateDegS` | 2000 deg/s | `ICM20948.hpp` |
   | `read_pitch_rate` | false (the gyro is not read; set true together with the gated YAML change) | `ICM20948.py` |
   | `pitch_rate_axis`, `pitch_rate_sign` | 0, +1 (guesses, not values to confirm: to be measured) | `ICM20948.py` |
