@@ -93,7 +93,7 @@
 #
 # THE BALANCE SCENARIOS (bootstrap-sim step 7) are a SEPARATE MODE, never part of the default run:
 #   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
-#   ... verify_sim.sh scenarios U S2b      (only some, any of U I V S2b AB)
+#   ... verify_sim.sh scenarios U S2b      (only some, any of U I V K S2b AB)
 # The default run above checks plumbing and safeguards and must stay green; the scenarios ask whether
 # the controllers HOLD the simulated robot, which with the current gains they do not. Kept apart so a
 # red scenario never hides a red plumbing check, and a green plumbing run never claims balance.
@@ -106,6 +106,9 @@
 #   V    follow a velocity step: teleop:=true, a fake gamepad (the C3 path) sends linear.x = 0, then
 #        V_STEP_M_S. PASS if the mean measured wheel velocity reaches V_RISE_FRACTION of the step
 #        within V_RISE_S, overshoots by at most V_OVERSHOOT_PCT, and |pitch| stays under V_PITCH_DEG.
+#   K    a key press: V again with a step of K_STEP_M_S, the smallest non-zero command the gamepad
+#        path can produce (Joystick.py: 0.05 deadband x linear_scale 10). Finding H-13: sent as a bare
+#        step it leans the model 21 deg. Same limits as V except the rise time (K_RISE_S).
 #   S2b  the verifier's own check: U again with pitch_sign:=+1 (the pitch loop's sign flipped). U must
 #        FAIL, and for the right reason: the wiring is up and |pitch| reaches TIPOVER_DEG within
 #        S2B_FALL_S of release. S2b is "ok" only then.
@@ -129,7 +132,7 @@
 set -uo pipefail
 
 ALL_CHECKS="S1 S2a H4 C3 C2 H6 FF"
-ALL_SCENARIOS="U I V S2b AB"
+ALL_SCENARIOS="U I V K S2b AB"
 mode=checks
 known="$ALL_CHECKS"
 if [ "${1:-}" = scenarios ]; then
@@ -287,6 +290,13 @@ V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x th
                        #   itself is unchanged since it was committed before tuning
 V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degree in steady state; 10
                        #   deg is far below the 35 deg trip and equals the re-arm band (H-4)
+K_STEP_M_S=0.5         # [m/s] the smallest non-zero gamepad command: Joystick.py zeroes anything under
+                       #   its 0.05 deadband and multiplies by linear_scale (10). A key press or a
+                       #   nudged stick asks for at least this (finding H-13)
+K_RISE_S=5.0           # [s after the step] to reach 90 % of K_STEP_M_S. Longer than V_RISE_S because
+                       #   DiffDriveController ramps the command, and five times the step needs more
+                       #   lean time. Set on 2026-11-16 BEFORE the ramp was written or tuned; the
+                       #   overshoot and pitch limits are V's, unchanged
 S2B_FALL_S=1.0         # [s] with the pitch loop's sign flipped the linear model diverges at ~20 /s
                        #   (1.218 per cycle, sim-plant.md §7.2): 2 -> 35 deg in ~0.2 s. 1.0 s is
                        #   generous and far below AB_MIN_FALL_S, so a slow drift cannot pass for it
@@ -959,6 +969,27 @@ scenario_velocity_step() {
   end_run
 }
 
+# K: scenario V with a larger step and a longer rise time (see K_STEP_M_S). Everything else is V.
+scenario_key_press() {
+  new_run "K-key-press"
+  start_check velocity-step --launch-log "$dir/launch.log" --tipover-deg "$TIPOVER_SCENARIO_DEG" \
+    --speed-m-s "$K_STEP_M_S" --before-s "$V_BEFORE_S" --step-s "$V_STEP_S" \
+    --rise-fraction "$V_RISE_FRACTION" --rise-within-s "$K_RISE_S" \
+    --max-overshoot-pct "$V_OVERSHOOT_PCT" --max-pitch-deg "$V_PITCH_DEG"
+  local pid="$check_pid"
+  # teleop:=true: the real DiffDriveController.py turns the fake gamepad into the velocity reference
+  # and the feedforwards, as on the robot (no zero_reference here).
+  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN"
+  wait_for_wiring
+  wait "$pid"; local status=$?
+  sed 's/^/    /' "$dir/check.log"
+  note_tipover
+  local failures=(); scenario_launch_problems
+  if [ ${#failures[@]} -ne 0 ]; then scenario_report K "COULD NOT JUDGE" "${failures[*]}"
+  else scenario_report K "$(verdict_of "$status")" "$(scenario_reason)"; fi
+  end_run
+}
+
 # S2b: U with the pitch loop's sign flipped (pitch_sign:=+1 flips the sign of the pitch the
 # controllers read, which is the same as negating both pitch gains, without a second gain file).
 scenario_s2b() {
@@ -1004,15 +1035,16 @@ scenario_as_built() {
 verdict_of() { case "$1" in 0) echo PASS ;; 1) echo FAIL ;; *) echo "COULD NOT JUDGE" ;; esac; }
 
 if [ "$mode" = scenarios ]; then
-  echo "SCENARIOS ($selected). ASSUMPTION for U, I, V, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN (not checked on"
+  echo "SCENARIOS ($selected). ASSUMPTION for U, I, V, K, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN (not checked on"
   echo "the robot; proposal 0006). Gains: rocko_sim_controllers.yaml as it is. A model with ESTIMATED parameters."
   [ ${#overrides[@]} -ne 0 ] && echo "MODEL CHANGED for this run (SIM_PLANT_OVERRIDES): ${overrides[*]}"
   wants U && scenario_upright
   wants I && scenario_impulse
   wants V && scenario_velocity_step
+  wants K && scenario_key_press
   wants S2b && scenario_s2b
   wants AB && scenario_as_built
-  echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN assumed for U, I, V, S2b; AB uses +1):"
+  echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN assumed for U, I, V, K, S2b; AB uses +1):"
   echo "  (ok = the check behaved as designed: S2b ok means U failed for the right reason; AB ok means the robot fell slowly as H-12 predicts)"
   if [ "$SCENARIOS_EXPECTED_RED" -eq 1 ]; then
     echo "  (red U/I/V are expected until the sim gains are tuned; red S2b or AB is not)"

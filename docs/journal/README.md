@@ -85,3 +85,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-07 | [Stage 5c review fixes (a tuned gain on every joint; simpler sim scripts) and why V could not judge two `d+` runs](2026-11-07-stage5c-review-fixes.md) |
 | 2026-11-07 | [Make check H4 wait for the re-arm refusal instead of recording a fixed 16 s (and re-send a lost re-arm)](2026-11-07-h4-verifier-fix.md) |
 | 2026-11-08 | [Measure what the agent loop cost, and change the tools and instructions that drive it](2026-11-08-agent-loop-efficiency.md) |
+| 2026-11-16 | [Readiness review, ramped drive commands (H-13), keyboard driving, a web dashboard and logging](2026-11-16-teleop-dashboard-logging.md) (in progress: its HANDOFF box says which stage is next) |
