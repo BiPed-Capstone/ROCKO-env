@@ -17,16 +17,20 @@
 > | 0 | Readiness review and the full ladder | done (this file, [Stage 0](#stage-0--readiness-review-2026-11-16)) |
 > | A | Ramp the drive commands in `DiffDriveController.py`; sim scenario `K` | done, awaiting robot ([Stage A](#stage-a--ramp-the-drive-commands)); [proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md) open |
 > | B | Keyboard driving from the laptop (`joystick/keyboard_teleop.py`) | done, awaiting robot ([Stage B](#stage-b--keyboard-driving)); guide: [drive-with-keyboard.md](../guides/drive-with-keyboard.md) |
-> | C | Bag recording on the Pi (`record:=true`), metadata, `tools/fetch_logs.sh` | not started |
+> | C | Bag recording on the Pi (`record:=true`), metadata, `tools/fetch_logs.sh` | done, awaiting robot ([Stage C](#stage-c--logging)); guide: [record-a-run.md](../guides/record-a-run.md) |
 > | D | Web dashboard (replaces the Flask stub), with Record/Stop | not started |
 > | E | Foxglove layout and guides | not started |
 >
-> **Next action:** start stage C (logging). Read [reproducing-results.md](../guides/reproducing-results.md)
-> and the three launch files first. Facts already established: the container has `rosbag2`,
-> `rosbag2_storage_mcap` and `foxglove_bridge`, and has **no** Flask or aiohttp (so stage D uses the
-> standard library); `rocko_sim.launch.py` starts no `foxglove_bridge` today.
+> **Next action:** start stage D (the web dashboard). Facts already established: the container has no
+> Flask or aiohttp, so use the standard library (`http.server`, server-sent events), no CDN; the
+> existing stub is `rocko_env/rocko_env/webserver/` (Flask, subscribes to PWM topics nothing
+> publishes) and is to be replaced; Record/Stop must start **`RecordRun.py`** as a subprocess (stage C;
+> stop it with SIGINT) so the dashboard and `record:=true` record the same thing; the launch argument
+> is `dashboard:=`, default off on the robot launches and on in the sim; the dashboard must not be able
+> to drive the robot; extend `verify_tools.sh` with its check (compare its data endpoint with
+> `/dynamic_joint_states`, press Record and Stop over HTTP, judge the bag with `sim/check_recording.py`).
 >
-> **Uncommitted work when this was written:** none. Stages A and B are committed and pushed. (If
+> **Uncommitted work when this was written:** none. Stages A, B and C are committed and pushed. (If
 > `git status` is not clean or `git log origin/ai-forward..HEAD` lists commits, that did not happen:
 > the section of the first stage not marked done says what was in flight.)
 >
@@ -306,7 +310,97 @@ python3 -I tools/keyboard_teleop_test.py
 
 ## Stage C — logging
 
-Not started.
+Built on `9e8ecae`.
+
+### What changed
+
+| File | What and why |
+| --- | --- |
+| `rocko_env/recording/RecordRun.py` (new) | A plain program, not a node and not on the control path. Makes `<log_root>/<time>_<label>/`, writes `run.yaml` (commit and whether the tree is dirty, launch, `real`/`mock`/`sim`, the config's path and SHA-256, battery, surface; `not recorded` for anything left out), runs `ros2 bag record --storage mcap` on `RECORDED_TOPICS`, stops it with SIGINT so the bag is closed, and refuses to start or stops under 500 MB free |
+| `rocko_env/recording/launch_recording.py` (new) | The `record`, `record_label`, `battery_v`, `surface`, `log_root` arguments and the recorder action, shared by the three launch files so they cannot drift |
+| `rocko.launch.py`, `rocko_tank_mode.launch.py`, `rocko_sim.launch.py` | Use the above. `record` defaults to `false`: a plain launch is unchanged |
+| `CMakeLists.txt`, `package.xml` | Install `RecordRun.py`; `ros2bag` and `rosbag2_storage_mcap` as run dependencies |
+| `verify_tools.sh` (new), `sim/check_recording.py` (new) | The check: record in the sim, stop like Ctrl-C, judge the run folder |
+| `tools/record_run_test.py` (new), `tools/fetch_logs.sh` (new), `tools/run_ladder.sh` | Host test; `rsync` the Pi's runs to a laptop; the ladder runs `verify_tools.sh` |
+| docs | [record-a-run.md](../guides/record-a-run.md); `reproducing-results.md` now points at `record:=true`; the ladder; README; next-steps row 4.2 |
+
+**Why one program and not `ros2 bag record` in each launch file:** the dashboard's Record button
+(stage D) has to record the same topics and write the same `run.yaml`, so the list and the metadata
+live in one place.
+
+### Verification
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| 3 sim | `verify_tools.sh` | first run **FAIL**, a real fault: `bag/metadata.yaml is missing`. Started from a background script the recorder inherited "ignore SIGINT" and never closed the bag; `RecordRun.py` now resets it for the child. Then PASS: 5587 messages in 7.4 s, 5.17 MB (42 MB per minute, one measurement, in the container), `/dynamic_joint_states` 712 |
+| host | `tools/record_run_test.py` | 3 of 3 |
+| all | `tools/run_ladder.sh` | every step passed **except** `verify_sim.sh scenarios`: V failed (overshoot 46.0 %). See the next section |
+| 3 sim, after the V fixes | `tools/repeat_check.sh "scenarios V" 10`; `tools/repeat_check.sh scenarios 2` | pass 10 of 10 (overshoot 12.4 to 17.4 %); pass 2 of 2 |
+| all, after the review fixes | `tools/run_ladder.sh` | `RESULT: PASS`: build 0 warnings, urdf, both mocks, compile-only, `verify_sim.sh` (152 s), `verify_tools.sh`, scenarios `U I V K KB` pass with `S2b`, `AB` ok, every host test, hook tests, drift check, links |
+| 4 robot | | **not run** |
+
+Seen to fail: `verify_tools.sh` on its first run (above); with `/left_feedforward` commented out of
+`RECORDED_TOPICS` (`FAIL  /left_feedforward has no messages in the bag`); and on the `ros2 run` wiring once
+it signalled the launch alone (review round 1).
+
+Two mistakes on the way, both mine. A check that signalled the launch process printed `FAIL: the launch
+did not shut down` for the wrong reason: a `ros2 launch` started in the background by a script ignores
+SIGINT altogether (a plain launch, no recording, was still running 15 s after the signal), so the check now
+starts it with `env --default-signal=INT`. And two clean-up commands killed themselves, because
+`pkill -f <pattern>` matched their own command line: the trap `tools/repeat_check.sh` was written to avoid.
+
+### A red V, and its two causes
+
+Stage C did not touch V's path, but the ladder's V failed, and a red result stays red until a cause is
+found (`CLAUDE.md` §12). `tools/repeat_check.sh "scenarios V" 10` then failed 4 of 10.
+
+1. **Three of the four (47.9, 52.4, 52.6 %) and the ladder's (46.0 %): the teleop watchdog fired
+   mid-step.** Each of those logs has the note `command_timed_out went True while the gamepad was
+   driving`; no passing run but one has it (25.9 %). The cause of the trip is the harness (the fake
+   gamepad or the node stalls about 0.3 s in the container). The reason it now fails V is **stage A's
+   ramp**: before it, a trip was a one-cycle dip (zero, then the step again); with it, the command
+   restarts from zero and ramps for 0.29 s, a second transient. This is the same disturbance as
+   proposal 0012's decision 2, seen from V. **Fix (the check, not the robot's code):** V is launched
+   with the 1 s timeout K and KB already use (renamed `STEP_WATCHDOG_S`) and exits 2 if the watchdog
+   fires anyway. Stage A should have done this for V when it did it for K.
+2. **The fourth (34.9 %; then one at 70.7 % in the next ten): the overshoot metric, not the model.**
+   The exported samples of those runs peaked at 19.1 and 17.2 %. `velocity_from_true_periods` takes the
+   gap between two message stamps as the cycle's length. In both runs one message was stamped late: gaps
+   of 17.1 then 2.6 ms, and 17.8 then 1.4 ms, each pair adding up to two normal cycles. A normal
+   cycle's travel divided by 1.4 ms read as a sevenfold speed. **Fix:** a gap shorter than 10 ms is
+   taken as one nominal period. Replayed on the kept samples: 70.7 % becomes 14.3 %, 34.9 % becomes
+   14.0 %, and a genuine watchdog-lurch run stays at 51.0 % (was 52.4 %). The 30 % limit is unchanged.
+
+After both: V 10 of 10, the scenarios mode 2 of 2. Not done: the sweep (`sim/parameter_sweep.py`) was not
+re-run with the changed metric, so its tallies in the ladder are from the metric of 2026-11-07.
+
+### Not verified — needs a human
+
+- Anything on the Pi: that the recorder finds `ros2`, `git` and the checkout there, that
+  `rosbag2_storage_mcap` is installed, and that `fetch_logs.sh` works (it was only syntax-checked:
+  there is no robot to copy from).
+- **What recording costs the 100 Hz loop and the SD card on the Pi.** Unknown. The procedure: run the
+  same stand test twice, with and without `record:=true`, and compare the spread of cycle times
+  (`ros2 topic echo /controller_manager/statistics/full`, or the recording itself for the run that has
+  one). Until then a recorded balance run may not be representative.
+- The low-disk stop while recording (only the refusal at start has a test).
+- `tools/record_run_test.py` was shown to fail on one deliberate break only (the label not cut to 60 characters).
+
+### Review rounds
+
+| Round | Reviewer | Findings | Fixed / declined (why) |
+| --- | --- | --- | --- |
+| 1 | `ros2-control-reviewer` | 1 High, 1 Medium, 2 Low. **(H) the recorder did not stop with the launch.** Launch started it as `ros2 run rocko_env RecordRun.py` and signals only that `ros2 run` process, which does not pass the signal on; except for Ctrl-C in a terminal (which signals everything), `RecordRun.py` and `ros2 bag record` kept running with the bag open until the disk guard. `verify_tools.sh` hid it by signalling the whole process group. (M) `fetch_logs.sh` used an `rsync` option macOS's rsync does not have. (L) `use_mock_hardware:=True` was labelled `real`. (L) launch's 5 s grace was shorter than the recorder's 15 s | All fixed. `verify_tools.sh` now signals the launch process alone and fails if anything it started is still running: **red on the old wiring** (`FAIL: processes outlived the launch`, listing `RecordRun.py` and `ros2 bag record`), green after `launch_recording.py` starts the recorder with `launch_ros`'s `Node` and a 20 s grace. `--progress` for rsync (the option is accepted on this Mac; no copy was made: there is no robot). `True` and `1` count as mock |
+| 1 | `explainability-reviewer` | 4 Medium, 5 Low: the exit status came from searching the stop message for words; a dict used only to be mutated; the log folder default written three times; the docstring named a dashboard button that does not exist yet; dates a day ahead (the container's clock is UTC); `STEP_WATCHDOG_S` placed among K's constants; the `mock`/`real` expression copied into two launch files; a duplicated comment; no hint on editing the topic list | All fixed (`failed` flag; the default lives in `RecordRun.py`; `real_or_mock()` in the shared module; dates are local, 2026-11-16) |
+| 1 | `docs-reviewer` | 3 Medium, 3 Low: a hand-started recorder leaves launch, hardware and config hash `not recorded` and the guide did not say so; `verify_tools.sh` missing from `verify-in-container.md` and the `build-verify` skill; the HANDOFF box said done while the review was pending; `rsync` needed on both machines; proposal 0008 still says `ros2 bag record -a`; dates | Fixed, except proposal 0008 (**declined**: a proposal is a record of what was proposed; switch it to `record:=true` when it is next revised) |
+| 2 | not run | | The fixes were re-verified by `tools/run_ladder.sh` (result in the Verification table) but **not re-reviewed** |
+
+### Reproduce
+
+```bash
+tools/run_ladder.sh          # includes verify_tools.sh
+python3 -I tools/record_run_test.py
+```
 
 ## Stage D — web dashboard
 

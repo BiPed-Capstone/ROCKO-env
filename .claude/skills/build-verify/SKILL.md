@@ -158,6 +158,7 @@ crashes lets the edit through. If you changed `.githooks/`, run `.githooks/test-
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh        # balancing
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh tank   # tank mode
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_tools.sh       # operator tools (record:=true) against the sim; what it proves is in the ladder
 ```
 
 Success prints `PASS (balance, mock hardware): all controllers active, ...` and exits 0. On failure

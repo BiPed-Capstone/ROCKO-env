@@ -725,6 +725,7 @@ def velocity_from_true_periods(samples):
     sweep re-run: about -16 ms in the container). A step FORWARD would look like a late cycle and be
     corrected as one, removing a jump that is not there; nothing here can tell them apart (only
     sub-millisecond forward steps were seen, worth under 1 % of the step for 0.2 s).
+    A message stamped late is handled in the loop below (a gap shorter than the nominal period).
 
     The replica, per cycle (sim-plant.md §3.7), with a = REPLICA_FILTER_ALPHA:
         left  = (1 - a) * filter + a * travel / 0.01     (exported as the left wheel's velocity)
@@ -751,6 +752,12 @@ def velocity_from_true_periods(samples):
     not_one_cycle = 0
     for before, s in zip(samples, samples[1:]):
         travel_m, period_s = s.position_m - before.position_m, s.t_s - before.t_s
+        # A gap SHORTER than the nominal period is not a short cycle: the 100 Hz loop does not run
+        # early. It is the previous message having been stamped late (seen 2026-11-16: gaps of 17.8
+        # then 1.4 ms, two on-time cycles). Dividing a normal cycle's travel by 1.4 ms read as a
+        # sevenfold speed and failed V at 70.7 % while the exported samples peaked at 17.2 %. So a
+        # short gap is taken as one nominal period (no correction from it).
+        period_s = max(period_s, REPLICA_ASSUMED_PERIOD_S)
         # One replica cycle from the previous sample's state (its right velocity is the filter):
         left = (1 - a) * before.right_velocity_m_s + a * travel_m / REPLICA_ASSUMED_PERIOD_S
         if abs(0.5 * (left + (1 - a) * left) - s.mean_velocity_m_s) <= REPLAY_TOLERANCE_M_S:

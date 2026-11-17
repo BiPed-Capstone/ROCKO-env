@@ -36,6 +36,9 @@
   <exec_depend>rviz2</exec_depend>
   <exec_depend>xacro</exec_depend>
   <exec_depend>foxglove_bridge</exec_depend>
+  <!-- record:=true (RecordRun.py) runs `ros2 bag record` and writes MCAP -->
+  <exec_depend>ros2bag</exec_depend>
+  <exec_depend>rosbag2_storage_mcap</exec_depend>
 
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>launch_testing_ros</test_depend>

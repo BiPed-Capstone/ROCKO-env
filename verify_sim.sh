@@ -299,16 +299,15 @@ V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x th
                        #   itself is unchanged since it was committed before tuning
 V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degree in steady state; 10
                        #   deg is far below the 35 deg trip and equals the re-arm band (H-4)
-K_STEP_M_S=0.5         # [m/s] the smallest non-zero gamepad command: Joystick.py zeroes anything under
-                       #   its 0.05 deadband and multiplies by linear_scale (10). A key press or a
-                       #   nudged stick asks for at least this (finding H-13)
-K_RISE_S=5.0           # [s after the step] to reach 90 % of K_STEP_M_S. Longer than V_RISE_S because
-                       #   DiffDriveController ramps the command, and five times the step needs more
-                       #   lean time. Set on 2026-11-16 BEFORE the ramp was written or tuned; the
-                       #   overshoot and pitch limits are V's, unchanged
-K_WATCHDOG_S=1.0       # [s] the teleop watchdog's timeout for K's launch only (the robot's is 0.2 s):
-                       #   long enough that a ~0.3 s container stall does not fire it mid-step. If it
-                       #   fires anyway, K exits 2 (could not judge)
+# --- shared by the scenarios that drive through the teleop path (V, K, KB) ---
+STEP_WATCHDOG_S=1.0    # [s] the teleop watchdog's timeout for the launches of V, K and KB only (the
+                       #   robot's is 0.2 s). These scenarios judge how the cascade follows a HELD
+                       #   command; check C3 owns the watchdog. In the container the fake gamepad or
+                       #   the node stalls ~0.3 s in about one run in three, the 0.2 s watchdog fires,
+                       #   and the command becomes a step to zero and a second ramp: V then overshoots
+                       #   ~50 % (3 of 10 runs, 2026-11-16). 1 s rides through such a stall. If the
+                       #   watchdog fires anyway, the scenario exits 2 (could not judge)
+# --- KB and K ---
 KB_PRESSES=3           # "w" pressed three times: 3 x KB_STEP_M_S = 0.3 m/s, inside the range V (0.1) and
                        #   K (0.5) already cover
 KB_STEP_M_S=0.1        # [m/s] what one press must add: Joystick.py's precise scale (0.5 m/s at full
@@ -318,6 +317,13 @@ KB_BEFORE_S=1.0        # [s after release] the first press
 KB_PRESS_GAP_S=0.3     # [s] between presses, about as fast as a person taps a key
 KB_HOLD_S=4.0          # [s] the top speed is held (the ramp needs 0.3 / 0.35 = 0.9 s of it)
 KB_AFTER_S=3.0         # [s] recorded after space, so the stop is seen to hold
+K_STEP_M_S=0.5         # [m/s] the smallest non-zero gamepad command: Joystick.py zeroes anything under
+                       #   its 0.05 deadband and multiplies by linear_scale (10). A key press or a
+                       #   nudged stick asks for at least this (finding H-13)
+K_RISE_S=5.0           # [s after the step] to reach 90 % of K_STEP_M_S. Longer than V_RISE_S because
+                       #   DiffDriveController ramps the command, and five times the step needs more
+                       #   lean time. Set on 2026-11-16 BEFORE the ramp was written or tuned; the
+                       #   overshoot and pitch limits are V's, unchanged
 # K_MAX_LINEAR_ACCEL_M_S2 [m/s^2]: optional, from the ENVIRONMENT, not set here. Overrides the command
                        #   ramp for K's launch only; unset = the launch default. 1000 = ramp
                        #   effectively off, which must make K fail
@@ -978,11 +984,14 @@ scenario_velocity_step() {
   start_check velocity-step --launch-log "$dir/launch.log" --tipover-deg "$TIPOVER_SCENARIO_DEG" \
     --speed-m-s "$V_STEP_M_S" --before-s "$V_BEFORE_S" --step-s "$V_STEP_S" \
     --rise-fraction "$V_RISE_FRACTION" --rise-within-s "$V_RISE_S" \
-    --max-overshoot-pct "$V_OVERSHOOT_PCT" --max-pitch-deg "$V_PITCH_DEG"
+    --max-overshoot-pct "$V_OVERSHOOT_PCT" --max-pitch-deg "$V_PITCH_DEG" \
+    --watchdog-trip-cannot-judge
   local pid="$check_pid"
   # teleop:=true: the real DiffDriveController.py turns the fake gamepad into the velocity reference
   # and the feedforwards, as on the robot (no zero_reference here).
-  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN"
+  # command_timeout_s:=STEP_WATCHDOG_S: see its comment (since 2026-11-16, as K and KB).
+  echo "    V: teleop watchdog timeout ${STEP_WATCHDOG_S} s for this launch (the robot's is ${TELEOP_TIMEOUT_S} s)"
+  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$STEP_WATCHDOG_S"
   wait_for_wiring
   wait "$pid"; local status=$?
   sed 's/^/    /' "$dir/check.log"
@@ -997,12 +1006,13 @@ scenario_velocity_step() {
 # watchdog timeout for K's reason; the heartbeat's timing is checked by tools/keyboard_teleop_test.py.
 scenario_keyboard() {
   new_run "KB-keyboard"
+  echo "    KB: teleop watchdog timeout ${STEP_WATCHDOG_S} s for this launch (the robot's is ${TELEOP_TIMEOUT_S} s)"
   start_check keyboard-drive --launch-log "$dir/launch.log" --tipover-deg "$TIPOVER_SCENARIO_DEG" \
     --presses "$KB_PRESSES" --step-m-s "$KB_STEP_M_S" --before-s "$KB_BEFORE_S" \
     --press-gap-s "$KB_PRESS_GAP_S" --hold-s "$KB_HOLD_S" --after-s "$KB_AFTER_S" \
     --max-pitch-deg "$V_PITCH_DEG"
   local pid="$check_pid"
-  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$K_WATCHDOG_S"
+  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$STEP_WATCHDOG_S"
   wait_for_wiring
   wait "$pid"; local status=$?
   sed 's/^/    /' "$dir/check.log"
@@ -1017,7 +1027,7 @@ scenario_keyboard() {
 scenario_key_press() {
   new_run "K-key-press"
   # Say what K ran with, next to its verdict: neither is the robot's value by default-and-silence.
-  echo "    K: teleop watchdog timeout ${K_WATCHDOG_S} s for this launch (the robot's is ${TELEOP_TIMEOUT_S} s)"
+  echo "    K: teleop watchdog timeout ${STEP_WATCHDOG_S} s for this launch (the robot's is ${TELEOP_TIMEOUT_S} s)"
   if [ -n "${K_MAX_LINEAR_ACCEL_M_S2:-}" ]; then
     echo "    RAMP CHANGED for this run (K_MAX_LINEAR_ACCEL_M_S2): ${K_MAX_LINEAR_ACCEL_M_S2} m/s^2, not the launch default"
   fi
@@ -1029,10 +1039,10 @@ scenario_key_press() {
   local pid="$check_pid"
   # teleop:=true: the real DiffDriveController.py turns the fake gamepad into the velocity reference
   # and the feedforwards, as on the robot (no zero_reference here).
-  # command_timeout_s:=K_WATCHDOG_S: K is about the ramp, and check C3 owns the watchdog. With the
+  # command_timeout_s:=STEP_WATCHDOG_S: K is about the ramp, and check C3 owns the watchdog. With the
   # robot's 0.2 s the watchdog often fired mid-drive, because the container stalls the fake gamepad
   # or the node for ~0.3 s; each such run could not be judged. K_MAX_LINEAR_ACCEL_M_S2: see its comment.
-  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$K_WATCHDOG_S" \
+  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$STEP_WATCHDOG_S" \
     ${K_MAX_LINEAR_ACCEL_M_S2:+max_linear_accel_m_s2:="$K_MAX_LINEAR_ACCEL_M_S2"}
   wait_for_wiring
   wait "$pid"; local status=$?

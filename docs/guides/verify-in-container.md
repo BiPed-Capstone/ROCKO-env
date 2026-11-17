@@ -210,6 +210,7 @@ throwaway repository and remote in a temporary folder and never touches this one
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh tank
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_tools.sh        # the operator tools (recording), against the simulated robot; see the ladder
 ```
 
 What happens: it launches ROCKO with `use_mock_hardware:=true`, waits for every controller that

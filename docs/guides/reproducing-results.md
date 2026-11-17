@@ -48,24 +48,18 @@ Observed:      <what actually happened, in plain words>
 
 ## Capturing the run
 
+Add `record:=true` to the launch. It records the robot's signals and writes a `run.yaml` holding the
+commit, the launch file, the config and the battery voltage and surface you give it, so most of the
+block above is filled in for you:
+
 ```bash
 # On the Pi, in a terminal with the workspace sourced.
-# Record everything, so a question you did not think to ask is still answerable later.
-ros2 bag record -a -o ~/rocko_logs/$(date +%Y%m%d_%H%M%S)_describe-the-test
+ros2 launch rocko_env rocko.launch.py record:=true record_label:=describe_the_test battery_v:=12.1 surface:=tile
 ```
 
-Narrower, if `-a` is too much for the SD card:
-
-```bash
-ros2 bag record -o ~/rocko_logs/$(date +%Y%m%d_%H%M%S)_pitch_step \
-  /left_feedforward /right_feedforward /joint_states /dynamic_joint_states
-```
-
-Check what exists before recording — topic names drift:
-
-```bash
-ros2 topic list
-```
+What is recorded, where it goes, and how to copy it to a laptop: [Record a run](record-a-run.md).
+To record a topic that is not on its list, `ros2 bag record -o <folder> <topic> ...` still works by hand;
+check `ros2 topic list` first, because topic names drift.
 
 Video of the robot is worth as much as the bag for balance work. Oscillation frequency is obvious in
 a video and hard to see in a plot.

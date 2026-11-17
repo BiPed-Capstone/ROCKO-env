@@ -176,7 +176,7 @@ lean rate), **V** (follow a 0.1 m/s velocity step sent through the real `DiffDri
 (since 2026-11-16, finding H-13: V with a 0.5 m/s step, the smallest non-zero command the gamepad path can
 send, and 5 s to reach 90 %; red with the command ramp off, `K_MAX_LINEAR_ACCEL_M_S2=1000`; launched
 with a 1 s watchdog timeout instead of the robot's 0.2 s, because K is about the ramp and a container
-stall fired the watchdog mid-step in about 1 run in 3; if it fires anyway K exits 2, could not judge;
+stall fired the watchdog mid-step in about 1 run in 3 (`STEP_WATCHDOG_S`, also used by V and KB); if it fires anyway K exits 2, could not judge;
 [journal](../journal/2026-11-16-teleop-dashboard-logging.md)), **KB** (since 2026-11-16: the laptop script `joystick/keyboard_teleop.py`
 connects over TCP to the real `Joystick.py` and "presses" `w` three times, holds, presses space, then
 `q`; it passes if `Joystick.py` publishes exactly 0.1, 0.2 and 0.3 m/s, the velocity reference follows and
@@ -207,8 +207,44 @@ the peak of the same velocity recomputed with each cycle's real length (from the
 the highest exported sample is still printed. With it: 20 of 20 nominal runs pass (15.9-24.5 %; exported
 18.6-30.7 %) and the corner `m+h+k−d+` still fails 3 of 3 (46.5-46.8 %)
 ([journal](../journal/2026-11-07-c3-v-verifier-noise.md)).
+**Two more changes to V on 2026-11-16, limit unchanged** ([journal](../journal/2026-11-16-teleop-dashboard-logging.md#a-red-v-and-its-two-causes)):
+V is launched with the 1 s watchdog timeout K and KB use (`STEP_WATCHDOG_S`) and exits 2 if the watchdog fires
+anyway, because since the command ramp a watchdog trip mid-step (a harness stall) is a step to zero and a
+second ramp, which overshoots about 50 %; and the true-cycle-length velocity takes a stamp gap shorter than
+10 ms as one nominal period, because such a gap is a late-stamped message, not a short cycle (it had read
+70.7 % where the exported samples peaked at 17.2 %).
 U starts at 2 deg on purpose: from exactly upright the model's equilibrium is exact, and U passes
 trivially (seen, in a scratch copy; see the table of deliberate breaks below).
+
+### The operator-tools check, `verify_tools.sh` (uses the Tier 3 simulation)
+
+`verify_tools.sh` (repo root, runs in the container, after a Tier 1 build) checks the tools around the
+robot against the simulated robot. Today that is recording. Run it from the repo root on the laptop:
+
+```bash
+docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_tools.sh
+```
+
+It starts `rocko_sim.launch.py record:=true`, lets it run 8 s, stops it with SIGINT sent to the launch
+process alone (Ctrl-C in a terminal signals every process at once, which hides a recorder the launch
+fails to stop), requires that nothing the launch started is still running, and reads the run folder with
+`sim/check_recording.py`. Exit 0 prints `PASS (tools: record)` after one `ok` line
+with the message count and the size; 1 is a failure (one `FAIL` line per problem, the folder is kept);
+2 means it could not run. It passes when exactly one run folder was made, its `run.yaml` holds the
+label, `sim`, the launch file, the battery and surface that were passed, a commit, and a config hash
+that matches the file, the bag was closed properly (`bag/metadata.yaml` exists, storage `mcap`), and every
+topic in the script's `REQUIRED_TOPICS` has messages (`/dynamic_joint_states` at least 200).
+
+Seen to fail (2026-11-16): on its first run, for a real fault (the recorder ignored the stop signal when
+started from a background script, so the bag was never closed: `bag/metadata.yaml is missing`; fixed in
+`RecordRun.py`); with `/left_feedforward` commented out of the recorder's list
+(`FAIL  /left_feedforward has no messages in the bag`); and, once it signalled the launch alone, for a
+second real fault a reviewer found: started through `ros2 run`, the recorder never received the launch's
+stop and kept recording after it (`FAIL: processes outlived the launch`; fixed in `launch_recording.py`).
+
+It cannot show anything about the Pi: not that recording works there, and not what it costs the control
+loop or the SD card. `tools/record_run_test.py` (host, 3 checks, no ROS) covers the folder name, the
+contents of `run.yaml` and the refusal to record on a nearly full disk.
 
 ### The host unit test of the plant model (not a tier)
 

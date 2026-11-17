@@ -22,6 +22,8 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
+from rocko_env.recording.launch_recording import real_or_mock, recording_arguments, recorder_process
+
 def generate_launch_description():
     # Declare arguments
     declared_arguments = []
@@ -47,6 +49,9 @@ def generate_launch_description():
             ),
         )
     )
+
+    # record:=true records a rosbag and a run.yaml (docs/guides/record-a-run.md). Off by default.
+    declared_arguments += recording_arguments()
 
     # Initialize Arguments
     gui = LaunchConfiguration("gui")
@@ -159,6 +164,10 @@ def generate_launch_description():
         encoders,
         joystick,
     ]
+
+    # Only with record:=true. "mock" or "real" goes into run.yaml so a mock run is never mistaken
+    # for a measurement.
+    nodes.append(recorder_process("rocko_tank_mode.launch.py", real_or_mock(use_mock_hardware), robot_controllers))
 
     return LaunchDescription(declared_arguments + nodes)
 

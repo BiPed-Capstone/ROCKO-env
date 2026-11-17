@@ -253,6 +253,10 @@ connection, at low speeds, with nothing but Python 3 on the laptop:
 [Drive the robot from a laptop keyboard](docs/guides/drive-with-keyboard.md). Checked in the simulation
 only.
 
+To keep a recording of a test, add `record:=true` to any of the launches above
+(`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):
+[Record a run](docs/guides/record-a-run.md). Checked in the simulation only.
+
 ### Handy debugging commands
 
 ```bash

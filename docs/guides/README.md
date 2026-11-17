@@ -8,6 +8,7 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 | [`reproducing-results.md`](reproducing-results.md) | Recording a result so someone else gets the same number |
 | [`verify-in-container.md`](verify-in-container.md) | Building and checking a change on your laptop with no robot: build, static checks, the mock, and the simulated robot (`verify_sim.sh`) |
 | [`drive-with-keyboard.md`](drive-with-keyboard.md) | Driving the robot from a laptop keyboard instead of a gamepad: what to run, the keys, what stops the robot, what goes wrong |
+| [`record-a-run.md`](record-a-run.md) | Recording a run on the robot with `record:=true`: what is recorded, the `run.yaml` that describes it, copying runs to a laptop |
 | [`measure-inertia.md`](measure-inertia.md) | Measuring the robot (mass, centre of mass, inertia, wheel radius, motor constants, IMU delay, encoder scale) to replace the simulator's estimates |
 
 Building and running the robot code, and the Docker dev container, are in the
