@@ -20,6 +20,7 @@ change it, press space, or quit.
 What stops the robot if this laptop or the network dies: the packet below is resent every
 HEARTBEAT_PERIOD_S; when the robot hears nothing for 0.2 s it commands zero speed by itself.
 """
+
 import argparse
 import os
 import select
@@ -27,19 +28,25 @@ import socket
 import sys
 import time
 
-from computer_joystick import HEARTBEAT_PERIOD_S, NUM_AXES, NUM_BUTTONS, ROCKO_PORT, pack
+from computer_joystick import (
+    HEARTBEAT_PERIOD_S,
+    NUM_AXES,
+    NUM_BUTTONS,
+    ROCKO_PORT,
+    pack,
+)
 
 # Which parts of the gamepad packet the robot's Joystick.py reads. MUST match Joystick.py; they are
 # written in both files because the laptop has no copy of the robot's code. The simulation check
 # KB (verify_sim.sh scenarios KB) fails if the two drift apart.
-TURN_AXIS = 0          # Joystick.convert_to_twist: angular_axis
-FORWARD_AXIS = 1       # Joystick.convert_to_twist: linear_axis
-PRECISE_BUTTON = 15    # Joystick.PRECISE_BUTTON: 1 = "precise mode", see Joystick.py
+TURN_AXIS = 0  # Joystick.convert_to_twist: angular_axis
+FORWARD_AXIS = 1  # Joystick.convert_to_twist: linear_axis
+PRECISE_BUTTON = 15  # Joystick.PRECISE_BUTTON: 1 = "precise mode", see Joystick.py
 
 # Each w/s/a/d press moves the level by one; the axis sent is level / STEPS_TO_FULL, so it stays in
 # [-1, 1]. What speed a full axis means is decided ON THE ROBOT (Joystick.py's precise_* parameters),
 # so the laptop cannot ask for more than the robot allows.
-STEPS_TO_FULL = 5
+STEPS_TO_FULL = 10
 
 HELP = "w/s: forward/back   a/d: left/right   space: stop   q: quit"
 
@@ -67,7 +74,10 @@ class KeyboardState:
         elif key == " ":
             self.forward_level = 0
             self.turn_level = 0
-        elif key in ("q", "\x04"):  # q, Ctrl-D. (Ctrl-C never arrives as a key: see main().)
+        elif key in (
+            "q",
+            "\x04",
+        ):  # q, Ctrl-D. (Ctrl-C never arrives as a key: see main().)
             self.forward_level = 0
             self.turn_level = 0
             self.quit = True
@@ -81,7 +91,7 @@ class KeyboardState:
         axes[FORWARD_AXIS] = -self.forward_level / STEPS_TO_FULL
         axes[TURN_AXIS] = -self.turn_level / STEPS_TO_FULL
         buttons = [0] * NUM_BUTTONS
-        buttons[PRECISE_BUTTON] = 1
+        buttons[PRECISE_BUTTON] = 0
         return pack(axes, buttons)
 
 
@@ -125,7 +135,9 @@ def read_key_from(fd, timeout_s):
         return None
     key = os.read(fd, 1).decode(errors="ignore")
     if key == "\x1b":
-        while select.select([fd], [], [], 0.01)[0]:  # the rest follows within a millisecond
+        while select.select([fd], [], [], 0.01)[
+            0
+        ]:  # the rest follows within a millisecond
             if not os.read(fd, 16):
                 break  # the terminal closed
         return None
@@ -142,26 +154,37 @@ def terminal_key_reader():
     saved = termios.tcgetattr(fd)
     tty.setcbreak(fd)
 
-    return (lambda timeout_s: read_key_from(fd, timeout_s)), lambda: termios.tcsetattr(fd, termios.TCSANOW, saved)
+    return (lambda timeout_s: read_key_from(fd, timeout_s)), lambda: termios.tcsetattr(
+        fd, termios.TCSANOW, saved
+    )
 
 
 def show_levels(state):
     sys.stdout.write(
-        f"\rforward {state.forward_level:+d}/{STEPS_TO_FULL}   left {state.turn_level:+d}/{STEPS_TO_FULL}   ")
+        f"\rforward {state.forward_level:+d}/{STEPS_TO_FULL}   left {state.turn_level:+d}/{STEPS_TO_FULL}   "
+    )
     sys.stdout.flush()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Drive ROCKO from the keyboard. " + HELP)
+    parser = argparse.ArgumentParser(
+        description="Drive ROCKO from the keyboard. " + HELP
+    )
     parser.add_argument("host", help="the robot's IP address or hostname")
-    parser.add_argument("--port", type=int, default=ROCKO_PORT, help="Joystick.py's TCP port")
+    parser.add_argument(
+        "--port", type=int, default=ROCKO_PORT, help="Joystick.py's TCP port"
+    )
     args = parser.parse_args()
     if not sys.stdin.isatty():
-        sys.exit("keyboard_teleop.py needs a terminal: run it directly, not through a pipe.")
+        sys.exit(
+            "keyboard_teleop.py needs a terminal: run it directly, not through a pipe."
+        )
 
     sock = socket.create_connection((args.host, args.port), timeout=5.0)
     sock.settimeout(None)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # send each small packet at once
+    sock.setsockopt(
+        socket.IPPROTO_TCP, socket.TCP_NODELAY, 1
+    )  # send each small packet at once
     print(f"Connected to {args.host}:{args.port}.  {HELP}")
     read_key, restore_terminal = terminal_key_reader()
     try:
