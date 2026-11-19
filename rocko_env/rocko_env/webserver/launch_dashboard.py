@@ -15,8 +15,9 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def dashboard_arguments(default):
-    """The launch arguments about the dashboard. `default` is "false" on the robot's launch files:
-    what the dashboard costs the Pi's CPU while the 100 Hz loop runs has not been measured."""
+    """The launch arguments about the dashboard. `default` is "false" in rocko.launch.py:
+    what the dashboard costs the Pi's CPU while the 100 Hz loop runs has not been measured. It is "true"
+    in tank mode (no balance loop) and in the simulation."""
     return [
         DeclareLaunchArgument(
             "dashboard", default_value=default,

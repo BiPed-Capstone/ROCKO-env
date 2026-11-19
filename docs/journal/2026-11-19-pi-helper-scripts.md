@@ -80,3 +80,21 @@ scripts avoid the question by running every `ros2` command as root.
 tools/run_ladder.sh --no-sim
 bash tools/pi_scripts_test.sh
 ```
+
+## Later the same day: tank mode starts the dashboard by default
+
+The owner's edit to `rocko_tank_mode.launch.py` (kept at their request) changes `dashboard_arguments(default=...)`
+from `"false"` to `"true"`; the rest of that diff is re-wrapping (checked: the Python syntax trees of the old and new
+file differ only in that one string). `rocko.launch.py` stays `"false"`. The comment in the launch file, the
+`launch_dashboard.py` and `Dashboard.py` docstrings, the README, `use-the-dashboard.md` and `next-steps.md` row 4.3
+now say so.
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| 0 | `verify_urdf.sh` | PASS |
+| 2 | `verify_mock.sh tank` (starts the dashboard beside the controllers) | PASS |
+| review | `ros2-control-reviewer` | no behavior finding; three stale sentences, fixed |
+| 4 robot | | not run. The dashboard's CPU cost on the Pi is unmeasured, and the page has no login |
+
+`joystick/keyboard_teleop.py` has an uncommitted edit by the owner (`STEPS_TO_FULL` 5 to 10, plus re-wrapping). It is
+**not** in this commit, and `drive-with-keyboard.md` still says five steps; update both together when it settles.

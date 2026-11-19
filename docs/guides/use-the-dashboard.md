@@ -6,17 +6,22 @@ controllers are asking for, warnings) and to start and stop a recording without 
 **What has been checked:** the dashboard was run against the simulated robot (`verify_tools.sh`, in
 [the verification ladder](../architecture/verification-ladder.md)), and the page was looked at once in
 a browser with made-up data. **It has not been run on the Pi.** What it costs the Pi's CPU while the
-100 Hz balance loop runs is not known; that is why it is **off by default on the robot**. Read
+100 Hz balance loop runs is not known; that is why it is **off by default in balancing mode**
+(`rocko.launch.py`). **Tank mode starts it by default** (there is no balance loop to disturb; the
+CPU cost there was not measured either). Read
 [What is not known](#what-is-not-known) before using it during a balance test.
 
 ## Start it
 
-On the **Pi**, from the repo root (`~/ROCKO-env`), add `dashboard:=true` to the launch. `pi/launch.sh`
+On the **Pi**, from the repo root (`~/ROCKO-env`), add `dashboard:=true` to a balancing launch. `pi/launch.sh`
 runs it as root with the environment set up ([Run ROCKO on the Pi](run-on-the-pi.md)):
 
 ```bash
 pi/launch.sh balance dashboard:=true
 ```
+
+Tank mode needs no argument: `pi/launch.sh tank` starts the dashboard, and `pi/launch.sh tank
+dashboard:=false` leaves it out.
 
 Success looks like this line in the launch output:
 
@@ -74,7 +79,7 @@ runs. Use it on the lab's own network, not on a network you do not trust.
 
 | You see | Why | Do |
 | --- | --- | --- |
-| The browser cannot connect | The launch was started without `dashboard:=true`; the address is wrong; the machines are on different networks; a firewall blocks port 8080 | Check the launch output for the `dashboard: open ...` line; `ping <robot-ip>` |
+| The browser cannot connect | A balancing launch was started without `dashboard:=true` (tank mode starts it unless `dashboard:=false`); the address is wrong; the machines are on different networks; a firewall blocks port 8080 | Check the launch output for the `dashboard: open ...` line; `ping <robot-ip>` |
 | `OSError: [Errno 98] Address already in use` in the launch output | Another program, or a dashboard left from an earlier launch, has the port | `dashboard_port:=8081`, or stop the other program |
 | Every value is a grey dash, amber bar on top | The controllers have not started, or have stopped | `ros2 control list_controllers` in a `pi/rocko_shell.sh` terminal on the Pi |
 | Pitch rate is a dash | The IMU node does not read the gyro by default | Expected; see next-steps row 1.2 |

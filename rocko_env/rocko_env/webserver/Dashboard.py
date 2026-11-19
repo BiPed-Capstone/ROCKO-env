@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The robot's web dashboard: live values in a browser on another machine, and Record / Stop.
 
-Started by the launch files with dashboard:=true. Then, on any machine on the same network, open
+Started by tank mode and the simulation by default, and by rocko.launch.py with dashboard:=true. Then, on any machine on the same network, open
 
     http://<robot-ip>:8080
 

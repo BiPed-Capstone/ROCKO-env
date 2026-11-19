@@ -139,7 +139,32 @@ wiring check for your purposes.
 4. Record the outcome in the format from [reproducing results](../guides/reproducing-results.md):
    commit SHA, launch file and arguments, battery voltage, surface, where the log went.
 
-**Bench results:** (to be filled in)
+**Bench results** (reported in chat by the owner on 2026-11-19; the wheels were off the ground; step 3 of
+the guide). Duty = `6.5957 x + 2`, truncated:
+
+| | left wheel | right wheel |
+| --- | --- | --- |
+| Lowest `linear.x` at which it turned | 4.0 m/s | 3.0 m/s |
+| Duty at that command | 28 % | 21 % |
+| Owner's note | "barely moving" at 4.0; "should be a little more" | |
+
+Read this way (the report was "left wheel is 4 and right wheel is 3": taken as the breakaway command of
+each wheel; **to be confirmed**). Not given, so not known: the encoder velocities, direction and turn
+tests, battery voltage, surface, commit. What follows from it:
+
+- Breakaway is about **21 to 28 %** duty, not the 15 % used as an example above, and the two motors differ
+  by 7 percentage points. With one command for both, the right wheel runs ahead of the left, and the
+  robot would curve. A per-motor stiction value (option A, which already sets it per motor in the xacro)
+  fixes that; a single global number would not.
+- Option A alone does **not** give "a little more": with stiction 28 % (left) and 21 % (right), one key
+  press gives 28 % and 21 % (just at breakaway) and five give 31 % and 24 %. Every key level would still
+  be "barely moving". The keys also need a larger range, which is option B's job: with the cap at 1.0 m/s
+  a full key is +6.6 percentage points (left 34 %, right 27 %). Whether that is "a little more" depends on
+  how fast the wheels turn per percent of duty above breakaway, which this test does not give: read the
+  encoder velocity (terminal B of the guide) at 4.0 and 5.0 m/s for both wheels and add it here.
+- The 28 % and 21 % may also be the supply: breakaway of 21 to 28 % with no load is high. Note the
+  battery voltage under load before settling on numbers (the stiction value is only right at that
+  voltage).
 
 ## Decision
 

@@ -13,18 +13,36 @@
 # limitations under the License.
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler, ExecuteProcess, LogInfo
+from launch.actions import (
+    DeclareLaunchArgument,
+    RegisterEventHandler,
+    ExecuteProcess,
+    LogInfo,
+)
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    PathJoinSubstitution,
+    LaunchConfiguration,
+)
 
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
-from rocko_env.recording.launch_recording import real_or_mock, recording_arguments, recorder_process
+from rocko_env.recording.launch_recording import (
+    real_or_mock,
+    recording_arguments,
+    recorder_process,
+)
 from rocko_env.webserver.launch_dashboard import dashboard_arguments, dashboard_node
-from rocko_env.webserver.launch_foxglove import foxglove_arguments, foxglove_bridge_process
+from rocko_env.webserver.launch_foxglove import (
+    foxglove_arguments,
+    foxglove_bridge_process,
+)
+
 
 def generate_launch_description():
     # Declare arguments
@@ -54,9 +72,10 @@ def generate_launch_description():
 
     # record:=true records a rosbag and a run.yaml (docs/guides/record-a-run.md). Off by default.
     declared_arguments += recording_arguments()
-    # dashboard:=true starts the web dashboard (docs/guides/use-the-dashboard.md). Off by default on
-    # the robot: launch_dashboard.py says why.
-    declared_arguments += dashboard_arguments(default="false")
+    # dashboard:=false leaves the web dashboard out (docs/guides/use-the-dashboard.md). ON by default
+    # here: tank mode has no balance loop for it to disturb. rocko.launch.py keeps it off, because its
+    # cost beside the 100 Hz balance loop has not been measured.
+    declared_arguments += dashboard_arguments(default="true")
     # foxglove:=false leaves foxglove_bridge out. It defaults to true: this launch always started it.
     declared_arguments += foxglove_arguments(default="true")
 
@@ -98,7 +117,7 @@ def generate_launch_description():
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[robot_controllers],
-        output="both"
+        output="both",
     )
 
     robot_state_pub_node = Node(
@@ -140,16 +159,13 @@ def generate_launch_description():
     encoders = Node(
         package="rocko_env",
         executable="QuadEncoders.py",
-        parameters=[{
-            "left_a_pin": 26,
-            "left_b_pin": 20,
-            "right_a_pin": 19,
-            "right_b_pin": 16
-        }],
+        parameters=[
+            {"left_a_pin": 26, "left_b_pin": 20, "right_a_pin": 19, "right_b_pin": 16}
+        ],
         # Reads the real encoders over GPIO, so it only starts on the robot.
         condition=UnlessCondition(use_mock_hardware),
     )
-    
+
     joystick = Node(
         package="rocko_env",
         executable="Joystick.py",
@@ -174,8 +190,19 @@ def generate_launch_description():
 
     # Only with record:=true. "mock" or "real" goes into run.yaml so a mock run is never mistaken
     # for a measurement.
-    nodes.append(recorder_process("rocko_tank_mode.launch.py", real_or_mock(use_mock_hardware), robot_controllers))
-    nodes.append(dashboard_node("rocko_tank_mode.launch.py", real_or_mock(use_mock_hardware), robot_controllers))
+    nodes.append(
+        recorder_process(
+            "rocko_tank_mode.launch.py",
+            real_or_mock(use_mock_hardware),
+            robot_controllers,
+        )
+    )
+    nodes.append(
+        dashboard_node(
+            "rocko_tank_mode.launch.py",
+            real_or_mock(use_mock_hardware),
+            robot_controllers,
+        )
+    )
 
     return LaunchDescription(declared_arguments + nodes)
-

@@ -264,10 +264,11 @@ To keep a recording of a test, add `record:=true` to any of the launches above
 (`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):
 [Record a run](docs/guides/record-a-run.md). Checked in the simulation only.
 
-To watch the robot's values from another machine, add `dashboard:=true` and open
-`http://<robot-ip>:8080` in a browser: [the dashboard](docs/guides/use-the-dashboard.md). It is off by
-default on the robot, because what it costs the Pi's CPU has not been measured. Checked in the
-simulation only.
+To watch the robot's values from another machine, open `http://<robot-ip>:8080` in a browser:
+[the dashboard](docs/guides/use-the-dashboard.md). Tank mode starts it by default (`dashboard:=false`
+leaves it out); balancing mode needs `dashboard:=true`, because what it costs the Pi's CPU beside the
+100 Hz balance loop has not been measured. There is no login: anyone on the network can open it.
+Checked in the simulation only.
 
 ### Handy debugging commands
 
