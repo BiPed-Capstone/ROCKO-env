@@ -8,8 +8,10 @@ code (they are worked out below so you can check them), not from a robot. Every 
 robot is yours: an agent on this branch does not launch anything on the Pi
 ([CLAUDE.md](../../CLAUDE.md) section 3).
 
-**Why it exists:** the keyboard script drives tank mode with a command so small that the motors get
-about 2 to 5 % of full power, which is not enough to start the wheels turning. This procedure
+**Why it exists:** with precise mode on, the keyboard script drove tank mode with a command so small that
+the motors got about 2 to 5 % of full power, which is not enough to start the wheels turning. (The owner's
+commit `df91b9e` has since turned precise mode off; the keys now reach 5 to 67 %, see
+[drive-with-keyboard.md](drive-with-keyboard.md).) This procedure
 confirms that, and measures the command at which each wheel *does* start. That measured number is
 the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) needs.
 
@@ -57,8 +59,8 @@ duty % = 6.5957 x v + 2     (truncated; 6.6 is close but crosses a whole percent
 
 | `linear.x` | duty | what sends this |
 | --- | --- | --- |
-| 0.1 m/s | 2 % | keyboard, one `w` press |
-| 0.5 m/s | 5 % | keyboard, five presses (the most it can do) |
+| 0.1 m/s | 2 % | keyboard in precise mode (off since `df91b9e`), one `w` press |
+| 0.5 m/s | 5 % | keyboard in precise mode, five presses (the most it could do) |
 | 1.0 m/s | 8 % | |
 | 2.0 m/s | 15 % | |
 | 3.0 m/s | 21 % | |
@@ -166,10 +168,12 @@ timeout 5 ros2 topic pub -r 10 /diffbot_base_controller/cmd_vel geometry_msgs/ms
 
 `angular.z` is in rad/s and the wheels are 0.32 m apart, so each wheel gets 4.0 x 0.16 = 0.64 m/s in
 opposite directions. Write down whether the wheels turn opposite to each other. This is the number to
-compare with the keyboard's turn: a full `a` or `d` is `angular.z` = 0.3 (`Joystick.py:233`, `DEFAULT_PRECISE_ANGULAR_SCALE_M_S`), which is
-0.048 m/s per wheel, about 2 % duty. The comment at `Joystick.py:49` says this value is "NOT rad/s"; that
-holds when `DiffDriveController.py` (balance mode) reads it. Tank mode does not launch that node, so
-here `diff_drive_controller` reads it as rad/s, which is what the arithmetic above uses.
+compare with the keyboard's turn. With precise mode on, a full `a` or `d` was `angular.z` = 0.3
+(`Joystick.py:233`, `DEFAULT_PRECISE_ANGULAR_SCALE_M_S`), 0.048 m/s per wheel, about 2 % duty. Since
+`df91b9e` the gamepad mapping applies instead (scale -35, `Joystick.py:239-248`), and the turn depends on
+the turn level. The comment at `Joystick.py:49` says the precise scale is "NOT rad/s"; that holds when
+`DiffDriveController.py` (balance mode) reads it. Tank mode does not launch that node, so there
+`diff_drive_controller` reads `angular.z` as rad/s, which is what the arithmetic above uses.
 
 ### 6. Stop
 
@@ -201,7 +205,7 @@ Anything else (heat, smell, noise, a wheel that stuck):
 | You see | Why | Do |
 | --- | --- | --- |
 | Nothing at any level up to 5.0 | Battery low, motor supply off, a driver not enabled, or a wiring fault | Measure the battery under no load; check the motor supply switch; swap to a known-good motor channel. This is a hardware finding, not a software one |
-| The wheels turn but a keyboard still seems to do nothing | The keyboard's top speed (0.5 m/s, about 5 %) is below your breakaway | Expected; that is proposal 0013 |
+| The wheels turn but a keyboard still seems to do nothing | The keyboard's low levels are below your breakaway (in precise mode the top level was 0.5 m/s, 5 %; since `df91b9e` levels 1 to 4 are 5 to 18 %) | Expected; that is proposal 0013 |
 | The wheels jerk at each step instead of turning smoothly | Duty is just above breakaway; the wheel turns, sticks, turns | Go one level higher; note both levels |
 | Two sources of commands: the wheels twitch between values | `keyboard_teleop.py` or `computer_joystick.py` is still connected | Stop it; wait a second; repeat |
 | `Failed to call service QuadEncoder` | The encoder node (`QuadEncoders.py`) is not running or not answering | `ros2 node list` shows whether it is up; read its log |

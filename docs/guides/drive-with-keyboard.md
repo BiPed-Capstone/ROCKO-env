@@ -5,16 +5,39 @@ gives. The keyboard script speaks the gamepad's protocol, so the robot needs not
 
 **What has been checked:** the script and the robot-side code were run against the simulated robot
 (check `KB` in [the verification ladder](../architecture/verification-ladder.md)) and in a
-pseudo-terminal on a laptop. **Nothing here has been run on the robot.** Whether the robot stays
-upright while driven is not known; the first time, follow the tethered procedure in
+pseudo-terminal on a laptop. **On 2026-11-19 the owner drove the robot in tank mode with it** (reported,
+not recorded: [journal](../journal/2026-11-19-first-robot-run-tank-mode.md)). Whether the *balancing*
+robot stays upright while driven is not known; the first time, follow the tethered procedure in
 [proposal 0008](../proposals/0008-candidate-gains-and-tethered-test.md) and have a person holding
 the tether.
 
-**Tank mode (`rocko_tank_mode.launch.py`) is not covered by that check.** The keyboard's speeds were
-sized for the balancing robot. In tank mode the top key level (0.5 m/s) is only about 5 % motor power,
-which on the first run made the motors hum without turning the wheels. Bench-test it first, wheels off
-the ground: [bench-test-tank-mode.md](bench-test-tank-mode.md); the decision about what to change is
-[proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md).
+> **Current state, and a mismatch (2026-11-19).** The owner's commit `df91b9e` turned **precise mode
+> off** (the script no longer sets button 15) and made the keys **ten steps** each way (`STEPS_TO_FULL`
+> = 10). The keyboard therefore uses the *gamepad's* mapping on the robot: an expo curve, a deadband,
+> and up to 10 "m/s" (table below). Parts of this guide below still describe precise mode and five
+> steps; where they differ, the table below and the code are right. Two checks still encode the old
+> design and are **red**: `tools/keyboard_teleop_test.py` (4 of 5; the precise-button check) and
+> scenario `KB` (it expects steps of 0.1 m/s). They stay red until the keyboard's design is settled
+> ([next-steps row 4.7](../next-steps.md)).
+
+**Tank mode (`rocko_tank_mode.launch.py`) is not covered by the simulation check.** With precise mode
+on, the top key level (0.5 m/s) was only about 5 % motor power and the motors hummed without turning the
+wheels (the reason precise mode was turned off). Bench-test first, wheels off the ground:
+[bench-test-tank-mode.md](bench-test-tank-mode.md); what the owner measured and what is still undecided
+is [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md).
+
+**What each key level does now** (gamepad mapping: `expo_curve(level / 10) x 10 m/s`, then in tank mode
+duty = `6.5957 x speed + 2`, truncated; arithmetic, not a measurement; the first three speeds were
+seen in the simulation, check `KB`):
+
+| Level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Speed [m/s] | 0.55 | 1.14 | 1.77 | 2.49 | 3.31 | 4.27 | 5.39 | 6.70 | 8.23 | 10.0 |
+| Motor duty [%] | 5 | 9 | 13 | 18 | 23 | 30 | 37 | 46 | 56 | 67 |
+
+On the owner's bench the left wheel first turned at 28 % duty and the right at 21 %, so levels 1 to 4
+only hum, level 5 turns the right wheel alone, and level 6 and up turn both: the robot spends the low
+levels in the "humming, close to stalling" region ([proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md)).
 
 ## What you need
 
@@ -59,11 +82,11 @@ and, on the Pi, the launch log prints `Joystick connected!` and then `teleop com
 releases, so the script cannot tell that you let go. The speed you set stays until you change it,
 press space, or quit. Keep a finger near the space bar.
 
-There are five steps each way. What a step means is decided on the robot, in `Joystick.py`
-(`DEFAULT_PRECISE_LINEAR_SCALE_M_S` and `DEFAULT_PRECISE_ANGULAR_SCALE_M_S`, the speed at a full axis;
-both are **proposed** values nobody has tried on the robot; as parameters they are refused above
-`MAX_PRECISE_SCALE_M_S`). The laptop cannot ask for more than
-those. The robot also ramps the forward command (finding H-13), so a key press takes effect over a
+There are ten steps each way. What a step means is decided on the robot, in `Joystick.py`. With
+precise mode on (button 15 set; **off since `df91b9e`**) it is `DEFAULT_PRECISE_LINEAR_SCALE_M_S` and
+`DEFAULT_PRECISE_ANGULAR_SCALE_M_S`, the speed at a full axis (**proposed** values; as parameters they are
+refused above `MAX_PRECISE_SCALE_M_S`, so the laptop cannot ask for more). With it off, the gamepad
+mapping above applies and the cap does not. The robot also ramps the forward command (finding H-13), so a key press takes effect over a
 moment, not at once.
 
 ## What stops the robot if something goes wrong
@@ -90,11 +113,11 @@ None of these was checked on the robot.
 
 ## How it works, in four sentences
 
-The script keeps two numbers, a forward level and a turn level, each from -5 to +5. Every 0.05 s, and
+The script keeps two numbers, a forward level and a turn level, each from -10 to +10. Every 0.05 s, and
 at once when a key changes them, it sends the gamepad's 40-byte packet with those levels as two axis
-values and one button byte set to mean "precise mode". `Joystick.py` sees that byte and, instead of
-the gamepad's mapping (an expo curve, a deadband, and up to 10 "m/s"), multiplies the axis by a small
-scale. From there the command takes the gamepad's path: `DiffDriveController.py` ramps it and sends it
+values and one button byte that says "precise mode" (set until `df91b9e`, clear now). With the byte set,
+`Joystick.py` multiplies the axis by a small scale; with it clear, it applies the gamepad's mapping (an
+expo curve, a deadband, and up to 10 "m/s"). From there the command takes the gamepad's path: `DiffDriveController.py` ramps it and sends it
 to the balance cascade ([control-cascade.md](../architecture/control-cascade.md)).
 
 The tests: `tools/keyboard_teleop_test.py` (the keys and the sending loop) and

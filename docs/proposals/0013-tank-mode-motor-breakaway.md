@@ -162,6 +162,13 @@ tests, battery voltage, surface, commit. What follows from it:
   a full key is +6.6 percentage points (left 34 %, right 27 %). Whether that is "a little more" depends on
   how fast the wheels turn per percent of duty above breakaway, which this test does not give: read the
   encoder velocity (terminal B of the guide) at 4.0 and 5.0 m/s for both wheels and add it here.
+- **Robot run, 2026-11-19 (owner's report; [journal](../journal/2026-11-19-first-robot-run-tank-mode.md)):** the robot
+  drives from the keyboard, but the motors **still hum a lot**, and the owner suspects they spend their time near
+  stall. After the bench test the owner turned the keyboard's precise mode off and made it ten steps
+  (`df91b9e`), so key levels now give 5, 9, 13, 18, 23, 30, 37, 46, 56 and 67 % duty (table in the keyboard guide):
+  levels 1 to 4 only hum, 5 moves the right wheel alone, 6 and up move both just past breakaway. This fits the
+  suspicion; it is not a measurement. A nearly stalled brushed motor draws a high current and heats: **motor
+  and driver temperature were not checked**. Status stays **Open**.
 - The 28 % and 21 % may also be the supply: breakaway of 21 to 28 % with no load is high. Note the
   battery voltage under load before settling on numbers (the stiction value is only right at that
   voltage).

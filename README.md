@@ -337,7 +337,7 @@ Without `-DROCKO_SKIP_WIRINGPI=ON` the build stops with "WiringPi not found", on
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records: a choice, its alternatives, its cost |
 | [`docs/journal/`](docs/journal/README.md) | One entry per AI-written change: what was asked, what changed, which checks actually ran |
 | [`docs/proposals/`](docs/proposals/README.md) | Changes waiting on a human decision (gains, version pins, safety behavior) |
-| [`docs/claude-analysis/`](docs/claude-analysis/) | Code audits with findings and severities |
+| [`docs/claude-analysis/`](docs/claude-analysis/) | Code audits with findings and severities, and plans such as [driving with an Xbox controller from macOS](docs/claude-analysis/xbox-controller-macos-plan.md) |
 
 **If you are new**, read this README, then
 [`docs/architecture/control-cascade.md`](docs/architecture/control-cascade.md) for why "go faster"

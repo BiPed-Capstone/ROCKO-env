@@ -87,3 +87,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-08 | [Measure what the agent loop cost, and change the tools and instructions that drive it](2026-11-08-agent-loop-efficiency.md) |
 | 2026-11-16 | [Readiness review, ramped drive commands (H-13), keyboard driving, a web dashboard and logging](2026-11-16-teleop-dashboard-logging.md) (in progress: its HANDOFF box says which stage is next) |
 | 2026-11-19 | [Helper scripts for running ROCKO on the Pi as root, and the Pi workspace name](2026-11-19-pi-helper-scripts.md) |
+| 2026-11-19 | [First run on the robot since `ai-forward`: tank mode drives, the motors hum; known red checks; the plan for the Xbox controller and self-balancing](2026-11-19-first-robot-run-tank-mode.md) |
