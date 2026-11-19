@@ -10,6 +10,12 @@ upright while driven is not known; the first time, follow the tethered procedure
 [proposal 0008](../proposals/0008-candidate-gains-and-tethered-test.md) and have a person holding
 the tether.
 
+**Tank mode (`rocko_tank_mode.launch.py`) is not covered by that check.** The keyboard's speeds were
+sized for the balancing robot. In tank mode the top key level (0.5 m/s) is only about 5 % motor power,
+which on the first run made the motors hum without turning the wheels. Bench-test it first, wheels off
+the ground: [bench-test-tank-mode.md](bench-test-tank-mode.md); the decision about what to change is
+[proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md).
+
 ## What you need
 
 - **On the robot (the Pi):** the normal launch, `ros2 launch rocko_env rocko.launch.py`. It starts
