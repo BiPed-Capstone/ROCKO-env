@@ -78,6 +78,7 @@ done
 for t in tools/*_test.py; do
   step "host test $(basename "$t")" env PYTHONDONTWRITEBYTECODE=1 python3 -I "$t"
 done
+step "host test pi_scripts_test.sh" bash tools/pi_scripts_test.sh
 step "hook tests" .claude/hooks/test-guard-protected-files.sh
 step "sim config drift check" env PYTHONDONTWRITEBYTECODE=1 python3 -I sim/check_sim_config.py
 step "doc link scan" env PYTHONDONTWRITEBYTECODE=1 python3 -I tools/check_doc_links.py

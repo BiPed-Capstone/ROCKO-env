@@ -10,11 +10,13 @@ measured** ([sim-plant.md §4.1](../architecture/sim-plant.md#41-physical-parame
 [proposal 0007](../proposals/0007-measure-robot-parameters.md).
 
 **Machines:** the bench steps need no computer. Steps 6 to 8 use the Raspberry Pi (the robot's
-computer); every Pi terminal starts with:
+computer); every Pi terminal starts with `pi/rocko_shell.sh`, run from `~/ROCKO-env`. It opens a root
+shell with ROS, the workspace and `ROS_DOMAIN_ID` set up, so the `source` lines you may have seen in
+older versions of this guide are not needed ([Run ROCKO on the Pi](run-on-the-pi.md)):
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+cd ~/ROCKO-env
+pi/rocko_shell.sh
 ```
 
 **Safety, once:** steps 1 to 5 are done with the **battery disconnected** and the motors
@@ -225,23 +227,19 @@ adds on top, so it is a **lower bound** on the delay the controllers see, not th
 **Tools:** the Pi with a display (or a screen showing an SSH terminal), a phone that films at 60
 frames per second if it can (30 if not).
 
-1. On the Pi, in one terminal:
+1. On the Pi, in one `pi/rocko_shell.sh` terminal:
 
    ```bash
-   source /opt/ros/jazzy/setup.bash
-   source ~/ros2_ws/install/setup.bash
    ros2 run rocko_env ICM20948.py
    ```
 
-2. In a second Pi terminal, call the service repeatedly and print each reply as it arrives.
+2. In a second Pi terminal (also `pi/rocko_shell.sh`), call the service repeatedly and print each reply as it arrives.
    `ros2 service call` has a `-r` (repeat rate, Hz) option in recent ROS 2 releases; check that
    `ros2 service call --help` lists it on your Pi first. If it does not, wrap the call in a shell
    `while true` loop (slower, because each call starts a new process). **Not run by the author of
    this guide: the command is a composition of standard tools, not a tested script.**
 
    ```bash
-   source /opt/ros/jazzy/setup.bash
-   source ~/ros2_ws/install/setup.bash
    ros2 service call -r 20 /icm20948_data rocko_interfaces/srv/Icm20948Data
    ```
 
@@ -263,7 +261,7 @@ keeps up. Say all of this when you record the value. If you cannot
 do this, write `not measured`; do not substitute a datasheet number.
 
 Also useful, since the loop's timing matters (finding H-5): with a full launch running (the balancing launch, or the tank-mode one of step 8; not the lone IMU
-node above, which publishes no state), in another terminal:
+node above, which publishes no state), in another `pi/rocko_shell.sh` terminal:
 
 ```bash
 ros2 topic hz /dynamic_joint_states
@@ -285,13 +283,13 @@ factor, and so is the velocity loop's gain (gap page, section 3.9).
 **Tools:** a marker, the Pi.
 
 1. Robot on a stand, motors unpowered (or the launch below with no command), wheels free.
-2. On the Pi:
+2. On the Pi, from `~/ROCKO-env`:
 
    ```bash
-   ros2 launch rocko_env rocko_tank_mode.launch.py
+   pi/launch.sh tank
    ```
 
-3. In a second terminal read the encoder position (metres, **left wheel**), before and after
+3. In a second terminal (`pi/rocko_shell.sh`) read the encoder position (metres, **left wheel**), before and after
    turning the **left wheel by hand** exactly `N` full turns (mark the tyre; `N = 10`):
 
    ```bash

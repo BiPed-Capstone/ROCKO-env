@@ -19,7 +19,7 @@ an explicit "unknown" — a blank is indistinguishable from a forgotten field.
 Result:        <what you were measuring, and what happened>
 Date:          YYYY-MM-DD
 Commit:        <git rev-parse --short HEAD>   (and note if the tree was dirty)
-Launch:        <ros2 launch rocko_env rocko.launch.py | rocko_tank_mode.launch.py>, with every argument
+Launch:        <pi/launch.sh balance | pi/launch.sh tank> (or the ros2 launch line), with every argument
 Hardware:      <real | mock (use_mock_hardware:=true)>   (a mock result is a wiring check, not a measurement)
 Config:        <which *_controllers.yaml, and any gain differing from the committed value>
 Battery:       <volts at start, volts at end>
@@ -53,8 +53,8 @@ commit, the launch file, the config and the battery voltage and surface you give
 block above is filled in for you:
 
 ```bash
-# On the Pi, in a terminal with the workspace sourced.
-ros2 launch rocko_env rocko.launch.py record:=true record_label:=describe_the_test battery_v:=12.1 surface:=tile
+# On the Pi, from ~/ROCKO-env (the script runs the launch as root, in the environment).
+pi/launch.sh balance record:=true record_label:=describe_the_test battery_v:=12.1 surface:=tile
 ```
 
 What is recorded, where it goes, and how to copy it to a laptop: [Record a run](record-a-run.md).

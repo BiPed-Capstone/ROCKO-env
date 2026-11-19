@@ -303,6 +303,21 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
 | `tools/feedforward_timeout_test.cpp` (7 test functions) | `FeedforwardTimeout.hpp`, the age decision of finding H-11: nothing arrived gives 0.0 and is not a time-out; a value is used up to and at the 200 ms limit and is 0.0 one nanosecond past it, logged once (`just_timed_out()` is true for one update only); a fresh message after a time-out is used at once; a steady 100 Hz stream never times out; a stamp a little later than the loop's `now` counts as age 0; a real value of 0.0 is not confused with "none" | That the controller calls it, that its subscription callback stamps the message, DDS delivery, the clock on the Pi, that 200 ms is a good limit |
 | `tools/imu_node_test.py` (7 checks) | `ICM20948.py`'s service reply (findings C-2, H-6 and M-7), loaded with stand-ins for `rclpy`, the sensor libraries and the service type, and a fake BNO055: started with no parameters (as the launch files do), `read_pitch_rate` is false, the node makes one sensor read (the Euler angles, no gyro read), sends `pitch_rate_deg_s` as NaN and warns about nothing; with `read_pitch_rate` true: good angles and gyro give `success` and `rate = sign * degrees(gyro[axis])`; a bad gyro (None, an exception, NaN) makes only `pitch_rate_deg_s` NaN while the angles and `success` stay good; so does a rate beyond +/-2000 deg/s (`MAX_ABS_PITCH_RATE_DEG_S`, which must equal the plugin's `kMaxAbsPitchRateDegS`), and the node logs it; a still gyro (0, 0, 0) is a real reading, not a failure; bad angles give `success = false` and NaN angles whatever the gyro says | The real driver's units or timing, the I2C bus, the C++ plugin's separate rate handling, the robot |
 
+### The host test of the Pi helper scripts (not a tier)
+
+`pi/launch.sh`, `pi/rocko_shell.sh`, `pi/rocko_run.sh` and `pi/rocko_env.sh` run the robot's launches
+as root with the right environment ([the guide](../guides/run-on-the-pi.md)). One test needs no ROS and
+no robot and runs on the laptop, in the container, or on the Pi, from the repo root. `tools/run_ladder.sh`
+runs it.
+
+```bash
+bash tools/pi_scripts_test.sh                                                               # prints "N passed, 0 failed"
+```
+
+| Test | Checks | Cannot show |
+| --- | --- | --- |
+| `tools/pi_scripts_test.sh` (16 checks) | The scripts against a fake ROS setup file, a fake `ros2` and a fake `sudo` that, like the real one, drops the caller's environment: sourcing `rocko_env.sh` sets ROS, the venv, the workspace overlay and `ROS_DOMAIN_ID` 17 and `cd`s to the workspace, and a missing venv or build is reported, not fatal; `rocko_run.sh` goes through `sudo env`, hands the root environment the caller's venv, the domain and `PYTHONDONTWRITEBYTECODE=1`, passes the command and its exit status through, and refuses an empty command; `rocko_shell.sh` starts an interactive `bash --norc` through `rocko_run.sh` and `sudo`; `launch.sh tank` and `balance` choose the right launch file, keep the caller's arguments, add `log_root:=$HOME/rocko_logs` unless one is given, and refuse an unknown mode before touching `sudo`; `launch.sh` and `rocko_run.sh` refuse to run under `sudo` (root with `SUDO_USER` set, where `$HOME` would be `/root`); `build_ros.sh` takes the checkout as the workspace when `ROS2_WS` is unset (rosdep searches the two package folders) and `ROS2_WS` plus its `src/` otherwise. Red on 7 deliberate breaks (sudo dropped, tank mapped to the balance file, the domain not exported, `build_ros.sh` back to `~/ros2_ws`, the venv not handed to root, the `log_root` default dropped, the sudo guard removed), 2026-11-19. Ran on macOS bash 3.2 and in the container (bash 5.2) | That the real `sudo` accepts the calls, that root can read the venv, that a ROS 2 command run as root sees the launch run as root, that WiringPi then works. Not run on the Pi |
+
 ### What a pass proves, and what it cannot show
 
 | Tier | A pass proves | It cannot show |

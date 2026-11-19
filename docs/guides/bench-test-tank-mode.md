@@ -17,8 +17,8 @@ the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) nee
 
 ## What you need
 
-- **The Pi** (Ubuntu 24.04, ROS 2 Jazzy, WiringPi, the motor plugin built). Two terminals on it
-  (SSH twice).
+- **The Pi** (Ubuntu 24.04, ROS 2 Jazzy, WiringPi, the motor plugin built, the repo checked out and
+  built in `~/ROCKO-env`). Three terminals on it (SSH three times).
 - **The robot with both drive wheels off the ground** (on blocks, or held so the wheels spin free).
   It must not be able to drive off the bench.
 - **A way to read battery voltage** (multimeter or the robot's own meter).
@@ -26,11 +26,13 @@ the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) nee
   `computer_joystick.py` **stopped**: while a sender is connected, `Joystick.py` publishes its own
   commands and they fight the test commands below.
 
-In **every** new terminal on the Pi:
+**Every terminal on the Pi runs as root, with the same `ROS_DOMAIN_ID`.** The motor plugin needs root
+(WiringPi), and a terminal that is not root cannot see the launch at all. The scripts in `pi/` do both,
+and set up ROS and the workspace; there is nothing to `source` by hand. Why, and what each script
+does: [Run ROCKO on the Pi](run-on-the-pi.md). In every terminal, first:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+cd ~/ROCKO-env
 ```
 
 ## How a command becomes motor power
@@ -76,13 +78,18 @@ clean) at the top of your notes. [Recording a result](reproducing-results.md) li
 
 ### 1. Launch, and check it is healthy
 
-Terminal A, on the Pi:
+Terminal A, on the Pi (it asks for your `sudo` password):
 
 ```bash
-ros2 launch rocko_env rocko_tank_mode.launch.py
+pi/launch.sh tank
 ```
 
-Terminal B, on the Pi (after sourcing):
+Terminal B, on the Pi. `pi/rocko_shell.sh` opens a root shell with the environment; the commands that
+follow in this guide are typed inside it:
+
+```bash
+pi/rocko_shell.sh
+```
 
 ```bash
 ros2 control list_controllers
@@ -110,7 +117,7 @@ Leave this command running in terminal B for the rest of the guide.
 
 ### 3. Find the breakaway command
 
-Terminal C (a third SSH session, sourced as above). Each command publishes one level for 5 seconds
+Terminal C (a third SSH session; run `pi/rocko_shell.sh` in it, as in terminal B). Each command publishes one level for 5 seconds
 and stops by itself. Start at the bottom, and watch the wheels and the numbers in terminal B. Go up
 one level at a time; **stop going up at the first level where both wheels turn steadily.**
 
@@ -198,7 +205,7 @@ Anything else (heat, smell, noise, a wheel that stuck):
 | The wheels jerk at each step instead of turning smoothly | Duty is just above breakaway; the wheel turns, sticks, turns | Go one level higher; note both levels |
 | Two sources of commands: the wheels twitch between values | `keyboard_teleop.py` or `computer_joystick.py` is still connected | Stop it; wait a second; repeat |
 | `Failed to call service QuadEncoder` | The encoder node (`QuadEncoders.py`) is not running or not answering | `ros2 node list` shows whether it is up; read its log |
-| `ros2 control list_controllers` prints nothing | The launch is not running, or this terminal is not sourced | Source both setup files, check terminal A |
+| `ros2 control list_controllers` prints `waiting for service /controller_manager/list_controllers` and never answers | This terminal is not root, or uses another `ROS_DOMAIN_ID`, so it cannot see the launch; or the launch in terminal A has stopped | Open the terminal with `pi/rocko_shell.sh`; check terminal A is still running |
 
 ## What this does not tell you
 

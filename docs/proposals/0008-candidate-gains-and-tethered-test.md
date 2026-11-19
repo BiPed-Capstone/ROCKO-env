@@ -118,11 +118,13 @@ a tether, the 35 deg tipover cutoff, and a hand on the power cut.
 **What you need:** the Pi with the build, a laptop for the gamepad only if you want a command (the
 test below uses none), a harness or tether from an overhead point, a person holding it, and a way
 to cut motor power within reach. **This repo documents no kill switch**: if the robot has none, fit
-one or do not run it. Every Pi terminal starts with:
+one or do not run it. Every Pi terminal is opened with `pi/rocko_shell.sh` (a root shell with ROS, the
+workspace and `ROS_DOMAIN_ID` set up: [Run ROCKO on the Pi](../guides/run-on-the-pi.md)), and the robot is
+launched with `pi/launch.sh balance`:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+cd ~/ROCKO-env
+pi/rocko_shell.sh
 ```
 
 ### A. Gyro check (precondition 3), wheels off the ground, motors unpowered if you can
@@ -152,7 +154,7 @@ source ~/ros2_ws/install/setup.bash
 2. Robot on a stand, **both wheels clear of everything**, nothing near the wheels. Launch:
 
    ```bash
-   ros2 launch rocko_env rocko.launch.py
+   pi/launch.sh balance
    ```
 
    (no arguments: that is the real-hardware default; `use_mock_hardware` stays false). Do **not**

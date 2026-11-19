@@ -11,11 +11,11 @@ a browser with made-up data. **It has not been run on the Pi.** What it costs th
 
 ## Start it
 
-On the **Pi**, in a shell that has run `source /opt/ros/jazzy/setup.bash` and
-`source ~/ros2_ws/install/setup.bash`, add `dashboard:=true` to the launch:
+On the **Pi**, from the repo root (`~/ROCKO-env`), add `dashboard:=true` to the launch. `pi/launch.sh`
+runs it as root with the environment set up ([Run ROCKO on the Pi](run-on-the-pi.md)):
 
 ```bash
-ros2 launch rocko_env rocko.launch.py dashboard:=true
+pi/launch.sh balance dashboard:=true
 ```
 
 Success looks like this line in the launch output:
@@ -76,7 +76,7 @@ runs. Use it on the lab's own network, not on a network you do not trust.
 | --- | --- | --- |
 | The browser cannot connect | The launch was started without `dashboard:=true`; the address is wrong; the machines are on different networks; a firewall blocks port 8080 | Check the launch output for the `dashboard: open ...` line; `ping <robot-ip>` |
 | `OSError: [Errno 98] Address already in use` in the launch output | Another program, or a dashboard left from an earlier launch, has the port | `dashboard_port:=8081`, or stop the other program |
-| Every value is a grey dash, amber bar on top | The controllers have not started, or have stopped | `ros2 control list_controllers` on the Pi |
+| Every value is a grey dash, amber bar on top | The controllers have not started, or have stopped | `ros2 control list_controllers` in a `pi/rocko_shell.sh` terminal on the Pi |
 | Pitch rate is a dash | The IMU node does not read the gyro by default | Expected; see next-steps row 1.2 |
 | "could not start: a recording is already running" | One is running, perhaps started from another browser | Press Stop first |
 | Record does nothing and the launch output says `NOT recording: ... MB free` | The disk is nearly full | [Record a run](record-a-run.md), "What commonly goes wrong" |

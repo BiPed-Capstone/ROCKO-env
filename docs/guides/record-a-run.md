@@ -11,11 +11,11 @@ Pi.** What it costs the Pi's CPU and SD card while the 100 Hz balance loop runs 
 
 ## Record
 
-On the **Pi**, in a shell that has run `source /opt/ros/jazzy/setup.bash` and
-`source ~/ros2_ws/install/setup.bash`, add `record:=true` to the launch you were going to run anyway:
+On the **Pi**, from the repo root (`~/ROCKO-env`), add `record:=true` to the launch you were going to run
+anyway. `pi/launch.sh` runs it as root with the environment set up ([Run ROCKO on the Pi](run-on-the-pi.md)):
 
 ```bash
-ros2 launch rocko_env rocko.launch.py record:=true record_label:=pitch_step battery_v:=12.1 surface:=tile
+pi/launch.sh balance record:=true record_label:=pitch_step battery_v:=12.1 surface:=tile
 ```
 
 | Argument | What it is | If you leave it out |
@@ -24,10 +24,13 @@ ros2 launch rocko_env rocko.launch.py record:=true record_label:=pitch_step batt
 | `record_label:=...` | a short name for the test; letters, digits, `-` and `_` | `run` |
 | `battery_v:=...` | battery voltage at the start, in volts | the file says `not recorded` |
 | `surface:=...` | what the robot stands on: `carpet`, `tile`, `stand` | the file says `not recorded` |
-| `log_root:=...` | where the run folder is made | `~/rocko_logs` |
+| `log_root:=...` | where the run folder is made | `~/rocko_logs`; `pi/launch.sh` fills in your own `~/rocko_logs`, because the launch runs as root and `~` would otherwise be `/root` |
 
-The same arguments work on `rocko_tank_mode.launch.py` and, in the dev container,
+The same arguments work with `pi/launch.sh tank` and, in the dev container,
 `rocko_sim.launch.py`.
+
+The run folder is **owned by root** (the launch ran as root). Copying it to a laptop works as usual;
+deleting one on the Pi needs `sudo rm -r ~/rocko_logs/<run folder>`.
 
 Success looks like this line in the launch output, a second or two after the start:
 
@@ -41,7 +44,9 @@ recorder closes the file and prints
 robot off: a recording that was not closed has no `bag/metadata.yaml`, and some tools will not open it.
 
 To record without restarting a launch that is already running, start the recorder by hand in a second
-shell on the Pi (sourced the same way); Ctrl-C stops it:
+terminal on the Pi, opened with `pi/rocko_shell.sh` (so it is root and in the same `ROS_DOMAIN_ID` as the
+launch); Ctrl-C stops it. It records into root's `~/rocko_logs` (`/root/rocko_logs`) unless you add
+`--log-root /home/<you>/rocko_logs`:
 
 ```bash
 ros2 run rocko_env RecordRun.py --label pitch_step --battery-v 12.1 --surface tile

@@ -305,10 +305,10 @@ parameters, `pitch_sign` and `encoder_sign` (§4), and **declares each choice an
 **The robot check that settles both signs.** Neither needs the robot to balance. A human does this;
 record it as in [reproducing-results.md](../guides/reproducing-results.md).
 
-1. **`s_v` and sim-forward.** Robot on a stand, both wheels clear of everything. On the Pi:
-   `source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash`, then
-   `ros2 launch rocko_env rocko_tank_mode.launch.py`. In a second shell (sourced the same way):
-   `ros2 topic echo /joint_states --field velocity`. In a third:
+1. **`s_v` and sim-forward.** Robot on a stand, both wheels clear of everything. On the Pi, from
+   `~/ROCKO-env`: `pi/launch.sh tank` (it runs the launch as root with the environment set up: [Run ROCKO on
+   the Pi](../guides/run-on-the-pi.md)). In a second shell (`pi/rocko_shell.sh`):
+   `ros2 topic echo /joint_states --field velocity`. In a third (`pi/rocko_shell.sh`):
    `ros2 topic pub -r 20 /diffbot_base_controller/cmd_vel geometry_msgs/msg/TwistStamped "{twist: {linear: {x: 0.5}}}"`.
    Tank mode turns positive `linear.x` into a positive command on both wheels (about 3.9 rad/s, 5 %
    duty). The direction the wheels turn **is** sim-forward; note it on the robot with tape. Both wheels
@@ -316,8 +316,8 @@ record it as in [reproducing-results.md](../guides/reproducing-results.md).
    `s_v = −1`. Stop with Ctrl-C in the third shell; abort with Ctrl-C in the launch shell if a wheel runs
    away. (Tank mode runs at 50 Hz, where the U-2 halving happens to cancel out; only the sign matters
    here.)
-2. **`s_θ`.** Motors off or the launch stopped. On the Pi: `ros2 run rocko_env ICM20948.py`, and in a
-   second shell `ros2 service call /icm20948_data rocko_interfaces/srv/Icm20948Data`. Call it with the
+2. **`s_θ`.** Motors off or the launch stopped. On the Pi, in a `pi/rocko_shell.sh` terminal: `ros2 run rocko_env ICM20948.py`, and in a
+   second one `ros2 service call /icm20948_data rocko_interfaces/srv/Icm20948Data`. Call it with the
    robot held upright, then tilted about 10° toward the taped sim-forward direction. Pitch going **down**
    means `s_θ = −1` (the sim's default), **up** means `s_θ = +1`.
 

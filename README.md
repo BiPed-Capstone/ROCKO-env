@@ -130,6 +130,7 @@ ROCKO-env
 ├── verify_sim.sh                   Runs the controllers against the simulated robot (SimPlant): S1, S2a and the checks of the tipover cutoff, the teleop watchdog, an IMU outage, the gyro pitch rate and the feedforward age limit (H4, C3, C2, H6, FF); 7 checks in 9 launches, about 2.5 minutes (157 s on 2026-11-03). `verify_sim.sh scenarios` is a separate mode: the balance scenarios U, I and V (hold upright, recover from a push, follow a velocity step) plus S2b and AB; U, I and V exist and **fail with the current gains**. A model with estimated parameters (container)
 ├── check_motor_plugin_compiles.sh  Type-checks the motor plugin off the Pi, syntax and types only (container). Stub headers in tools/compile_check/stubs/
 ├── .githooks/                      Git hooks: no commit on main, no push but a fast-forward of ai-forward to origin. Inactive until copied into .git/hooks/ (proposal 0002, item E)
+├── pi/                             Runs on the Pi: launch.sh, rocko_shell.sh and rocko_run.sh run ros2 as root with the right environment (WiringPi needs root); rocko_env.sh is the environment they share
 ├── docker/                         Dev container for laptops (compose files + Dockerfile)
 ├── docs/                           Architecture, guides, decisions, run journal, proposals, audits
 ├── examples/example_hardware/      Skeleton templates. Copy when adding new hardware
@@ -167,7 +168,7 @@ ROCKO-env
 │       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
 │       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
 ├── rocko_interfaces/                   Custom message and service definitions
-└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), the gamepad heartbeat (computer_joystick_heartbeat_test.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
+└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), the gamepad heartbeat (computer_joystick_heartbeat_test.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
 ```
 
 A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
@@ -178,31 +179,33 @@ A note on the `.xacro` files: xacro is "XML with macros." It's a templating laye
 
 First, some vocabulary that trips people up:
 
-- A **colcon workspace** is a folder with a `src/` subfolder holding one or more packages. `colcon` is the build tool. **This repo is not a workspace by itself.** It goes *inside* one.
+- A **colcon workspace** is the folder `colcon` builds in: it ends up holding `build/`, `install/` and `log/`, and `colcon` finds the packages by looking inside it. `colcon` is the build tool. **On the Pi the workspace is the repo checkout itself, `~/ROCKO-env`** (there is no `~/ros2_ws` and no `src/` folder). The Docker dev container is the exception: there the checkout sits inside a workspace, `/ros2_ws/src/ROCKO-env` (see "Working on a laptop" below).
 - **Sourcing** a setup file (`source .../setup.bash`) is what tells your terminal where the ROS packages are. You have to do it in every new terminal window.
 
 ```bash
-# 1. Make a workspace and clone this repo into its src/ folder
-mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+# 1. Clone this repo. The checkout is the workspace
+cd ~
 git clone https://github.com/BiPed-Capstone/ROCKO-env ROCKO-env
 
 # 2. Install dependencies
-cd ~/ros2_ws
+cd ~/ROCKO-env
 source /opt/ros/jazzy/setup.bash
 sudo apt update
-rosdep install --from-paths src --ignore-src -r -y
+rosdep install --from-paths rocko_env rocko_interfaces --ignore-src -r -y
 
 # 3. On the Pi only: install WiringPi first, or step 4 stops with "WiringPi not found"
 #    https://github.com/WiringPi/WiringPi
 #    (Not on a Pi? Skip this and add --cmake-args -DROCKO_SKIP_WIRINGPI=ON to step 4.
 #     See "Working on a laptop" below for what that build can and cannot do.)
 
-# 4. Build (run this from ~/ros2_ws, not from inside src/)
+# 4. Build (run this from ~/ROCKO-env)
 colcon build --symlink-install
 
 # 5. Tell this terminal about what you just built
-source ~/ros2_ws/install/setup.bash
+source ~/ROCKO-env/install/setup.bash
 ```
+
+`./build_ros.sh` (repo root) does steps 2 and 4 in one go, as your own user: build as yourself, not as root. **Running** the robot is different: that needs root, and `pi/launch.sh` and `pi/rocko_shell.sh` set everything up for it ([Run ROCKO on the Pi](docs/guides/run-on-the-pi.md)).
 
 **Why `--symlink-install`?** It links your Python files, launch files, and YAML configs into the build output instead of copying them. Practical upshot: you can edit a Python node or tweak PID gains and just re-run, with no rebuild. Changing C++ or anything in `rocko_interfaces` still needs a rebuild.
 
@@ -216,16 +219,20 @@ colcon build --packages-select rocko_env --symlink-install
 
 ## Running it
 
+**On the Pi the robot's launches run as root** (the motor plugin uses WiringPi, which needs it), in a terminal with the right environment. The scripts in `pi/` do that: [Run ROCKO on the Pi](docs/guides/run-on-the-pi.md) explains why, and what each script does. Run from the repo root:
+
 ```bash
 # Balancing mode (the real thing)
-ros2 launch rocko_env rocko.launch.py
+pi/launch.sh balance
 
 # Tank mode (no balancing, just drives)
-ros2 launch rocko_env rocko_tank_mode.launch.py
+pi/launch.sh tank
 
-# Just look at the robot model in RViz, no hardware needed
+# Just look at the robot model in RViz, no hardware needed (not on the robot; needs a display)
 ros2 launch rocko_env view_robot.launch.py
 ```
+
+Anything after the mode goes to `ros2 launch`, so every launch argument below works: `pi/launch.sh tank gui:=true`. The plain commands `ros2 launch rocko_env rocko.launch.py` and `ros2 launch rocko_env rocko_tank_mode.launch.py` are what `pi/launch.sh` runs for you, as root and in the environment.
 
 `description_package:=rocko_env` still works as an explicit argument, but the default is now `rocko_env` too ([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)). That change has only been built, not run: `view_robot.launch.py` needs a display, and none of the checks in [the verification ladder](docs/architecture/verification-ladder.md) has one. If it fails to start, try the explicit argument and report it.
 
@@ -234,10 +241,10 @@ Useful launch arguments: `gui:=true` opens RViz alongside in tank mode (`rocko.l
 You can also run individual nodes, which is handy when debugging one piece:
 
 ```bash
-ros2 run rocko_env DiffDriveController.py
-ros2 run rocko_env QuadEncoders.py
-ros2 run rocko_env ICM20948.py
-ros2 run rocko_env Joystick.py
+pi/rocko_run.sh ros2 run rocko_env DiffDriveController.py
+pi/rocko_run.sh ros2 run rocko_env QuadEncoders.py
+pi/rocko_run.sh ros2 run rocko_env ICM20948.py
+pi/rocko_run.sh ros2 run rocko_env Joystick.py
 ```
 
 And the gamepad script, which runs **on your laptop** while the robot is running:
@@ -263,6 +270,8 @@ default on the robot, because what it costs the Pi's CPU has not been measured. 
 simulation only.
 
 ### Handy debugging commands
+
+On the Pi, run these in a terminal opened with `pi/rocko_shell.sh` (a terminal that is not root, or that uses another `ROS_DOMAIN_ID`, cannot see the launch and prints `waiting for service ...`):
 
 ```bash
 ros2 topic list                          # what topics exist right now
@@ -300,7 +309,7 @@ colcon build --symlink-install --cmake-args -DROCKO_SKIP_WIRINGPI=ON
 source install/setup.bash
 ```
 
-`./build_ros.sh` (repo root) runs these same steps, plus `sudo apt-get update` first, and exits 1 if the build fails. Inside the container run it as `cd /ros2_ws && src/ROCKO-env/build_ros.sh`: the `/ros2_ws/build_ros.sh` copy is a separate single-file mount that can go stale if the file is replaced while the container runs. In the container, compose sets `ROS2_WS=/ros2_ws` so the script builds in the right place, and `ROCKO_SKIP_WIRINGPI=ON` so it leaves out the motor plugin; on the Pi it defaults to `~/ros2_ws` and requires WiringPi.
+`./build_ros.sh` (repo root) runs these same steps, plus `sudo apt-get update` first, and exits 1 if the build fails. Inside the container run it as `cd /ros2_ws && src/ROCKO-env/build_ros.sh`: the `/ros2_ws/build_ros.sh` copy is a separate single-file mount that can go stale if the file is replaced while the container runs. In the container, compose sets `ROS2_WS=/ros2_ws` so the script builds in the right place, and `ROCKO_SKIP_WIRINGPI=ON` so it leaves out the motor plugin; on the Pi it defaults to the checkout itself (`~/ROCKO-env`, see "Building it") and requires WiringPi.
 
 There is one container per laptop, and it sees one folder: the *checkout* (a folder holding a copy of this repo) that last ran `docker compose ... up -d`. If you have more than one checkout (a second clone, or a git worktree: an extra working folder for the same repository, made with `git worktree add`), or you moved or re-cloned the repo, run `./check_container_mount.sh` **on the laptop, from that checkout's root**, before building. Otherwise the commands above can run, and pass, against the other checkout's files. [Verify a change without the robot](docs/guides/verify-in-container.md) has the details and what to do when it fails.
 

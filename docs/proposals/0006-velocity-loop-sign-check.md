@@ -104,7 +104,7 @@ The check (step 1), on the Pi, robot on a stand with both wheels clear:
 
 If step 2 of *The change* applies, after the chosen flip, tethered, the robot held:
 
-1. `ros2 launch rocko_env rocko.launch.py` (balancing), hands on, tether slack.
+1. `pi/launch.sh balance` (balancing; see [Run ROCKO on the Pi](../guides/run-on-the-pi.md)), hands on, tether slack.
 2. Release gently from upright with no gamepad input. Success: the robot does **not** creep off steadily
    in one direction, speeding up, over a few seconds (that creep is the run-away). It may still
    oscillate or fall for other reasons (gains, H-1, C-1).

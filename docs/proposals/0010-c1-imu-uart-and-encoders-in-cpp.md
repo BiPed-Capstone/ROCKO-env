@@ -181,7 +181,7 @@ run, not logged each cycle) or by toggling a spare GPIO around `read()` and scop
 the wheels running away, `ERROR` from the IMU plugin more than once a minute, a buzz or heat.
 
 1. **Wheels off the ground** (the robot on a stand, power cut within reach, no gamepad):
-   `ros2 launch rocko_env rocko.launch.py`. Watch `ros2 control list_hardware_components` (both motor
+   `pi/launch.sh balance` ([Run ROCKO on the Pi](../guides/run-on-the-pi.md)). Watch `ros2 control list_hardware_components` (both motor
    components and the IMU `active`) and `ros2 topic echo /dynamic_joint_states`: the pitch must follow
    a hand tilt with the sign found in step 4, and must not be NaN or a frozen number.
 2. Unplug the IMU's TX wire for 1 s: the plugin must log the failure (throttled) and, past 50 ms,

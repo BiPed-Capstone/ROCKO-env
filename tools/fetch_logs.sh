@@ -6,7 +6,7 @@
 # It uses rsync over ssh, so it asks for the Pi's password unless you have set up an ssh key, copies
 # only what is new, and can be run again after an interrupted copy. It NEVER deletes anything on the
 # Pi: once you have checked the copy, free the Pi's disk yourself (the recorder refuses to start
-# when the disk is nearly full):   ssh pi@<ip> 'rm -r ~/rocko_logs/<run folder>'
+# when the disk is nearly full):   ssh -t pi@<ip> 'sudo rm -r ~/rocko_logs/<run folder>'
 #
 # Each run is a folder: run.yaml (what was run) and bag/ (open the .mcap file in Foxglove).
 set -eu

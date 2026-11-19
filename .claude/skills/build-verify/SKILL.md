@@ -49,13 +49,14 @@ tested are in the [guide](../../../docs/guides/verify-in-container.md) and the
 
 ## Tier 1 — the build
 
-This repo is **not** a colcon workspace. It lives inside one, at `<ws>/src/ROCKO-env`. Build from the
-workspace root, never from `src/`.
+In the **dev container** this repo is not the colcon workspace: it lives inside one, at
+`/ros2_ws/src/ROCKO-env`. Build from the workspace root, never from `src/`. On the **Pi** the checkout
+itself is the workspace (`~/ROCKO-env`, no `src/`, no `~/ros2_ws`); `build_ros.sh` handles both.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd "${ROS2_WS:-$HOME/ros2_ws}"   # Pi: ~/ros2_ws · dev container: /ros2_ws (compose sets ROS2_WS)
-rosdep install --from-paths src --ignore-src -r -y
+cd "${ROS2_WS:-/ros2_ws}"   # dev container: /ros2_ws (compose sets ROS2_WS) · Pi: cd ~/ROCKO-env instead
+rosdep install --from-paths src --ignore-src -r -y   # Pi: --from-paths rocko_env rocko_interfaces
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -258,10 +259,11 @@ config, or `down` then `up`). Anything installed with `apt` by hand disappears; 
 `package.xml` comes back with `build_ros.sh`. That is a feature: it keeps the declared
 dependencies honest.
 
-**Where `build_ros.sh` builds.** The script `cd`s to `$ROS2_WS`, defaulting to `~/ros2_ws`. That
-default is right on the Pi but wrong in the container: the workspace volume is mounted at
-`/ros2_ws` and the user is `rocko`, so `~` is `/home/rocko`, which has no `ros2_ws`. Before this was
-fixed, the `cd` failed, the script (which has no `set -e`) carried on, and `rosdep`/`colcon` ran
+**Where `build_ros.sh` builds.** The script `cd`s to `$ROS2_WS`, which defaults to the folder the
+script is in: right on the Pi (the checkout is the workspace), wrong in the container, where the
+workspace volume is mounted at `/ros2_ws` and the checkout is inside it. (It used to default to
+`~/ros2_ws`, a folder the Pi does not have.) In the container, before `docker/compose.yml` set
+`ROS2_WS`, the `cd` failed, the script (which has no `set -e`) carried on, and `rosdep`/`colcon` ran
 in whatever directory you launched it from — correct only when that happened to be `/ros2_ws`.
 `docker/compose.yml` now sets `ROS2_WS=/ros2_ws`, and the script exits with an error if the
 workspace directory is missing.

@@ -294,7 +294,7 @@ Use the `write-docs` skill for conventions and the ADR template.
 | Target | What it is for |
 | --- | --- |
 | **Docker dev container** (`docker/`) | Tiers 0–2. Builds `rocko_interfaces` and `rocko_env` without the motor plugin; runs the mock. Where an agent works |
-| **Raspberry Pi** (Ubuntu 24.04 + Jazzy + WiringPi) | Everything, including the motor plugin. The only place the real robot builds. A human's machine |
+| **Raspberry Pi** (Ubuntu 24.04 + Jazzy + WiringPi) | Everything, including the motor plugin. The only place the real robot builds. A human's machine. The workspace there is the checkout itself, `~/ROCKO-env` (no `~/ros2_ws`). The motor plugin needs root, so every `ros2` command on the Pi runs as root through the scripts in `pi/` ([guide](docs/guides/run-on-the-pi.md)); an agent does not run them |
 | **Simulation** | Tier 3. See the [ladder](docs/architecture/verification-ladder.md) for whether it exists |
 
 The mock is not a simulation.

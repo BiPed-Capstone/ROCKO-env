@@ -63,15 +63,16 @@ happen on the robot's network.
 After the tethered sequence of [proposal 0008](0008-candidate-gains-and-tethered-test.md) has the robot
 standing: tethered, a person holding the tether, power cut within reach.
 
-Everything below is typed on the **Pi**, in a shell that has run `source /opt/ros/jazzy/setup.bash` and
-`source ~/ros2_ws/install/setup.bash`; the robot is started with `ros2 launch rocko_env rocko.launch.py`.
+Everything below is typed on the **Pi**, in a terminal opened with `pi/rocko_shell.sh` (root, with the
+environment set up: [Run ROCKO on the Pi](../guides/run-on-the-pi.md)); the robot is started with
+`pi/launch.sh balance` from `~/ROCKO-env`.
 
 1. With the gamepad or the keyboard, command the smallest forward speed and hold it for 3 s, then
    release. Success: the robot leans a few degrees, moves off, and settles; no lean near 15 deg.
    Abort on the tipover cutoff, a growing oscillation, or a lean that keeps increasing.
 2. Record a bag (pitch, the velocity reference, both feedforwards) and note the peak lean. If it is
    large, stop the launch, lower `DEFAULT_MAX_LINEAR_ACCEL_M_S2` in `DiffDriveController.py` and the
-   matching default in `rocko_sim.launch.py`, rebuild (`cd ~/ros2_ws && src/ROCKO-env/build_ros.sh`)
+   matching default in `rocko_sim.launch.py`, rebuild (`cd ~/ROCKO-env && ./build_ros.sh`)
    and launch again. Do not start a second `DiffDriveController.py` with `ros2 run`: the launch already
    runs one, and two would publish on the same topics.
 3. For decision 2, only once step 1 is calm: while holding the smallest forward speed, stop the laptop

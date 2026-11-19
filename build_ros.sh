@@ -4,16 +4,20 @@
 yellow='\e[0;33m'
 white='\e[0;37m'
 
-# The workspace root (the folder that contains src/). On the Pi this is ~/ros2_ws.
-# In the Docker dev container it is /ros2_ws, so docker/compose.yml sets ROS2_WS there.
-WS="${ROS2_WS:-$HOME/ros2_ws}"
+# The workspace root: the folder colcon builds in, where build/ install/ log/ appear.
+# On the Pi it is the checkout itself (~/ROCKO-env: no src/ folder, no ~/ros2_ws), which is the
+# default. In the Docker dev container the checkout sits INSIDE the workspace, at
+# /ros2_ws/src/ROCKO-env, so docker/compose.yml sets ROS2_WS=/ros2_ws there.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WS="${ROS2_WS:-$here}"
 
 echo -e "${yellow}Building ROS packages in ${WS}..."
 echo -e "${white}"
 # Stop here if the workspace is missing: without this, every later command
 # would run in whatever directory the script happened to be launched from.
 cd "$WS" || { echo "ERROR: workspace '$WS' not found. Set ROS2_WS to your workspace root." >&2; exit 1; }
-source /opt/ros/jazzy/setup.bash
+# ROCKO_ROS_SETUP overrides ROS's setup file (the host test uses it); the default is the robot's.
+source "${ROCKO_ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
 
 echo -e "${yellow}Updating package list..."
 echo -e "${white}"
@@ -23,7 +27,11 @@ echo -e "${yellow}Installing dependencies..."
 echo -e "${white}"
 # -r keeps going past a dependency rosdep cannot install, so a missing runtime package shows up at
 # launch (Tier 2) rather than failing the build here.
-rosdep install --from-paths src --ignore-src -r -y
+# A workspace with a src/ folder (the container) is searched there; a checkout that IS the workspace
+# (the Pi; this repo has no top-level src/) is searched in its two package folders, not the whole
+# tree: build/ and install/ hold copies of every package.xml.
+if [ -d src ]; then package_paths=(src); else package_paths=(rocko_env rocko_interfaces); fi
+rosdep install --from-paths "${package_paths[@]}" --ignore-src -r -y
 
 # 3. On the Pi only: install WiringPi first, or step 4 stops with "WiringPi not found"
 #    https://github.com/WiringPi/WiringPi

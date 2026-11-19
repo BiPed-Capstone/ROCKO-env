@@ -18,7 +18,8 @@ the ground: [bench-test-tank-mode.md](bench-test-tank-mode.md); the decision abo
 
 ## What you need
 
-- **On the robot (the Pi):** the normal launch, `ros2 launch rocko_env rocko.launch.py`. It starts
+- **On the robot (the Pi):** the normal launch, `pi/launch.sh balance` (or `pi/launch.sh tank`; see
+  [Run ROCKO on the Pi](run-on-the-pi.md): the launch runs as root). It starts
   `Joystick.py`, which listens on TCP port 1234.
 - **On your laptop:** Python 3 (nothing else: no ROS, no pygame), a copy of this repo's `joystick/`
   folder, and a terminal. Keep `keyboard_teleop.py` next to `computer_joystick.py`: it imports the
