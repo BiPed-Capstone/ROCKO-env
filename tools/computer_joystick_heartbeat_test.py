@@ -105,10 +105,16 @@ def test_no_heartbeat_inside_the_period():
     assert len(packets) == 2, f"expected the first packet and the change only, got {len(packets)}"
 
 
+def test_raw_gamepad_cannot_set_the_shaped_button():
+    assert cj.raw_gamepad_buttons([1] * 16) == [1] * 14 + [0, 1], "button 14 must be cleared, 15 kept"
+    assert cj.raw_gamepad_buttons([1] * 10) == [1] * 10, "a gamepad with fewer buttons is unchanged"
+
+
 def main():
     tests = [test_packet_is_40_bytes, test_pack_pads_and_truncates_to_6_axes_16_buttons,
              test_held_stick_is_resent_every_heartbeat,
-             test_change_is_sent_at_once, test_no_heartbeat_inside_the_period]
+             test_change_is_sent_at_once, test_no_heartbeat_inside_the_period,
+             test_raw_gamepad_cannot_set_the_shaped_button]
     failed = 0
     for t in tests:
         try:

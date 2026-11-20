@@ -140,6 +140,8 @@ ROCKO-env
 ├── sim/check_sim_config.py         Fails if the sim controller YAML's wiring, an untuned gain or the sim settings' defaults drift from the hardware YAML / the physics header (run by verify_urdf.sh)
 ├── joystick/computer_joystick.py   Runs on YOUR laptop, not the robot. Sends gamepad input over TCP
 ├── joystick/keyboard_teleop.py     Also on YOUR laptop: drive from the keyboard instead (same TCP protocol)
+├── joystick/xbox_teleop.py         Also on YOUR Mac: drive tank mode with a Bluetooth Xbox controller (split arcade)
+├── joystick/controller_probe.py    Prints what macOS/SDL sees of a controller, before you drive with it
 ├── rocko_env/                      The main package
 │   ├── CMakeLists.txt, package.xml     Build config and dependency list
 │   ├── rocko_env_hardware.xml          Registers the hardware plugins with ROS
@@ -259,6 +261,11 @@ No gamepad? `python3 joystick/keyboard_teleop.py <robot-ip>` drives from the key
 connection, at low speeds, with nothing but Python 3 on the laptop:
 [Drive the robot from a laptop keyboard](docs/guides/drive-with-keyboard.md). Checked in the simulation
 only.
+
+An Xbox controller paired with a Mac drives **tank mode** with `joystick/xbox_teleop.py` (split arcade,
+expo, full motor speed, hold a bumper to move):
+[Drive in tank mode with an Xbox controller](docs/guides/drive-with-xbox-controller.md). Checked with a
+fake controller and on the mock only.
 
 To keep a recording of a test, add `record:=true` to any of the launches above
 (`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):

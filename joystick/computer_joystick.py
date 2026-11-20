@@ -23,6 +23,20 @@ NUM_AXES = 6
 NUM_BUTTONS = 16
 
 
+# Joystick.SHAPED_BUTTON: 1 means "the sender already shaped these axes". This script forwards the
+# gamepad's RAW buttons, and a gamepad with that many buttons would switch the robot's mapping while
+# one is held; so it is always sent as 0. Only joystick/xbox_teleop.py sets it.
+SHAPED_BUTTON = 14
+
+
+def raw_gamepad_buttons(buttons):
+    """The gamepad's buttons with SHAPED_BUTTON cleared."""
+    buttons = list(buttons)
+    if len(buttons) > SHAPED_BUTTON:
+        buttons[SHAPED_BUTTON] = 0
+    return buttons
+
+
 def pack(axes, buttons):
     axes = (list(axes) + [0.0] * NUM_AXES)[:NUM_AXES]
     buttons = (list(buttons) + [0] * NUM_BUTTONS)[:NUM_BUTTONS]
@@ -80,7 +94,7 @@ if __name__ == "__main__":
         pygame.event.pump()
         axes = [controller.get_axis(i) for i in range(num_axes)]
         buttons = [controller.get_button(i) for i in range(num_buttons)]
-        return axes, buttons
+        return axes, raw_gamepad_buttons(buttons)
 
     while True:
         try:

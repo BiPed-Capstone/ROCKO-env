@@ -51,6 +51,27 @@ class Joystick(Node):
                                               #   left this much slower (a left turn);
                                               #   DiffDriveController adds it to each wheel's speed.
                                               #   NOT checked by any tier: the sim is planar.
+    # SHAPED AXES. A sender that sets this button byte to 1 has ALREADY applied its own deadzone and
+    # expo curve to the sticks (joystick/xbox_teleop.py does, and it MUST use the same index). Then
+    # convert_to_twist() uses each axis as sent, times the shaped_* scales below: no second expo
+    # curve and no deadband here, or the stick would be curved twice. Precise mode wins if both are set.
+    # computer_joystick.py forwards a raw gamepad's buttons but always sends this one as 0, so a
+    # gamepad that happens to have a 15th button cannot switch the mapping.
+    SHAPED_BUTTON = 14
+    # The shaped_* scales default to the gamepad's own scales (linear_scale / angular_scale), so a
+    # full shaped stick asks for exactly what a full gamepad stick asks for today. Only a launch file
+    # that passes the parameters changes that: rocko_tank_mode.launch.py raises them to full motor
+    # duty; rocko.launch.py (balancing) does not pass them. Negative for the same sign reason as above.
+    DEFAULT_SHAPED_LINEAR_SCALE_M_S = -10.0     # [m/s] forward speed at full axis
+    DEFAULT_SHAPED_ANGULAR_SCALE = -35.0        # at full axis; tank mode's diff_drive_controller reads
+                                                #   it as rad/s, balance mode's DiffDriveController.py
+                                                #   as m/s per wheel (see DEFAULT_PRECISE_ANGULAR_SCALE_M_S)
+    # Largest shaped scales accepted: 100 % motor duty in tank mode (the arithmetic is in
+    # rocko_tank_mode.launch.py; proposal 0014). A larger value is refused
+    # rather than clipped silently by the motor. Not checked against balance mode's units: the
+    # balancing launch passes no shaped_* parameter.
+    MAX_SHAPED_LINEAR_SCALE_M_S = 15.0          # [m/s]
+    MAX_SHAPED_ANGULAR_SCALE = 93.75            # [rad/s in tank mode]
 
     def __init__(self):
         super().__init__('joystick')
@@ -92,7 +113,27 @@ class Joystick(Node):
             'precise_linear_scale_m_s', self.DEFAULT_PRECISE_LINEAR_SCALE_M_S)
         self.precise_angular_scale = self.precise_scale(
             'precise_angular_scale_m_s', self.DEFAULT_PRECISE_ANGULAR_SCALE_M_S)
+        # Shaped mode's scales (see SHAPED_BUTTON).
+        self.declare_parameter('shaped_linear_scale_m_s', self.DEFAULT_SHAPED_LINEAR_SCALE_M_S)
+        self.declare_parameter('shaped_angular_scale', self.DEFAULT_SHAPED_ANGULAR_SCALE)
+        self.shaped_linear_scale = self.shaped_scale(
+            'shaped_linear_scale_m_s', self.DEFAULT_SHAPED_LINEAR_SCALE_M_S,
+            self.MAX_SHAPED_LINEAR_SCALE_M_S)
+        self.shaped_angular_scale = self.shaped_scale(
+            'shaped_angular_scale', self.DEFAULT_SHAPED_ANGULAR_SCALE, self.MAX_SHAPED_ANGULAR_SCALE)
+        self.get_logger().info(
+            f"Shaped-axis scales: linear {self.shaped_linear_scale}, angular {self.shaped_angular_scale}")
 
+
+    def shaped_scale(self, name, default, max_magnitude):
+        """The parameter's value if it is in [-max_magnitude, 0), otherwise `default` with an error.
+        Positive would reverse the stick; larger than max_magnitude asks for more than the motors
+        can give; NaN is not a speed (the comparison rejects it)."""
+        value = self.get_parameter(name).value
+        if not (-max_magnitude <= value < 0.0):
+            self.get_logger().error(f"{name}={value} is not in [-{max_magnitude}, 0); using {default}")
+            return default
+        return value
 
     def precise_scale(self, name, default):
         """The parameter's value if it is in [-MAX_PRECISE_SCALE_M_S, 0), otherwise `default` with
@@ -231,6 +272,12 @@ class Joystick(Node):
             # deadband, because the keyboard sends exact steps, not a noisy stick.
             twist.twist.linear.x = msg.axes[linear_axis] * self.precise_linear_scale
             twist.twist.angular.z = msg.axes[angular_axis] * self.precise_angular_scale
+            self.robot_body_vector_updated_topic.publish(twist)
+            return
+        if msg.buttons[self.SHAPED_BUTTON] == 1:
+            # Shaped axes (see SHAPED_BUTTON): the sender already did deadzone and expo.
+            twist.twist.linear.x = msg.axes[linear_axis] * self.shaped_linear_scale
+            twist.twist.angular.z = msg.axes[angular_axis] * self.shaped_angular_scale
             self.robot_body_vector_updated_topic.publish(twist)
             return
 

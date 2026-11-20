@@ -61,3 +61,4 @@ CATKIN_IGNORE
 
 # Left behind only if check_container_mount.sh is killed with SIGKILL (Ctrl+C cleans up)
 .mount-check.*
+.venv-teleop/

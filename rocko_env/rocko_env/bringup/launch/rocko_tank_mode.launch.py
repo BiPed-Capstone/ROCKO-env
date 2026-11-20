@@ -166,9 +166,31 @@ def generate_launch_description():
         condition=UnlessCondition(use_mock_hardware),
     )
 
+    # FULL-RANGE SCALES for senders that shape their own sticks (joystick/xbox_teleop.py sets
+    # Joystick.SHAPED_BUTTON). A full stick forward should give 100 % motor duty, and a full turn
+    # alone should spin each wheel at that same speed, so xbox_teleop.py can mix the two in units
+    # of "fraction of full wheel speed". Arithmetic, not measured:
+    #   Motor12VoltQuadEncoder::write (Motor12VoltQuadEncoder.cpp:231, MAX_RAD_PER_SEC and
+    #   kStictionDutyPercent in its .hpp): duty % = wheel rad/s / 119.4 * 100 + 2 (clamped to 100),
+    #   so 100 % at 117 rad/s = 14.9 m/s at the 0.127 m wheel radius. 15.0 is that, rounded up
+    #   (the plugin clamps the last 0.1 m/s to 100 %).
+    #   diff_drive_controller: wheel speed = linear.x +/- angular.z * wheel_separation / 2,
+    #   so a wheel at 15.0 m/s from turning alone needs angular.z = 15.0 / (0.32 / 2) = 93.75 rad/s.
+    # Negative: a gamepad reports forward and left as negative axis values (see Joystick.py).
+    # The tank YAML's velocity limits (20 m/s, 1000 rad/s) stay above these, so they still apply.
+    # Only tank mode passes these; rocko.launch.py (balancing) keeps Joystick.py's defaults.
+    full_duty_wheel_speed_m_s = 15.0
+    wheel_separation_m = 0.32  # MUST match wheel_separation in rocko_tank_mode_controllers.yaml
+    #                            (tools/teleop_watchdog_test.py fails if the two differ)
     joystick = Node(
         package="rocko_env",
         executable="Joystick.py",
+        parameters=[
+            {
+                "shaped_linear_scale_m_s": -full_duty_wheel_speed_m_s,
+                "shaped_angular_scale": -full_duty_wheel_speed_m_s / (wheel_separation_m / 2),
+            }
+        ],
     )
 
     # Printed first, so nobody mistakes a mock run for a live robot.
