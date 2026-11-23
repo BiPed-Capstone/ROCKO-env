@@ -52,7 +52,8 @@ FULL_TURN_RAD_S = FULL_WHEEL_SPEED_M_S / (WHEEL_SEPARATION_M / 2)  # [rad/s] 93.
 DEADMAN_BUTTON = gamepad.BUTTON_LEFT_BUMPER  # hold LB to drive
 PUBLISH_PERIOD_S = 0.02  # [s] 50 Hz: a released LB becomes a zero command within 20 ms of the joy node's
 #                          message. The wheels then slow at diff_drive_controller's acceleration limit
-#                          (10 m/s^2 forward in the tank YAML: up to about 1.5 s from full speed).
+#                          (linear.x.max_deceleration in the tank YAML, proposal 0015: about 0.5 s from
+#                          full speed).
 
 # The tunables a student would want to try, each a fraction in [0, 1]. They are ROS parameters of this
 # node. max_speed and max_turn are also launch arguments (pi/launch.sh tank max_speed:=0.4); to

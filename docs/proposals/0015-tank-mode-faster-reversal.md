@@ -1,6 +1,7 @@
 # Proposal 0015 — make tank mode reverse faster: raise its deceleration (and possibly acceleration) limits
 
-- **Status:** Open
+- **Status:** **Accepted, option B**, by the owner in chat on 2026-11-22 ("Yes, apply option B"). Applied to
+  `rocko_tank_mode_controllers.yaml` in the same change; the stand test result is recorded below when run.
 - **Gate:** hardware limits (`linear.x` acceleration keys in `bringup/config/rocko_tank_mode_controllers.yaml`;
   CLAUDE.md section 3)
 - **Raised:** 2026-11-22, commit `784022a`, run journal:
@@ -68,10 +69,23 @@ A first if a jerky start on the floor turns out to be a problem. Angular limits 
 
 ## Risks
 
+- `linear.x.max_acceleration_reverse` is left unset: it defaults to `-max_acceleration` (-30), which the mock's 0.38 s
+  agrees with. Not written out, because the YAML change was applied by the owner and the behaviour is the same.
+
 - A faster reversal is harder on the gearboxes and the motors' current (reversing a spinning motor briefly draws
   more current); nobody has measured current or temperature on this robot.
 - On the floor, a 30 m/s² change at speed can make the robot lurch or tip forward/back. Test on blocks first, then on
   the floor at `max_speed:=0.4`.
+
+## As applied (2026-11-22)
+
+The owner applied the YAML change with `git apply` (the guard hook refused the agent's edit, as designed). Measured on
+the mock from the YAML as applied (`tools/measure_reversal_ramp.sh`, no parameter overrides): **0.20 s to zero and
+0.38 s to 90 % of reverse at 6 m/s; 0.50 s and 0.96 s at 15 m/s** (were 0.60 / 1.14 s and 1.52 / 2.86 s).
+`tools/run_ladder.sh --no-sim`: PASS. The stand test on the robot follows.
+
+Known imprecision, left in place: the YAML's own comment repeats these timings and calls "3 s" measured on the
+robot; it was computed (the mock gave 2.86 s). The file is guarded, so only the owner can reword it.
 
 ## Test on the robot (a human)
 
@@ -80,6 +94,11 @@ A first if a jerky start on the floor turns out to be a problem. Angular limits 
 2. Full forward, then full reverse, a few times. Success: the direction changes in about the table's time; the wheels
    do not slip on their hubs or bang; nothing smells hot. Abort (Ctrl-C on the launch) on a bang, a stall that
    continues, or heat.
-3. Then the floor, with space around it, still at `max_speed:=0.4`; raise it in steps.
+3. Then the floor, with space around it, still at `max_speed:=0.4`; raise it in steps. **The floor is the real test**
+   (`realtime-auditor`, 2026-11-22): on blocks the wheels can follow the ramp, on the floor the robot's mass cannot, so
+   the drive reverses while the wheels still turn forward. The motors' own back-voltage then adds to the reverse drive:
+   a current spike and a shock to the gearboxes. Watch the battery voltage (a meter on the battery) during a full
+   reversal. **Abort** on a voltage sag that resets the Pi or the motor driver, a bang from the gearboxes, the wheels
+   skidding, or the robot lurching or tipping. If any of these appear, fall back to option A (faster slowing only).
 4. Record the battery voltage, the commit and what you saw as [reproducing results](../guides/reproducing-results.md)
    asks.

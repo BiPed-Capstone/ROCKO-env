@@ -41,8 +41,14 @@ diffbot_base_controller:
     linear.x.has_jerk_limits: false
     linear.x.max_velocity: 20.0
     linear.x.min_velocity: -20.0
-    linear.x.max_acceleration: 10.0
-    linear.x.min_acceleration: -10.0
+    # Proposal 0015, option B (accepted by the owner 2026-11-22): 30 m/s^2 speeding up, slowing down and
+    # reversing, so full forward to full reverse takes about 0.4 s at 6 m/s and 1 s at 15 m/s (it was
+    # 1.2 s and 3 s at 10 m/s^2: measured on the robot, and these values on the mock). Signs are the
+    # controller's own: max_deceleration <= 0, max_deceleration_reverse >= 0. The old
+    # min_acceleration line was removed: it has no effect in this diff_drive_controller version.
+    linear.x.max_acceleration: 30.0
+    linear.x.max_deceleration: -30.0
+    linear.x.max_deceleration_reverse: 30.0
     linear.x.max_jerk: 0.0
     linear.x.min_jerk: 0.0
 

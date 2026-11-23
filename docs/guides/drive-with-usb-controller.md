@@ -151,15 +151,16 @@ On the stand, check in this order, and **record the battery voltage and the comm
 
 | Event | What happens |
 | --- | --- |
-| LB released | A zero command within 20 ms. The wheels slow at tank mode's acceleration limit: forward 10 m/s², so up to about 1.5 s from full speed if the controller applies that limit when slowing (not checked); a turn stops almost at once |
+| LB released | A zero command within 20 ms. The wheels then slow at tank mode's deceleration limit (`linear.x.max_deceleration`, [proposal 0015](../proposals/0015-tank-mode-faster-reversal.md)); a turn stops almost at once |
 | Controller unplugged, or `game_controller_node` stops | Nothing arrives on `/joy`; after 0.25 s `TankTeleop.py` commands zero and needs LB released before driving again |
 | `TankTeleop.py` stops | `diff_drive_controller` zeroes the wheels after its `cmd_vel_timeout` of 1.0 s |
 | The launch is stopped (Ctrl-C on the Pi) | Everything stops |
 
 Tank mode limits turning acceleration to 1000 rad/s², so a full turn reaches its speed in about a tenth of a second
-(proposal 0014). **Reversing is slow today:** `diff_drive_controller` ramps forward/back changes, so full forward to full reverse
-takes over a second, part of it with the wheels barely moving. Measured, with the fix proposed:
-[proposal 0015](../proposals/0015-tank-mode-faster-reversal.md).
+(proposal 0014). **Reversing:** `diff_drive_controller` ramps forward/back changes. The ramp was made three times steeper on 2026-11-22
+(the owner found full forward to full reverse slow); the numbers, before and after, are in
+[proposal 0015](../proposals/0015-tank-mode-faster-reversal.md). A short dead spot remains while the command crosses the
+motors' breakaway band (proposal 0013).
 
 ## What goes wrong
 

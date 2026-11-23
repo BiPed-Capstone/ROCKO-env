@@ -39,12 +39,12 @@ were already above what the motors can do, so they never limited tank mode and s
 
 ## What this does not change, and what it makes matter
 
-- **Acceleration.** `rocko_tank_mode_controllers.yaml` limits `linear.x` to 10 m/s² (about 1.5 s from 0 to
-  15 m/s) but `angular.z` to 1000 rad/s², so a full turn reaches 100 % duty on each wheel in about 0.1 s. That
-  value is old; this change is the first to make it matter. Changing it is a guarded YAML key, not done here.
-  Until a human decides, start with `max_turn:=` well below 1 (the guide says so).
-- **Stopping from speed.** Letting go of the bumper sends zero at once, but the wheels may take up to about
-  1.5 s to slow from full speed if the controller applies the same 10 m/s² limit when slowing (not checked).
+- **Acceleration.** `angular.z` is limited to 1000 rad/s², so a full turn reaches 100 % duty on each wheel in about
+  0.1 s; that value is old, and this change is the first to make it matter (a guarded YAML key, not changed). The
+  `linear.x` limits were 10 m/s² when this was written (about 1.5 s from 0 to 15 m/s, and the same to stop); since
+  [proposal 0015](0015-tank-mode-faster-reversal.md) (accepted 2026-11-22) they are 30 m/s² both ways.
+- **Stopping from speed.** Letting go of the bumper sends zero at once; the wheels then slow at the `linear.x`
+  deceleration limit (proposal 0015).
 
 ## Evidence
 
