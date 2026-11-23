@@ -4,7 +4,10 @@ A game controller plugged into the Raspberry Pi's USB drives ROCKO in **tank mod
 wheel driving). Nothing runs on your laptop: the Pi reads the controller itself. This is the only way to drive
 the robot on this branch since 2026-11-22 (keyboard and laptop driving were removed).
 
-**What has been checked (2026-11-22):** the stick arithmetic, the left-bumper rule and the stop on silence, with
+**What has been checked (2026-11-22):** **on the robot, on blocks, the owner drove it** (owner-run, battery voltage
+not recorded): forward, reverse, turning, LB release and the unplug/re-arm all worked, and a capture (not kept) matched
+every stick direction to its command ([journal](../journal/2026-11-22-tank-reversal-lag.md)).
+Before that, the stick arithmetic, the left-bumper rule and the stop on silence, with
 fake controller messages (`tools/tank_teleop_test.py`); that tank mode starts on the mock with both new nodes up
 and no controller attached (Tier 2); that the dashboard shows a controller and the enable state (a fake one, in
 the container). **Not checked:** a real 8BitDo, the signs of its sticks, and the robot. The evidence is in the
@@ -114,10 +117,13 @@ and a wrong one would drive the wrong way. Ctrl-C both when done.
 the controller plugged in and low caps. On the Pi:
 
 ```bash
-pi/launch.sh tank max_speed:=0.4 max_turn:=0.3
+pi/launch.sh tank max_speed:=0.4 max_turn:=1.0
 ```
 
 `max_speed` caps every wheel at that fraction of full speed and `max_turn` weakens the turn stick (both default 1.0).
+**The two multiply for turning:** a full turn alone spins each wheel at `max_speed x max_turn` of full speed. Keep
+that product above about 0.3, or turning stays inside the motors' breakaway band and only hums (it did on the first
+stand test with 0.4 x 0.3: [journal](../journal/2026-11-22-tank-reversal-lag.md)).
 Success looks like this in the launch output:
 
 ```text
@@ -150,8 +156,10 @@ On the stand, check in this order, and **record the battery voltage and the comm
 | `TankTeleop.py` stops | `diff_drive_controller` zeroes the wheels after its `cmd_vel_timeout` of 1.0 s |
 | The launch is stopped (Ctrl-C on the Pi) | Everything stops |
 
-Start with `max_turn` low: tank mode limits turning acceleration to 1000 rad/s², so a full turn reaches full duty in
-about a tenth of a second (proposal 0014).
+Tank mode limits turning acceleration to 1000 rad/s², so a full turn reaches its speed in about a tenth of a second
+(proposal 0014). **Reversing is slow today:** `diff_drive_controller` ramps forward/back changes, so full forward to full reverse
+takes over a second, part of it with the wheels barely moving. Measured, with the fix proposed:
+[proposal 0015](../proposals/0015-tank-mode-faster-reversal.md).
 
 ## What goes wrong
 
