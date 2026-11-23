@@ -1,7 +1,8 @@
 # Proposal 0015 — make tank mode reverse faster: raise its deceleration (and possibly acceleration) limits
 
-- **Status:** **Accepted, option B**, by the owner in chat on 2026-11-22 ("Yes, apply option B"). Applied to
-  `rocko_tank_mode_controllers.yaml` in the same change; the stand test result is recorded below when run.
+- **Status:** **Accepted and applied, then raised by the owner to 160 m/s²** (2026-11-22). Option B (30 m/s²) was
+  accepted ("Yes, apply option B") and stand-tested; the owner then asked for driving "just as responsive as turning"
+  and edited the YAML to 160 m/s² (below). Floor test pending.
 - **Gate:** hardware limits (`linear.x` acceleration keys in `bringup/config/rocko_tank_mode_controllers.yaml`;
   CLAUDE.md section 3)
 - **Raised:** 2026-11-22, commit `784022a`, run journal:
@@ -86,6 +87,20 @@ the mock from the YAML as applied (`tools/measure_reversal_ramp.sh`, no paramete
 
 Known imprecision, left in place: the YAML's own comment repeats these timings and calls "3 s" measured on the
 robot; it was computed (the mock gave 2.86 s). The file is guarded, so only the owner can reword it.
+
+## Stand test of option B, and the change to 160 m/s² (2026-11-22)
+
+Robot on blocks, `max_speed:=0.4 max_turn:=1.0`, commit `b1a616c`, battery voltage not recorded. Owner: "a lot better
+but turning is still more responsive". Capture (command vs left encoder position): the command reversed +6 to -6 m/s in
+0.4 s; the wheel crossed zero at about 0.2 s and reached reverse speed by about 0.6 s, now trailing the command a little.
+
+**Why 160:** turning is limited by `angular.z.max_acceleration: 1000` rad/s², which at each wheel is
+1000 x (0.32 / 2) = 160 m/s². The same figure for `linear.x` gives forward/back the per-wheel acceleration turning
+already has. The owner edited the YAML (`max_acceleration` 160, `max_deceleration` -160, `max_deceleration_reverse`
+160; also some formatting, and the comment above them still says 30). Mock, from that file: **0.04 s to zero and 0.08 s
+to 90 % of reverse at 6 m/s; 0.10 s and 0.18 s at 15 m/s** (4 to 9 control cycles at 50 Hz): the ramp is no longer what
+the driver feels; what remains is the motors' own response and the breakaway dead spot (proposal 0013). Ladder
+`--no-sim`: PASS. The floor risks in the test below apply in full: this is the harshest setting so far.
 
 ## Test on the robot (a human)
 
