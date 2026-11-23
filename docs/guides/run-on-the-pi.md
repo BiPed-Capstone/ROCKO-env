@@ -40,6 +40,7 @@ a laptop is different: there the checkout sits inside a workspace, `/ros2_ws/src
 | `pi/launch.sh tank` or `pi/launch.sh balance` | Launches `rocko_tank_mode.launch.py` or `rocko.launch.py` as root. Anything after the mode goes to `ros2 launch`: `pi/launch.sh tank gui:=true` | Starting the robot |
 | `pi/rocko_shell.sh` | Opens a root shell that already has the environment, in the workspace. `exit` leaves it. The prompt ends in `#` | One per extra terminal: `ros2 control list_controllers`, `ros2 topic echo ...` |
 | `pi/rocko_run.sh <command>` | Runs one command as root in the environment | A single command without opening a shell: `pi/rocko_run.sh ros2 topic list` |
+| `pi/install_dashboard_service.sh` | Installs (or with `status` / `remove`, checks or removes) a systemd service that starts the web dashboard at boot, as root | Once, to have the dashboard up whenever the Pi is on: [the dashboard guide](use-the-dashboard.md#start-it-at-boot-a-systemd-service) |
 | `pi/rocko_env.sh` | **Sourced**, not run: `source pi/rocko_env.sh`. Sets up the terminal as your user (no root) | Building: it needs no root |
 
 Typical session, two terminals (SSH twice). Each command starts with `sudo`'s password prompt the

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Host test of the Pi helper scripts (pi/rocko_env.sh, rocko_run.sh, rocko_shell.sh, launch.sh).
+# Host test of the Pi helper scripts (pi/rocko_env.sh, rocko_run.sh, rocko_shell.sh, launch.sh,
+# install_dashboard_service.sh's rendered unit).
 # No ROS, no robot, no real sudo: a fake ROS setup file, a fake `ros2` that prints what it was given
 # and what it can see, and a fake `sudo` that logs the call and runs the rest as the same user.
 #
@@ -141,6 +142,19 @@ for script in "launch.sh tank" "rocko_run.sh ros2 x"; do
   r=0; [ "$code" -eq 2 ] || r=1; has "$out" "without sudo" || r=1; has "$out" "ros2 launch" && r=1
   check "${script%% *}: run under sudo is refused (2) with the reason" "$r" "code $code: $out"
 done
+
+# 8. the dashboard boot service: the unit is rendered with the caller's paths, and installing under sudo is refused
+out="$(HOME="$home" ROCKO_VENV="$home/myvenv" ROCKO_DOMAIN_ID=23 "$repo/pi/install_dashboard_service.sh" print 2>&1)"; code=$?
+r=0; [ "$code" -eq 0 ] || r=1
+has "$out" "Environment=ROCKO_VENV=$home/myvenv" || r=1
+has "$out" "Environment=ROCKO_DOMAIN_ID=23" || r=1
+has "$out" "ExecStart=$repo/pi/rocko_run.sh ros2 run rocko_env Dashboard.py" || r=1
+has "$out" "log_root:=$home/rocko_logs" || r=1
+grep -qE '@[A-Z_]+@' <<<"$out" && r=1   # no @PLACEHOLDER@ left behind
+check "install_dashboard_service.sh print: the unit names this checkout, the caller's venv, logs and domain" "$r" "$out"
+out="$(PATH="$work/asroot:$PATH" "$repo/pi/install_dashboard_service.sh" install 2>&1)"; code=$?   # the asroot fake id says uid 0
+r=0; [ "$code" -eq 2 ] || r=1; has "$out" "without sudo" || r=1
+check "install_dashboard_service.sh: install under sudo is refused (2) with the reason" "$r" "code $code: $out"
 
 echo
 echo "$pass passed, $fail failed"

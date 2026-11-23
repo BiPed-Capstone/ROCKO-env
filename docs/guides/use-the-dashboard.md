@@ -37,6 +37,52 @@ arguments. In the dev container, `rocko_sim.launch.py` starts the dashboard by d
 from the laptop's browser the container's port 8080 would have to be published in
 `docker/compose.yml`, which it is not.
 
+### Start it at boot (a systemd service)
+
+To have the page up whenever the Pi is on, with no launch running, install the boot service once. On the **Pi**, as
+your own user (not root; it asks `sudo` itself), from `~/ROCKO-env`:
+
+```bash
+pi/install_dashboard_service.sh
+```
+
+Success: `Installed /etc/systemd/system/rocko-dashboard.service; enabled at boot; started.` Then check it:
+
+```bash
+pi/install_dashboard_service.sh status
+```
+
+Success: `enabled at boot: enabled`, `running now: active`, and a `restarts` count that stays put (it climbs every
+10 s while a launch's own dashboard holds the port, which is expected). The page is at `http://<robot-ip>:8080` from then on,
+after every reboot.
+
+How it behaves:
+
+- It runs the same `Dashboard.py`, as root in the robot's `ROS_DOMAIN_ID` (17), so it shows whatever launch is
+  running, started before or after it. With no launch it shows the controller card and "No robot state".
+- **One dashboard per port.** A launch that also starts one (tank mode does by default) finds port 8080 taken: its
+  dashboard logs `port 8080 is already in use by another process (usually the boot service's dashboard); this one exits` and stops cleanly,
+  which is expected. If a launch's dashboard got the port first, the service retries every 10 s and takes over when
+  that launch stops.
+- It cannot know which launch is running, so a recording started from its page says `launch: unknown (dashboard boot
+  service)` and `hardware: unknown` in its `run.yaml`. Use `record:=true` on the launch when that matters.
+- Recordings go to your `~/rocko_logs`, as with `pi/launch.sh`.
+- **It also runs while the robot balances.** `rocko.launch.py` keeps its own dashboard off by default because what
+  the dashboard costs the Pi's CPU beside the 100 Hz balance loop has never been measured. With the service
+  installed that choice no longer holds: run `pi/install_dashboard_service.sh remove` before a balancing test until the
+  cost is measured.
+- **It is always on, with no login:** anyone on the robot's network can open the page and press Record whenever the Pi
+  is powered. Remove it on a network you do not trust.
+
+To stop it starting at boot (and stop it now):
+
+```bash
+pi/install_dashboard_service.sh remove
+```
+
+Its log: `sudo journalctl -u rocko-dashboard.service`. Re-run the install after moving the checkout or the venv; it
+writes your paths into the unit. The unit's template is `pi/rocko-dashboard.service`.
+
 ## What the page shows
 
 | On the page | What it is | From |

@@ -91,3 +91,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-20 | [Drive tank mode with an Xbox controller over Bluetooth from the Mac, split arcade](2026-11-20-xbox-controller-split-arcade.md) |
 | 2026-11-22 | [Drive tank mode from an 8BitDo controller plugged into the Pi; remove keyboard and laptop driving](2026-11-22-usb-controller-tank-mode.md) |
 | 2026-11-22 | [First USB-controller drive on the robot, and why tank mode reverses slowly](2026-11-22-tank-reversal-lag.md) |
+| 2026-11-22 | [Start the web dashboard at boot with a systemd service](2026-11-22-dashboard-boot-service.md) |

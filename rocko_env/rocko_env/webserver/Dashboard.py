@@ -20,6 +20,7 @@ It is NOT on the 100 Hz control path: it is a separate process, and it lowers it
 There is no login. Anyone on the robot's network can see the page and press Record. Do not run it
 on a network you do not trust.
 """
+import errno
 import ipaddress
 import json
 import math
@@ -408,7 +409,20 @@ def main():
     # The page is installed to share/rocko_env/web/ (CMakeLists.txt).
     with open(os.path.join(get_package_share_directory("rocko_env"), "web", "dashboard.html"), "rb") as f:
         page = f.read()
-    server = ThreadingHTTPServer(("0.0.0.0", dashboard.port), make_handler(dashboard, page))
+    try:
+        server = ThreadingHTTPServer(("0.0.0.0", dashboard.port), make_handler(dashboard, page))
+    except OSError as error:
+        if error.errno != errno.EADDRINUSE:
+            raise
+        # Another dashboard already serves this port: on the Pi, normally the one the boot service
+        # (pi/rocko-dashboard.service) started, which sees the same topics. Step aside cleanly (exit 0),
+        # so a launch file's dashboard:=true does not end in "process has died".
+        dashboard.get_logger().info(
+            f"dashboard: port {dashboard.port} is already in use by another process (usually the boot "
+            "service's dashboard); this one exits and that one keeps serving")
+        dashboard.destroy_node()
+        rclpy.try_shutdown()
+        return
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     dashboard.get_logger().info(
