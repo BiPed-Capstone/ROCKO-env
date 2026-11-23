@@ -35,6 +35,11 @@ ExecStart=@REPO@/pi/launch.sh tank log_root:=@LOG_ROOT@
 # duty before it exits is NOT verified (finding H-7: it zeroes the PWM in on_deactivate, and a shutdown may skip that);
 # Ctrl-C on a manual launch has the same open question.
 KillSignal=SIGINT
+# KillMode stays the default (control-group: every process gets the SIGINT at once). Do NOT set KillMode=mixed:
+# tried on the robot 2026-11-22, it signals ros2 launch only, the launch stops the encoder node first, and
+# ros2_control_node then hangs in the motor plugin's read() (finding C-1: an encoder service call with no
+# timeout) until it is SIGKILLed, which can leave a PWM pin at its last level (H-7). With the default it exits
+# cleanly; TankTeleop.py logs "process has died [exit code -2]" on a stop, which is harmless.
 # If the launch has not exited 30 s after SIGINT, systemd kills it: a generous bound on a clean shutdown.
 TimeoutStopSec=30
 # on-failure covers the LAUNCH failing (a bad install, an exception, launch.sh refusing). A node that crashes INSIDE a

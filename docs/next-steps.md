@@ -47,6 +47,8 @@ established under the model (finding H-12, proposal 0006).
 > (d) **Balancing has no driving input** (row 4.8). The owner wants it **fully decoupled** from tank mode: its own
 > node and (lower) speeds, sharing only `rocko_env/teleop/gamepad.py`. Not needed to stand still on a tether; needed
 > before driving while balancing.
+> (f) **Shutdown relies on every node getting the stop signal at once**: signalled through `ros2 launch` alone,
+> `ros2_control_node` hung (likely C-1, the encoder call with no timeout) and was SIGKILLed ([journal](journal/2026-11-22-tank-boot-service-and-handoff.md)).
 > (e) **The motors' dead band** (no motion below 21 to 28 % duty; proposal 0013, row 4.6) is unresolved, and it matters
 > more for balancing than for tank mode: the balance loop lives on small corrections around zero, and tank mode's
 > `min_output` workaround does not apply to it.

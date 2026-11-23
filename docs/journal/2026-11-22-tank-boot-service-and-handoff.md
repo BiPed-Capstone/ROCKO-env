@@ -41,7 +41,12 @@ still to do.
 | What | Command | Result |
 | --- | --- | --- |
 | host | `bash tools/pi_scripts_test.sh` | 22/22; with the guard disabled, 21/22 (`launch.sh balance while rocko-tank.service runs` FAIL); with the service exemption removed, 21/22 (`launch.sh tank from the service itself` FAIL) |
-| Pi | install and status | filled in after the install |
+| Pi, unit check | `pi/install_boot_service.sh tank print` then `sudo systemd-analyze verify` | exit 0, no warnings (the `StartLimit*` fix took) |
+| Pi, install (agent over SSH, owner's request) | `pi/install_boot_service.sh tank`, then `... tank status` | `enabled`, `active`, restarts 0; both controllers active; the dashboard service sees `/joy` (0.1 s old) and joint states |
+| Pi, guard | `pi/launch.sh balance` while the service runs | exit 2: `tank mode is already running as the boot service ... sudo systemctl stop rocko-tank.service` |
+| Pi, stop and start | `sudo systemctl stop` / `start rocko-tank.service` | stop in about 1 s, `ros2_control_node ... finished cleanly`, 0 nodes left; start brings tank mode back |
+| Pi, `KillMode=mixed` (tried, reverted) | the same stop with the unit changed | `ros2_control_node ... process has died [exit code -9]` (SIGKILLed), against `finished cleanly` twice with the default. Likely cause C-1 (see the handoff); the unit now says not to use it |
+| Not done | a reboot | the owner's call: the real "at boot" test |
 
 ## Review rounds
 
@@ -84,6 +89,12 @@ measured, the dashboard service. Both come back at boot unless removed.
   `rm -rf build install log && ./build_ros.sh`. The laptop's shell is zsh (no word-splitting of `$VAR` commands) and
   macOS has no `timeout`. A launch backgrounded inside a script ignores SIGINT (`setsid env --default-signal=INT`).
   `pkill -f pattern` inside `bash -c` can match itself (write the pattern as `[p]attern`).
+
+**Shutdown depends on every node being signalled at once** (seen 2026-11-22): when only `ros2 launch` was signalled
+(`KillMode=mixed`), it stopped the encoder node before `ros2_control_node`, which then hung, probably in the motor
+plugin's `read()` (C-1: the encoder service call has no timeout), and was SIGKILLed. Ctrl-C in a terminal signals every
+process at once and does not show it. A balancing launch shares this: fixing C-1 (row 1.1, proposal 0010) or giving
+the call a timeout also makes shutdown safe; until then do not change how the launch is stopped.
 
 **Small tidy-up for the owner:** the comment above the tank YAML's acceleration limits still says 30 m/s² (the values are
 160); the file is guarded, so only the owner can reword it.
