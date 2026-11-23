@@ -31,7 +31,8 @@ The owner asked (2026-11-22): "make it so the web dashboard starts on boot via a
 | --- | --- | --- |
 | host | `bash tools/pi_scripts_test.sh` | 18/18; red (17/18) with the `@LOG_ROOT@` substitution removed |
 | container | two `Dashboard.py` on port 8091 | the second exited **0** with `port 8091 is already in use ...`; the first still answered HTTP 200 |
-| Pi | see below | filled in by the install |
+| Pi, install (agent over SSH, owner's request) | `git pull` to `4fc28ff`, `./build_ros.sh`, `pi/install_dashboard_service.sh`, then `... status` | `Installed ...; enabled at boot; started`; status: `enabled`, `active`, **restarts 0**; `curl http://127.0.0.1:8080/` HTTP 200; `/api/state` says `launch: unknown (dashboard boot service)`, `hardware: unknown`, no controller data (no launch running) |
+| Pi, with a launch | `pi/launch.sh tank max_speed:=0.4 max_turn:=1.0` while the service runs | the launch's `Dashboard.py` logged `port 8080 is already in use by another process ...` and `process has finished cleanly`; the service's dashboard then showed `/joy` 0.03 s old, `teleop_enabled` False, `joint_states` 0.02 s old; restarts still 0 |
 
 ## Review rounds
 
@@ -40,4 +41,6 @@ Reviewed together with the same day's reversal investigation; the table is in
 
 ## Not verified — needs a human
 
-- A reboot of the Pi with the service enabled (the real "on boot" test).
+- A reboot of the Pi with the service enabled (the real "on boot" test): not done yet; the owner decides when.
+- Its CPU cost on the Pi, alone or beside the balance loop: not measured (the guide says to remove it before
+  balancing tests until it is).
