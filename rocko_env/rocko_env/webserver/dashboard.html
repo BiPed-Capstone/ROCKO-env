@@ -44,6 +44,21 @@
   td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
   .logs { max-height:220px; overflow:auto; font:12px/1.5 ui-monospace, Menlo, Consolas, monospace; }
   .two { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:10px; }
+  /* The controller card: the pad is drawn in SVG; "on" marks a pressed button or a moved stick. */
+  .pad-wrap { display:grid; grid-template-columns:minmax(260px, 420px) 1fr; gap:14px; align-items:center; }
+  @media (max-width: 640px) { .pad-wrap { grid-template-columns:1fr; } }
+  #pad { width:100%; height:auto; display:block; }
+  #pad .body { fill:var(--bg); stroke:var(--line); stroke-width:2; }
+  #pad .key { fill:var(--card); stroke:var(--dim); stroke-width:1.2; }
+  #pad .key.on { fill:var(--a); stroke:var(--a); }
+  #pad .key.deadman { stroke:var(--warn); stroke-width:2; }
+  #pad .key.deadman.on { fill:var(--good); stroke:var(--good); }
+  #pad .well { fill:var(--card); stroke:var(--dim); stroke-width:1.2; }
+  #pad .knob { fill:var(--dim); } #pad .knob.on { fill:var(--a); }
+  #pad .gauge { fill:var(--a); } #pad text { fill:var(--dim); font:600 9px system-ui, sans-serif; text-anchor:middle; }
+  #pad.stale { opacity:.35; }
+  .drive-state { font-size:22px; font-weight:700; margin-bottom:6px; }
+  .nums { font:13px/1.6 ui-monospace, Menlo, Consolas, monospace; color:var(--dim); }
 </style>
 </head>
 <body>
@@ -52,6 +67,46 @@
 <div class="banner" id="banner"></div>
 
 <div class="grid" id="tiles"></div>
+
+<div class="card" style="margin-bottom:12px">
+  <h2>Controller (tank mode: USB pad on the robot; hold LB to drive)</h2>
+  <div class="pad-wrap">
+    <svg id="pad" viewBox="0 0 320 200" role="img" aria-label="game controller state">
+      <!-- triggers (fill = how far pressed) and bumpers -->
+      <rect class="well" x="44" y="4" width="72" height="9" rx="3"/><rect class="gauge" id="pad-lt" x="44" y="4" width="0" height="9" rx="3"/>
+      <rect class="well" x="204" y="4" width="72" height="9" rx="3"/><rect class="gauge" id="pad-rt" x="204" y="4" width="0" height="9" rx="3"/>
+      <text x="80" y="24">LT</text><text x="240" y="24">RT</text>
+      <rect class="key deadman" id="pad-left_bumper" x="40" y="28" width="80" height="16" rx="7"/>
+      <rect class="key" id="pad-right_bumper" x="200" y="28" width="80" height="16" rx="7"/>
+      <text x="80" y="40" style="fill:var(--ink)">LB · drive</text><text x="240" y="40">RB</text>
+      <!-- body -->
+      <path class="body" d="M70 50 H250 C290 50 312 90 312 140 C312 178 290 194 268 194 C246 194 232 170 214 160 H106 C88 170 74 194 52 194 C30 194 8 178 8 140 C8 90 30 50 70 50 Z"/>
+      <!-- left stick (drive) and right stick (turn): the dot shows the stick's position -->
+      <circle class="well" cx="85" cy="100" r="26"/><circle class="knob" id="pad-knob-left" cx="85" cy="100" r="10"/>
+      <circle class="well" cx="205" cy="140" r="26"/><circle class="knob" id="pad-knob-right" cx="205" cy="140" r="10"/>
+      <text x="85" y="138">drive</text><text x="205" y="178">turn</text>
+      <!-- d-pad -->
+      <rect class="key" id="pad-dpad_up" x="107" y="122" width="14" height="14" rx="2"/>
+      <rect class="key" id="pad-dpad_down" x="107" y="150" width="14" height="14" rx="2"/>
+      <rect class="key" id="pad-dpad_left" x="93" y="136" width="14" height="14" rx="2"/>
+      <rect class="key" id="pad-dpad_right" x="121" y="136" width="14" height="14" rx="2"/>
+      <!-- back, guide, start -->
+      <rect class="key" id="pad-back" x="132" y="88" width="16" height="9" rx="4"/>
+      <circle class="key" id="pad-guide" cx="160" cy="76" r="9"/>
+      <rect class="key" id="pad-start" x="172" y="88" width="16" height="9" rx="4"/>
+      <!-- face buttons -->
+      <circle class="key" id="pad-y" cx="245" cy="78" r="10"/><text x="245" y="81">Y</text>
+      <circle class="key" id="pad-x" cx="225" cy="98" r="10"/><text x="225" y="101">X</text>
+      <circle class="key" id="pad-b" cx="265" cy="98" r="10"/><text x="265" y="101">B</text>
+      <circle class="key" id="pad-a" cx="245" cy="118" r="10"/><text x="245" y="121">A</text>
+    </svg>
+    <div>
+      <div class="drive-state" id="drive-state">–</div>
+      <div class="sub" id="drive-why" style="margin-bottom:8px"></div>
+      <div class="nums" id="pad-nums"></div>
+    </div>
+  </div>
+</div>
 
 <div class="plots">
   <div class="card"><h2>Pitch [deg] (sign as the IMU reports it; not verified on the robot)</h2><canvas id="plot-pitch"></canvas>
@@ -110,6 +165,20 @@ const KEEP_EXTRA_S = 5;    // [s] points kept beyond the window, so a redraw nev
 const STATE_PERIOD_MS = 250, HISTORY_PERIOD_MS = 500, RUNS_PERIOD_MS = 5000;
 const LABEL_MARGIN_PX = 44; // room on a plot's left edge for the axis numbers
 
+// The controller card. Names are gamepad.py's (Dashboard.py sends /joy by name). SIGNS: the joy node
+// reports a stick pushed UP or LEFT as +1, so the dot is drawn at (centre - x * travel, centre - y * travel).
+const PAD_BUTTONS = ["a", "b", "x", "y", "back", "guide", "start", "left_bumper", "right_bumper",
+                     "dpad_up", "dpad_down", "dpad_left", "dpad_right"];
+const STICK_TRAVEL_PX = 16;    // how far the dot moves at full stick, in the drawing's units
+// Each stick: its /joy axis names, and the dot's rest position (cx, cy) in the drawing's units.
+// cx, cy MUST match the stick circles in the #pad markup above.
+const PAD_STICKS = [
+  {side: "left", x: "left_x", y: "left_y", cx: 85, cy: 100},
+  {side: "right", x: "right_x", y: "right_y", cx: 205, cy: 140},
+];
+const KNOB_ACTIVE_FRACTION = 0.1; // a stick moved further than this lights its dot (TankTeleop's default deadzone)
+const TRIGGER_WIDTH_PX = 72;   // the trigger gauge's full width
+
 const $ = id => document.getElementById(id);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 let history = [];          // [{t, key: value, ...}], oldest first
@@ -150,9 +219,56 @@ function showState(state) {
     const cls = line.level === "WARN" ? "warn-text" : "bad-text";
     return `<div><span class="${cls}">${time} ${line.level}</span> ${escapeHtml(line.node)}: ${escapeHtml(line.text)}</div>`;
   }).join("") || '<span class="sub">none</span>';
+  showController(state);
   $("record").disabled = state.recording.running;
   $("stop").disabled = !state.recording.running;
   if (state.recording.running) $("record-status").textContent = `recording "${state.recording.label}" …`;
+}
+
+// The drive state in words, WORST CASE FIRST: the first condition that holds decides.
+function driveStatus(teleopFresh, padFresh, enabled, lbHeld) {
+  if (!teleopFresh) return {text: "Teleop not running", cls: "bad-text",
+    why: "No word from TankTeleop.py: not tank mode, or the node has stopped. The robot cannot be driven."};
+  if (!padFresh) return {text: "No controller", cls: "bad-text",
+    why: "Nothing on /joy: plug the controller into the Pi (or check game_controller_node in the launch output). Stopped."};
+  if (enabled) return {text: "ENABLED: driving", cls: "ok",
+    why: "LB is held; the sticks drive. Let go of LB to stop."};
+  if (lbHeld) return {text: "Disabled", cls: "warn-text",
+    why: "LB reads held but driving is not allowed yet: release LB once, then hold it (re-arm after start-up or a reconnect)."};
+  return {text: "Disabled", cls: "warn-text", why: "Hold LB to drive."};
+}
+
+function showController(state) {
+  const pad = state.controller;
+  const padAge = state.age_s.controller, enabledAge = state.age_s.teleop_enabled;
+  const padFresh = pad && padAge !== undefined && padAge <= state.stale_after_s;
+  const teleopFresh = enabledAge !== undefined && enabledAge <= state.stale_after_s;
+  const enabled = teleopFresh && state.values.teleop_enabled === true;
+  const lbHeld = padFresh && pad.buttons.left_bumper === 1;
+  $("pad").classList.toggle("stale", !padFresh);
+  // What the robot will do, worst case first. "Enabled" is only ever what TankTeleop.py says.
+  const {text, cls, why} = driveStatus(teleopFresh, padFresh, enabled, lbHeld);
+  $("drive-state").innerHTML = `<span class="${cls}">${text}</span>`;
+  $("drive-why").textContent = why;
+  if (!pad) { $("pad-nums").textContent = ""; return; }
+  for (const name of PAD_BUTTONS) {
+    const key = $("pad-" + name);
+    if (key) key.classList.toggle("on", pad.buttons[name] === 1);
+  }
+  const axis = name => (typeof pad.axes[name] === "number" ? pad.axes[name] : 0);
+  for (const stick of PAD_STICKS) {
+    const knob = $("pad-knob-" + stick.side);
+    knob.setAttribute("cx", stick.cx - axis(stick.x) * STICK_TRAVEL_PX);
+    knob.setAttribute("cy", stick.cy - axis(stick.y) * STICK_TRAVEL_PX);
+    knob.classList.toggle("on", Math.hypot(axis(stick.x), axis(stick.y)) > KNOB_ACTIVE_FRACTION);
+  }
+  // A trigger's sign is not certain (gamepad.py), so the gauge shows how far it is pressed either way.
+  $("pad-lt").setAttribute("width", Math.min(1, Math.abs(axis("trigger_left"))) * TRIGGER_WIDTH_PX);
+  $("pad-rt").setAttribute("width", Math.min(1, Math.abs(axis("trigger_right"))) * TRIGGER_WIDTH_PX);
+  const f = v => (v >= 0 ? "+" : "") + v.toFixed(2);
+  $("pad-nums").innerHTML = `left stick (drive): x ${f(axis("left_x"))}, y ${f(axis("left_y"))}<br>` +
+    `right stick (turn): x ${f(axis("right_x"))}, y ${f(axis("right_y"))}<br>` +
+    `up / left = +1 · last message ${padAge === undefined ? "never" : padAge.toFixed(1) + " s ago"}`;
 }
 
 function escapeHtml(text) {

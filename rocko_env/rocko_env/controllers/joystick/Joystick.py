@@ -23,8 +23,8 @@ class Joystick(Node):
     AXIS_TOLERANCE = 0.01
     # A NEW TCP connection replaces the current client only if the current one has sent nothing for
     # longer than this [s]. A link that died silently never reports itself, so a replacement must be
-    # possible; but a live laptop sends a heartbeat every 0.05 s (computer_joystick.py
-    # HEARTBEAT_PERIOD_S), so a stranger who connects while the real gamepad is talking is refused
+    # possible; but a live sender resends every 0.05 s (the laptop gamepad script did; it was removed
+    # on 2026-11-22 and balancing mode has no sender in this repo now), so a stranger who connects while the real gamepad is talking is refused
     # and cannot take over the robot's commands. 0.5 s is ten heartbeats.
     CLIENT_SILENT_REPLACE_S = 0.5
     # Most bytes read from the client in one 10 ms tick [bytes]. A real gamepad sends 40 bytes per
@@ -32,46 +32,6 @@ class Joystick(Node):
     # executor it shares) busy forever. Under a flood the backlog waits in the kernel's buffer and
     # the commands get older; DiffDriveController's watchdog only sees that commands still ARRIVE.
     MAX_BYTES_PER_TICK = 4096
-    # PRECISE MODE. A sender that sets this button byte to 1 asks for the low-speed mapping in
-    # convert_to_twist(): no expo curve, no deadband, and the precise_* scales below instead of
-    # linear_scale / angular_scale. joystick/keyboard_teleop.py sets it on every packet (it MUST use
-    # the same index). Why it exists: with the gamepad mapping the smallest non-zero command is
-    # 0.05 (deadband) x 10 (linear_scale) = 0.5 m/s, too coarse for key presses. A gamepad that
-    # happens to have a 16th button gets the slow mapping while it is held, which errs on the safe side.
-    PRECISE_BUTTON = 15
-    # Speeds a FULL axis (+/-1) means in precise mode. PROPOSED values, not tried on a robot.
-    # Negative for the same reason as linear_scale/angular_scale: a gamepad reports "forward" and
-    # "left" as negative axis values, and the keyboard script imitates that.
-    MAX_PRECISE_SCALE_M_S = 1.0               # [m/s] a precise_* parameter larger than this (or not
-                                              #   negative) is refused: the mode exists to be slow
-    DEFAULT_PRECISE_LINEAR_SCALE_M_S = -0.5   # [m/s] forward speed at full axis. The simulation's
-                                              #   scenario K drives the model at this speed.
-    DEFAULT_PRECISE_ANGULAR_SCALE_M_S = -0.3  # [m/s], NOT rad/s despite "angular": at full axis the
-                                              #   right wheel is commanded this much faster and the
-                                              #   left this much slower (a left turn);
-                                              #   DiffDriveController adds it to each wheel's speed.
-                                              #   NOT checked by any tier: the sim is planar.
-    # SHAPED AXES. A sender that sets this button byte to 1 has ALREADY applied its own deadzone and
-    # expo curve to the sticks (joystick/xbox_teleop.py does, and it MUST use the same index). Then
-    # convert_to_twist() uses each axis as sent, times the shaped_* scales below: no second expo
-    # curve and no deadband here, or the stick would be curved twice. Precise mode wins if both are set.
-    # computer_joystick.py forwards a raw gamepad's buttons but always sends this one as 0, so a
-    # gamepad that happens to have a 15th button cannot switch the mapping.
-    SHAPED_BUTTON = 14
-    # The shaped_* scales default to the gamepad's own scales (linear_scale / angular_scale), so a
-    # full shaped stick asks for exactly what a full gamepad stick asks for today. Only a launch file
-    # that passes the parameters changes that: rocko_tank_mode.launch.py raises them to full motor
-    # duty; rocko.launch.py (balancing) does not pass them. Negative for the same sign reason as above.
-    DEFAULT_SHAPED_LINEAR_SCALE_M_S = -10.0     # [m/s] forward speed at full axis
-    DEFAULT_SHAPED_ANGULAR_SCALE = -35.0        # at full axis; tank mode's diff_drive_controller reads
-                                                #   it as rad/s, balance mode's DiffDriveController.py
-                                                #   as m/s per wheel (see DEFAULT_PRECISE_ANGULAR_SCALE_M_S)
-    # Largest shaped scales accepted: 100 % motor duty in tank mode (the arithmetic is in
-    # rocko_tank_mode.launch.py; proposal 0014). A larger value is refused
-    # rather than clipped silently by the motor. Not checked against balance mode's units: the
-    # balancing launch passes no shaped_* parameter.
-    MAX_SHAPED_LINEAR_SCALE_M_S = 15.0          # [m/s]
-    MAX_SHAPED_ANGULAR_SCALE = 93.75            # [rad/s in tank mode]
 
     def __init__(self):
         super().__init__('joystick')
@@ -84,7 +44,7 @@ class Joystick(Node):
 
         self.server_sock.bind(("0.0.0.0", 1234))
         self.server_sock.listen(1)
-        # Non-blocking: the timer below accepts the gamepad, so a restarted computer_joystick.py
+        # Non-blocking: the timer below accepts the gamepad, so a restarted sender
         # (or one whose link died silently) can connect later. A blocking accept() here would
         # be the only chance to connect, and the node could not run until then.
         self.server_sock.setblocking(False)
@@ -105,46 +65,7 @@ class Joystick(Node):
         self.linear_scale = -10.0  
         self.angular_scale = -35.0  
         self.deadband = 0.05 
-        # Precise mode's scales (see PRECISE_BUTTON). ROS parameters, so a launch file can lower
-        # them for a first test without editing this file.
-        self.declare_parameter('precise_linear_scale_m_s', self.DEFAULT_PRECISE_LINEAR_SCALE_M_S)
-        self.declare_parameter('precise_angular_scale_m_s', self.DEFAULT_PRECISE_ANGULAR_SCALE_M_S)
-        self.precise_linear_scale = self.precise_scale(
-            'precise_linear_scale_m_s', self.DEFAULT_PRECISE_LINEAR_SCALE_M_S)
-        self.precise_angular_scale = self.precise_scale(
-            'precise_angular_scale_m_s', self.DEFAULT_PRECISE_ANGULAR_SCALE_M_S)
-        # Shaped mode's scales (see SHAPED_BUTTON).
-        self.declare_parameter('shaped_linear_scale_m_s', self.DEFAULT_SHAPED_LINEAR_SCALE_M_S)
-        self.declare_parameter('shaped_angular_scale', self.DEFAULT_SHAPED_ANGULAR_SCALE)
-        self.shaped_linear_scale = self.shaped_scale(
-            'shaped_linear_scale_m_s', self.DEFAULT_SHAPED_LINEAR_SCALE_M_S,
-            self.MAX_SHAPED_LINEAR_SCALE_M_S)
-        self.shaped_angular_scale = self.shaped_scale(
-            'shaped_angular_scale', self.DEFAULT_SHAPED_ANGULAR_SCALE, self.MAX_SHAPED_ANGULAR_SCALE)
-        self.get_logger().info(
-            f"Shaped-axis scales: linear {self.shaped_linear_scale}, angular {self.shaped_angular_scale}")
 
-
-    def shaped_scale(self, name, default, max_magnitude):
-        """The parameter's value if it is in [-max_magnitude, 0), otherwise `default` with an error.
-        Positive would reverse the stick; larger than max_magnitude asks for more than the motors
-        can give; NaN is not a speed (the comparison rejects it)."""
-        value = self.get_parameter(name).value
-        if not (-max_magnitude <= value < 0.0):
-            self.get_logger().error(f"{name}={value} is not in [-{max_magnitude}, 0); using {default}")
-            return default
-        return value
-
-    def precise_scale(self, name, default):
-        """The parameter's value if it is in [-MAX_PRECISE_SCALE_M_S, 0), otherwise `default` with
-        an error. Positive would reverse the keys; large would make "precise" mode fast; NaN is
-        not a speed."""
-        value = self.get_parameter(name).value
-        if not (-self.MAX_PRECISE_SCALE_M_S <= value < 0.0):  # also rejects NaN
-            self.get_logger().error(
-                f"{name}={value} is not in [-{self.MAX_PRECISE_SCALE_M_S}, 0); using {default}")
-            return default
-        return value
 
     def receive_joystick_data(self):
         self.accept_new_client()
@@ -205,7 +126,7 @@ class Joystick(Node):
                 data = self.client_sock.recv(min(4096, self.MAX_BYTES_PER_TICK - bytes_read))
                 if data == b"":  # the gamepad closed the connection cleanly
                     self.get_logger().warning(
-                        "Joystick disconnected. Restart computer_joystick.py on the laptop to connect again.")
+                        "Joystick disconnected. Restart the sender to connect again.")
                     self.close_client()
                     return None
                 bytes_read += len(data)
@@ -215,7 +136,7 @@ class Joystick(Node):
             pass  # socket drained
         except OSError as error:  # e.g. connection reset
             self.get_logger().warning(
-                f"Joystick connection lost ({error}). Restart computer_joystick.py on the laptop to connect again.")
+                f"Joystick connection lost ({error}). Restart the sender to connect again.")
             self.close_client()
             return None
 
@@ -231,14 +152,14 @@ class Joystick(Node):
         if problem is not None:
             # A garbled message would be turned straight into a velocity command. Drop it, and the
             # connection with it: once the byte stream is out of step, every later message is
-            # garbage too. computer_joystick.py has no reconnect loop, so someone must restart it;
+            # garbage too. The sender must reconnect;
             # until then nothing is published, so DiffDriveController's watchdog zeroes the
             # velocity reference.
             # LIMIT: framing errors are caught only PROBABILISTICALLY. Only the newest message is
             # checked, and a stream that is out of step by some bytes can still look valid (an
             # all-zero stream passes at ANY offset: zero axes and zero buttons are legal). Telling
             # for certain needs a header byte on every message, which is a protocol change on
-            # both machines (computer_joystick.py too), not made here.
+            # both machines, not made here.
             self.get_logger().warning(
                 f"Rejected a gamepad message ({problem}); dropping the connection.")
             self.close_client()
@@ -267,19 +188,6 @@ class Joystick(Node):
 
         linear_axis = 1
         angular_axis = 0
-        if msg.buttons[self.PRECISE_BUTTON] == 1:
-            # Precise mode (see PRECISE_BUTTON): the axis is used as it is. No expo curve and no
-            # deadband, because the keyboard sends exact steps, not a noisy stick.
-            twist.twist.linear.x = msg.axes[linear_axis] * self.precise_linear_scale
-            twist.twist.angular.z = msg.axes[angular_axis] * self.precise_angular_scale
-            self.robot_body_vector_updated_topic.publish(twist)
-            return
-        if msg.buttons[self.SHAPED_BUTTON] == 1:
-            # Shaped axes (see SHAPED_BUTTON): the sender already did deadzone and expo.
-            twist.twist.linear.x = msg.axes[linear_axis] * self.shaped_linear_scale
-            twist.twist.angular.z = msg.axes[angular_axis] * self.shaped_angular_scale
-            self.robot_body_vector_updated_topic.publish(twist)
-            return
 
         # linear_value = msg.axes[linear_axis]
         # angular_value = msg.axes[angular_axis]

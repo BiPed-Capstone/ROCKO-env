@@ -2,7 +2,7 @@
 
 **Who this is for:** anyone who types a `ros2` command on the robot.
 
-**Which machine:** the Pi. (The keyboard and gamepad scripts run on your laptop and need none of this.)
+**Which machine:** the Pi. (Driving is from a controller plugged into the Pi: [the guide](drive-with-usb-controller.md).)
 
 **What has been checked:** the scripts are tested against a fake ROS, a fake `sudo` and a fake `ros2`
 (`tools/pi_scripts_test.sh`; what it proves, how many checks it has and what it cannot prove are in

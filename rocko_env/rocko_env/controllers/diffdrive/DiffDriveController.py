@@ -11,9 +11,9 @@ import math
 import time
 
 # Teleop watchdog timeout (finding C-3) [s]. PROPOSED value; a human confirms it on the robot.
-# 0.2 s = 20 control cycles of 10 ms = 4 x HEARTBEAT_PERIOD_S (0.05 s) in joystick/computer_joystick.py.
-# The laptop MUST resend at least that fast (it does, as a heartbeat, even when the stick is held
-# still), or a steady stick looks like a dropped link. Overridable with the command_timeout_s
+# 0.2 s = 20 control cycles of 10 ms = 4 x the 0.05 s at which a teleop sender must resend its
+# command even while the stick is held still, or a steady stick looks like a dropped link. (The
+# laptop gamepad script that did so was removed on 2026-11-22; balancing mode has no sender now.) Overridable with the command_timeout_s
 # parameter; this one literal is the default and the fallback for a bad value.
 DEFAULT_COMMAND_TIMEOUT_S = 0.2
 

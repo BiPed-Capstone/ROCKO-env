@@ -329,7 +329,7 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 Run it from the repo root on the laptop, after the build (step 2). It is a separate mode, never part of
 the default run, and makes one launch per scenario (the list is in
 [the ladder](../architecture/verification-ladder.md#the-balance-scenarios-verify_simsh-scenarios-a-separate-mode)), which take a
-few minutes. Exit status: **0** only if U, I, V, K and KB pass and S2b and AB print `ok`; **1** if any scenario
+few minutes. Exit status: **0** only if U, I, V and K pass and S2b and AB print `ok`; **1** if any scenario
 fails; **2** if a run could not be judged and none failed. **Today it should exit 0:** with the
 sim gains tuned in stage 5c-1 U, I and V pass and S2b and AB print `ok`. V passes narrowly (under the corrected
 V metric the nominal overshoot is about 15 to 24 % against the 30 % limit; the 23.5 to 29.1 % that this page
@@ -364,19 +364,19 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
 Success: it prints `all SimPlantModel tests passed` and exits 0. It is not a tier and nothing runs it
 automatically.
 
-The stage 4 safeguards have four more host tests of the same kind (no ROS, no container needed; from
-the repo root; not tiers, and nothing runs them automatically):
+The safeguards and tank mode's teleop have more host tests of the same kind (no ROS, no container needed;
+from the repo root; not tiers; `tools/run_ladder.sh` runs them all):
 
 ```bash
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/tipover_latch_test.cpp -o /tmp/tipover_latch_test && /tmp/tipover_latch_test
 python3 -I tools/teleop_watchdog_test.py
-python3 -I tools/computer_joystick_heartbeat_test.py
+python3 -I tools/tank_teleop_test.py
 python3 -I tools/imu_node_test.py
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/feedforward_timeout_test.cpp -o /tmp/feedforward_timeout_test && /tmp/feedforward_timeout_test
 ```
 
 Success: `all TipoverLatch tests passed` and `all FeedforwardTimeout tests passed` (exit 0 each); the three
-Python tests print `PASS <name>` per check and then a line such as `32/32 passed` (the counts are in
+Python tests print `PASS <name>` per check and then a line such as `15/15 passed` (the counts are in
 [the ladder](../architecture/verification-ladder.md#the-host-tests-of-the-stage-4-safeguards-not-tiers)), exit 0
 (on 2026-11-03 they were 22/22, 5/5 and 6/6; the imu node test was 4/4 on 2026-11-02 and the watchdog test 16/16). What they do and do not prove is in the
 [verification ladder](../architecture/verification-ladder.md#the-host-tests-of-the-stage-4-safeguards-not-tiers).

@@ -93,7 +93,7 @@
 #
 # THE BALANCE SCENARIOS (bootstrap-sim step 7) are a SEPARATE MODE, never part of the default run:
 #   docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
-#   ... verify_sim.sh scenarios U S2b      (only some, any of U I V K KB S2b AB)
+#   ... verify_sim.sh scenarios U S2b      (only some, any of U I V K S2b AB)
 # The default run above checks plumbing and safeguards and must stay green; the scenarios ask whether
 # the controllers HOLD the simulated robot, which with the current gains they do not. Kept apart so a
 # red scenario never hides a red plumbing check, and a green plumbing run never claims balance.
@@ -109,10 +109,6 @@
 #   K    a key press: V again with a step of K_STEP_M_S, the smallest non-zero command the gamepad
 #        path can produce (Joystick.py: 0.05 deadband x linear_scale 10). Finding H-13: sent as a bare
 #        step it leans the model 21 deg. Same limits as V except the rise time (K_RISE_S).
-#   KB   keyboard driving, end to end: the laptop script joystick/keyboard_teleop.py connects over TCP
-#        to the real Joystick.py and "presses" w KB_PRESSES times, holds, presses space, then q. PASS
-#        if Joystick.py publishes exactly those speeds, the velocity reference follows and returns to
-#        zero, and |pitch| stays under V_PITCH_DEG. The only check of the TCP path in a launch.
 #   S2b  the verifier's own check: U again with pitch_sign:=+1 (the pitch loop's sign flipped). U must
 #        FAIL, and for the right reason: the wiring is up and |pitch| reaches TIPOVER_DEG within
 #        S2B_FALL_S of release. S2b is "ok" only then.
@@ -121,8 +117,8 @@
 #        outer loop is positive feedback at DC for any positive velocity gains). "ok" if it falls no
 #        sooner than AB_MIN_FALL_S; the time to fall is printed. A run that does NOT fall is a FAIL:
 #        the signs or the gains changed, and finding H-12's docs must be revisited.
-# U, I, V, K, KB and S2b run with encoder_sign:=SCENARIO_ENCODER_SIGN, an ASSUMPTION (see its comment).
-# Scenarios exit status: 0 only if U, I, V, K and KB pass AND S2b and AB are ok; 1 if any is not; 2 if a run
+# U, I, V, K and S2b run with encoder_sign:=SCENARIO_ENCODER_SIGN, an ASSUMPTION (see its comment).
+# Scenarios exit status: 0 only if U, I, V and K pass AND S2b and AB are ok; 1 if any is not; 2 if a run
 # could not be judged and nothing failed. While SCENARIOS_EXPECTED_RED=1 a failing U, I or V is
 # printed "FAIL (expected until the sim gains are tuned)", but it still counts: the exit status is 1.
 # Two environment variables, both empty by default and read only in scenarios mode, exist for the
@@ -136,7 +132,7 @@
 set -uo pipefail
 
 ALL_CHECKS="S1 S2a H4 C3 C2 H6 FF"
-ALL_SCENARIOS="U I V K KB S2b AB"
+ALL_SCENARIOS="U I V K S2b AB"
 mode=checks
 known="$ALL_CHECKS"
 if [ "${1:-}" = scenarios ]; then
@@ -299,24 +295,15 @@ V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x th
                        #   itself is unchanged since it was committed before tuning
 V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degree in steady state; 10
                        #   deg is far below the 35 deg trip and equals the re-arm band (H-4)
-# --- shared by the scenarios that drive through the teleop path (V, K, KB) ---
-STEP_WATCHDOG_S=1.0    # [s] the teleop watchdog's timeout for the launches of V, K and KB only (the
+# --- shared by the scenarios that drive through the teleop path (V, K) ---
+STEP_WATCHDOG_S=1.0    # [s] the teleop watchdog's timeout for the launches of V and K only (the
                        #   robot's is 0.2 s). These scenarios judge how the cascade follows a HELD
                        #   command; check C3 owns the watchdog. In the container the fake gamepad or
                        #   the node stalls ~0.3 s in about one run in three, the 0.2 s watchdog fires,
                        #   and the command becomes a step to zero and a second ramp: V then overshoots
                        #   ~50 % (3 of 10 runs, 2026-11-16). 1 s rides through such a stall. If the
                        #   watchdog fires anyway, the scenario exits 2 (could not judge)
-# --- KB and K ---
-KB_PRESSES=3           # "w" pressed three times: 3 x KB_STEP_M_S = 0.3 m/s, inside the range V (0.1) and
-                       #   K (0.5) already cover
-KB_STEP_M_S=0.1        # [m/s] what one press must add: Joystick.py's precise scale (0.5 m/s at full
-                       #   axis) / keyboard_teleop.py's STEPS_TO_FULL (5). Change either and this
-                       #   must change with it, or KB fails with "off the grid"
-KB_BEFORE_S=1.0        # [s after release] the first press
-KB_PRESS_GAP_S=0.3     # [s] between presses, about as fast as a person taps a key
-KB_HOLD_S=4.0          # [s] the top speed is held (the ramp needs 0.3 / 0.35 = 0.9 s of it)
-KB_AFTER_S=3.0         # [s] recorded after space, so the stop is seen to hold
+# --- K ---
 K_STEP_M_S=0.5         # [m/s] the smallest non-zero gamepad command: Joystick.py zeroes anything under
                        #   its 0.05 deadband and multiplies by linear_scale (10). A key press or a
                        #   nudged stick asks for at least this (finding H-13)
@@ -989,7 +976,7 @@ scenario_velocity_step() {
   local pid="$check_pid"
   # teleop:=true: the real DiffDriveController.py turns the fake gamepad into the velocity reference
   # and the feedforwards, as on the robot (no zero_reference here).
-  # command_timeout_s:=STEP_WATCHDOG_S: see its comment (since 2026-11-16, as K and KB).
+  # command_timeout_s:=STEP_WATCHDOG_S: see its comment (since 2026-11-16, as K).
   echo "    V: teleop watchdog timeout ${STEP_WATCHDOG_S} s for this launch (the robot's is ${TELEOP_TIMEOUT_S} s)"
   launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$STEP_WATCHDOG_S"
   wait_for_wiring
@@ -999,27 +986,6 @@ scenario_velocity_step() {
   local failures=(); scenario_launch_problems
   if [ ${#failures[@]} -ne 0 ]; then scenario_report V "COULD NOT JUDGE" "${failures[*]}"
   else scenario_report V "$(verdict_of "$status")" "$(scenario_reason)"; fi
-  end_run
-}
-
-# KB: the keyboard script over TCP into the real Joystick.py (see the header). Launched with K's longer
-# watchdog timeout for K's reason; the heartbeat's timing is checked by tools/keyboard_teleop_test.py.
-scenario_keyboard() {
-  new_run "KB-keyboard"
-  echo "    KB: teleop watchdog timeout ${STEP_WATCHDOG_S} s for this launch (the robot's is ${TELEOP_TIMEOUT_S} s)"
-  start_check keyboard-drive --launch-log "$dir/launch.log" --tipover-deg "$TIPOVER_SCENARIO_DEG" \
-    --presses "$KB_PRESSES" --step-m-s "$KB_STEP_M_S" --before-s "$KB_BEFORE_S" \
-    --press-gap-s "$KB_PRESS_GAP_S" --hold-s "$KB_HOLD_S" --after-s "$KB_AFTER_S" \
-    --max-pitch-deg "$V_PITCH_DEG"
-  local pid="$check_pid"
-  launch teleop:=true encoder_sign:="$SCENARIO_ENCODER_SIGN" command_timeout_s:="$STEP_WATCHDOG_S"
-  wait_for_wiring
-  wait "$pid"; local status=$?
-  sed 's/^/    /' "$dir/check.log"
-  note_tipover
-  local failures=(); scenario_launch_problems
-  if [ ${#failures[@]} -ne 0 ]; then scenario_report KB "COULD NOT JUDGE" "${failures[*]}"
-  else scenario_report KB "$(verdict_of "$status")" "$(scenario_reason)"; fi
   end_run
 }
 
@@ -1099,17 +1065,16 @@ scenario_as_built() {
 verdict_of() { case "$1" in 0) echo PASS ;; 1) echo FAIL ;; *) echo "COULD NOT JUDGE" ;; esac; }
 
 if [ "$mode" = scenarios ]; then
-  echo "SCENARIOS ($selected). ASSUMPTION for U, I, V, K, KB, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN (not checked on"
+  echo "SCENARIOS ($selected). ASSUMPTION for U, I, V, K, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN (not checked on"
   echo "the robot; proposal 0006). Gains: rocko_sim_controllers.yaml as it is. A model with ESTIMATED parameters."
   [ ${#overrides[@]} -ne 0 ] && echo "MODEL CHANGED for this run (SIM_PLANT_OVERRIDES): ${overrides[*]}"
   wants U && scenario_upright
   wants I && scenario_impulse
   wants V && scenario_velocity_step
   wants K && scenario_key_press
-  wants KB && scenario_keyboard
   wants S2b && scenario_s2b
   wants AB && scenario_as_built
-  echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN assumed for U, I, V, K, KB, S2b; AB uses +1):"
+  echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN assumed for U, I, V, K, S2b; AB uses +1):"
   echo "  (ok = the check behaved as designed: S2b ok means U failed for the right reason; AB ok means the robot fell slowly as H-12 predicts)"
   if [ "$SCENARIOS_EXPECTED_RED" -eq 1 ]; then
     echo "  (red U/I/V are expected until the sim gains are tuned; red S2b or AB is not)"

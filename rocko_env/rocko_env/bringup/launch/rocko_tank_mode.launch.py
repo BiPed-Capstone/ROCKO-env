@@ -38,6 +38,7 @@ from rocko_env.recording.launch_recording import (
     recorder_process,
 )
 from rocko_env.webserver.launch_dashboard import dashboard_arguments, dashboard_node
+from rocko_env.teleop import gamepad
 from rocko_env.webserver.launch_foxglove import (
     foxglove_arguments,
     foxglove_bridge_process,
@@ -78,6 +79,17 @@ def generate_launch_description():
     declared_arguments += dashboard_arguments(default="true")
     # foxglove:=false leaves foxglove_bridge out. It defaults to true: this launch always started it.
     declared_arguments += foxglove_arguments(default="true")
+    # teleop:=false leaves the USB controller nodes out, for tests that publish cmd_vel by hand (the bench
+    # test): TankTeleop.py publishes zero 50 times a second when LB is not held, which would fight them.
+    declared_arguments.append(DeclareLaunchArgument(
+        "teleop", default_value="true",
+        description="true (default): start the USB controller nodes. false: nothing publishes cmd_vel"))
+    # Caps for the USB controller (TankTeleop.py), fractions of full speed: lower them for a first
+    # test, e.g. max_speed:=0.4 max_turn:=0.3. TankTeleop.py refuses a value outside [0, 1].
+    declared_arguments.append(DeclareLaunchArgument(
+        "max_speed", default_value="1.0", description="cap on any wheel, fraction of full (0 to 1)"))
+    declared_arguments.append(DeclareLaunchArgument(
+        "max_turn", default_value="1.0", description="turn stick strength, fraction of full (0 to 1)"))
 
     # Initialize Arguments
     gui = LaunchConfiguration("gui")
@@ -166,31 +178,27 @@ def generate_launch_description():
         condition=UnlessCondition(use_mock_hardware),
     )
 
-    # FULL-RANGE SCALES for senders that shape their own sticks (joystick/xbox_teleop.py sets
-    # Joystick.SHAPED_BUTTON). A full stick forward should give 100 % motor duty, and a full turn
-    # alone should spin each wheel at that same speed, so xbox_teleop.py can mix the two in units
-    # of "fraction of full wheel speed". Arithmetic, not measured:
-    #   Motor12VoltQuadEncoder::write (Motor12VoltQuadEncoder.cpp:231, MAX_RAD_PER_SEC and
-    #   kStictionDutyPercent in its .hpp): duty % = wheel rad/s / 119.4 * 100 + 2 (clamped to 100),
-    #   so 100 % at 117 rad/s = 14.9 m/s at the 0.127 m wheel radius. 15.0 is that, rounded up
-    #   (the plugin clamps the last 0.1 m/s to 100 %).
-    #   diff_drive_controller: wheel speed = linear.x +/- angular.z * wheel_separation / 2,
-    #   so a wheel at 15.0 m/s from turning alone needs angular.z = 15.0 / (0.32 / 2) = 93.75 rad/s.
-    # Negative: a gamepad reports forward and left as negative axis values (see Joystick.py).
-    # The tank YAML's velocity limits (20 m/s, 1000 rad/s) stay above these, so they still apply.
-    # Only tank mode passes these; rocko.launch.py (balancing) keeps Joystick.py's defaults.
-    full_duty_wheel_speed_m_s = 15.0
-    wheel_separation_m = 0.32  # MUST match wheel_separation in rocko_tank_mode_controllers.yaml
-    #                            (tools/teleop_watchdog_test.py fails if the two differ)
-    joystick = Node(
+    # TELEOP: a game controller plugged into the Pi's USB (tank mode only; balancing mode does not
+    # start these). joy's game_controller_node reads it through SDL and publishes /joy;
+    # TankTeleop.py turns /joy into cmd_vel (split arcade, hold LB to drive). deadzone 0.0 here
+    # because TankTeleop.py applies its own (one place, and tested); autorepeat_rate is how often the
+    # joy node republishes an unchanged state, which TankTeleop.py's timeout is counted in.
+    # Guide: docs/guides/drive-with-usb-controller.md.
+    game_controller = Node(
+        package="joy",
+        executable="game_controller_node",
+        parameters=[{"deadzone": 0.0, "autorepeat_rate": gamepad.JOY_AUTOREPEAT_RATE_HZ}],
+        condition=IfCondition(LaunchConfiguration("teleop")),
+    )
+    tank_teleop = Node(
         package="rocko_env",
-        executable="Joystick.py",
-        parameters=[
-            {
-                "shaped_linear_scale_m_s": -full_duty_wheel_speed_m_s,
-                "shaped_angular_scale": -full_duty_wheel_speed_m_s / (wheel_separation_m / 2),
-            }
-        ],
+        executable="TankTeleop.py",
+        parameters=[{
+            # value_type=float: "1" typed on the command line must still be a float parameter.
+            "max_speed": ParameterValue(LaunchConfiguration("max_speed"), value_type=float),
+            "max_turn": ParameterValue(LaunchConfiguration("max_turn"), value_type=float),
+        }],
+        condition=IfCondition(LaunchConfiguration("teleop")),
     )
 
     # Printed first, so nobody mistakes a mock run for a live robot.
@@ -207,7 +215,8 @@ def generate_launch_description():
         diffdrive_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
         encoders,
-        joystick,
+        game_controller,
+        tank_teleop,
     ]
 
     # Only with record:=true. "mock" or "real" goes into run.yaml so a mock run is never mistaken

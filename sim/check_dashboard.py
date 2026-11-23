@@ -6,6 +6,9 @@
 It listens to /dynamic_joint_states itself while it asks the dashboard for its history, then:
   * the page loads and refers to nothing outside the robot (no http:// or https:// address in it);
   * /api/state has fresh values and names the launch and "sim";
+  * the controller card: this script publishes a fake /joy (left stick half up, LB held, a NaN right
+    stick Y) and /tank_teleop/enabled = true, as tank mode's nodes would; /api/state must show them
+    by name, with the NaN as null (valid JSON), and the page must contain the controller drawing;
   * every pitch point in the dashboard's history is within --tolerance-deg of the robot's own
     pitch at that moment, and the history really shows the start-up lean (>= --min-pitch-deg);
   * the dashboard node publishes on no topic except ROS's own /rosout and /parameter_events, and
@@ -29,6 +32,8 @@ import urllib.request
 import rclpy
 from control_msgs.msg import DynamicJointState
 from rclpy.node import Node
+from sensor_msgs.msg import Joy
+from std_msgs.msg import Bool
 
 OWN_TOPICS = {"/rosout", "/parameter_events"}  # every ROS node publishes these
 
@@ -67,9 +72,23 @@ def main():
                 own.append((time.time(), interfaces.values[list(interfaces.interface_names).index("pitch")]))
 
     node.create_subscription(DynamicJointState, "/dynamic_joint_states", keep, 200)
+    # Stand-ins for tank mode's joy node and TankTeleop.py (the simulation starts neither).
+    # Index layout: gamepad.py (axis 1 = left Y, axis 3 = right Y, button 9 = LB).
+    fake_joy = node.create_publisher(Joy, "/joy", 5)
+    fake_enabled = node.create_publisher(Bool, "/tank_teleop/enabled", 5)
+    joy = Joy()
+    joy.axes = [0.0, 0.5, 0.0, float("nan"), 0.0, 0.0]
+    joy.buttons = [0] * 21
+    joy.buttons[9] = 1
     end = time.monotonic() + args.listen_s
     while time.monotonic() < end:
+        fake_joy.publish(joy)
+        fake_enabled.publish(Bool(data=True))
         rclpy.spin_once(node, timeout_sec=0.05)
+    # One last pair just before /api/state is read below, so the values are fresh then.
+    fake_joy.publish(joy)
+    fake_enabled.publish(Bool(data=True))
+    rclpy.spin_once(node, timeout_sec=0.2)
     publishers = {name for name, _ in node.get_publisher_names_and_types_by_node("rocko_dashboard", "/")}
     clients = node.get_client_names_and_types_by_node("rocko_dashboard", "/")
     node.destroy_node()
@@ -98,6 +117,16 @@ def main():
     for group in ("joint_states", "pitch_pid", "velocity_pid", "reference"):
         if not (ages.get(group, 1e9) <= state.get("stale_after_s", 0)):
             problems.append(f"/api/state: {group} is {ages.get(group)} s old (stale)")
+    controller = state.get("controller") or {}
+    pad_axes, pad_buttons = controller.get("axes", {}), controller.get("buttons", {})
+    if not (pad_axes.get("left_y") == 0.5 and pad_buttons.get("left_bumper") == 1 and pad_buttons.get("a") == 0):
+        problems.append(f"/api/state controller does not show the fake /joy by name: {controller}")
+    if "right_y" not in pad_axes or pad_axes["right_y"] is not None:
+        problems.append(f"a NaN axis must be sent as null, got {pad_axes.get('right_y', 'nothing')!r}")
+    if values.get("teleop_enabled") is not True or "controller" not in ages:
+        problems.append(f"/api/state: teleop_enabled {values.get('teleop_enabled')!r}, controller age {ages.get('controller')!r}")
+    if 'id="pad"' not in text or "showController" not in text:
+        problems.append("the page has no controller drawing")
     if state.get("hardware") != "sim" or state.get("launch") != "rocko_sim.launch.py":
         problems.append(f"/api/state names launch {state.get('launch')!r}, hardware {state.get('hardware')!r}")
 
@@ -172,7 +201,7 @@ def main():
     if problems:
         return 1
     print(f"ok    dashboard: {compared} history points within {worst:.3f} deg of the robot's pitch "
-          f"(start-up lean {peak:.2f} deg seen); publishes nothing; Record/Stop made {mine[0]['name']} "
+          f"(start-up lean {peak:.2f} deg seen); fake /joy and enabled shown; publishes nothing; Record/Stop made {mine[0]['name']} "
           f"({mine[0]['size_mb']} MB); foreign Origin, a second Record and a climbing path refused")
     return 0
 

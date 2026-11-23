@@ -3,10 +3,12 @@
 - **Written:** 2026-11-19, by the agent, from reading the code. **Nothing here has been tried.** No
   controller was available to the agent. Statements about macOS, SDL and the Xbox controller are from
   general knowledge and are marked *to verify*.
-- **Status:** **implemented 2026-11-20**, with two changes from this plan: the owner asked for split arcade
+- **Status:** **superseded and removed, 2026-11-22**: the owner moved to a USB controller plugged into the Pi
+  ([guide](../guides/drive-with-usb-controller.md)), and the Mac program was deleted. Before that it was
+  **implemented 2026-11-20**, with two changes from this plan: the owner asked for split arcade
   (right stick X turns, not left stick X) and the full speed range, so the laptop shapes the sticks itself and the
   robot gained a shaped-axes flag; and the program uses SDL's GameController API (named axes) instead of joystick
-  axis numbers. Use [the guide](../guides/drive-with-xbox-controller.md); the
+  axis numbers. Its guide is gone; the
   [journal](../journal/2026-11-20-xbox-controller-split-arcade.md) has the evidence. The rest of this page is the
   plan as written. It was next-steps row 4.5. Owner's request: "Xbox controller
   support via Bluetooth on macOS to drive the robot", before any self-balancing work.

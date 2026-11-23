@@ -11,7 +11,7 @@ robot is yours: an agent on this branch does not launch anything on the Pi
 **Why it exists:** with precise mode on, the keyboard script drove tank mode with a command so small that
 the motors got about 2 to 5 % of full power, which is not enough to start the wheels turning. (The owner's
 commit `df91b9e` has since turned precise mode off; the keys now reach 5 to 67 %, see
-[drive-with-keyboard.md](drive-with-keyboard.md).) This procedure
+the keyboard guide, removed on 2026-11-22.) This procedure
 confirms that, and measures the command at which each wheel *does* start. That measured number is
 the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) needs.
 
@@ -24,9 +24,10 @@ the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) nee
 - **The robot with both drive wheels off the ground** (on blocks, or held so the wheels spin free).
   It must not be able to drive off the bench.
 - **A way to read battery voltage** (multimeter or the robot's own meter).
-- **Your laptop** is not needed for this guide. Leave `keyboard_teleop.py` and
-  `computer_joystick.py` **stopped**: while a sender is connected, `Joystick.py` publishes its own
-  commands and they fight the test commands below.
+- **Your laptop** is not needed for this guide. The launch below uses `teleop:=false`, which leaves out the
+  USB controller nodes: `TankTeleop.py` would otherwise publish its own commands (zero, 50 times a second)
+  and they would fight the test commands below. (Until 2026-11-22 this said to stop the laptop's keyboard and
+  gamepad scripts; both were removed.)
 
 **Every terminal on the Pi runs as root, with the same `ROS_DOMAIN_ID`.** The motor plugin needs root
 (WiringPi), and a terminal that is not root cannot see the launch at all. The scripts in `pi/` do both,
@@ -83,7 +84,7 @@ clean) at the top of your notes. [Recording a result](reproducing-results.md) li
 Terminal A, on the Pi (it asks for your `sudo` password):
 
 ```bash
-pi/launch.sh tank
+pi/launch.sh tank teleop:=false
 ```
 
 Terminal B, on the Pi. `pi/rocko_shell.sh` opens a root shell with the environment; the commands that
@@ -207,7 +208,7 @@ Anything else (heat, smell, noise, a wheel that stuck):
 | Nothing at any level up to 5.0 | Battery low, motor supply off, a driver not enabled, or a wiring fault | Measure the battery under no load; check the motor supply switch; swap to a known-good motor channel. This is a hardware finding, not a software one |
 | The wheels turn but a keyboard still seems to do nothing | The keyboard's low levels are below your breakaway (in precise mode the top level was 0.5 m/s, 5 %; since `df91b9e` levels 1 to 4 are 5 to 18 %) | Expected; that is proposal 0013 |
 | The wheels jerk at each step instead of turning smoothly | Duty is just above breakaway; the wheel turns, sticks, turns | Go one level higher; note both levels |
-| Two sources of commands: the wheels twitch between values | `keyboard_teleop.py` or `computer_joystick.py` is still connected | Stop it; wait a second; repeat |
+| Two sources of commands: the wheels twitch between values | The launch was started without `teleop:=false`, so `TankTeleop.py` is publishing too | Stop the launch and start it again with `teleop:=false` |
 | `Failed to call service QuadEncoder` | The encoder node (`QuadEncoders.py`) is not running or not answering | `ros2 node list` shows whether it is up; read its log |
 | `ros2 control list_controllers` prints `waiting for service /controller_manager/list_controllers` and never answers | This terminal is not root, or uses another `ROS_DOMAIN_ID`, so it cannot see the launch; or the launch in terminal A has stopped | Open the terminal with `pi/rocko_shell.sh`; check terminal A is still running |
 

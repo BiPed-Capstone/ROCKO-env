@@ -16,7 +16,7 @@
 > | --- | --- | --- |
 > | 0 | Readiness review and the full ladder | done (this file, [Stage 0](#stage-0--readiness-review-2026-11-16)) |
 > | A | Ramp the drive commands in `DiffDriveController.py`; sim scenario `K` | done, awaiting robot ([Stage A](#stage-a--ramp-the-drive-commands)); [proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md) open |
-> | B | Keyboard driving from the laptop (`joystick/keyboard_teleop.py`) | done, awaiting robot ([Stage B](#stage-b--keyboard-driving)); guide: [drive-with-keyboard.md](../guides/drive-with-keyboard.md) |
+> | B | Keyboard driving from the laptop (`joystick/keyboard_teleop.py`) | done, awaiting robot ([Stage B](#stage-b--keyboard-driving)); guide: drive-with-keyboard.md (`drive-with-keyboard.md`, removed 2026-11-22; in git history) |
 > | C | Bag recording on the Pi (`record:=true`), metadata, `tools/fetch_logs.sh` | done, awaiting robot ([Stage C](#stage-c--logging)); guide: [record-a-run.md](../guides/record-a-run.md) |
 > | D | Web dashboard (replaces the Flask stub), with Record/Stop | done, awaiting robot ([Stage D](#stage-d--web-dashboard)); guide: [use-the-dashboard.md](../guides/use-the-dashboard.md) |
 > | E | Foxglove layout and guides | **partly done, NOT reviewed** ([Stage E](#stage-e--foxglove)): the code and the check are committed; the guide, the other docs and the review are not written |
@@ -254,7 +254,7 @@ Built on `f9fedbc`.
 | `controllers/joystick/Joystick.py` | Precise mode: when button byte 15 is 1, the axis is multiplied by `precise_linear_scale_m_s` / `precise_angular_scale_m_s` (ROS parameters; defaults are named constants, **proposed**) with no expo curve and no deadband. Gamepad packets take the old path, unchanged |
 | `sim/scenario_checks.py`, `verify_sim.sh` | Scenario `KB`: the laptop script itself, with scripted keys, over TCP into the real `Joystick.py` |
 | `tools/keyboard_teleop_test.py` (new), `tools/teleop_watchdog_test.py` | Host tests of the keys and the sending loop, and of `Joystick.py`'s two mappings |
-| docs | The guide [drive-with-keyboard.md](../guides/drive-with-keyboard.md); README; the ladder; next-steps row 4.1; proposal 0012, decision 3 |
+| docs | The guide drive-with-keyboard.md (`drive-with-keyboard.md`, removed 2026-11-22; in git history); README; the ladder; next-steps row 4.1; proposal 0012, decision 3 |
 
 **Why a button byte and not a second port or a new packet:** it needs no protocol change, an old
 `Joystick.py` simply ignores it, and the robot, not the laptop, decides how fast "full" is.
@@ -290,7 +290,7 @@ now restores the terminal with `TCSANOW`, and reads keys with `os.read` instead 
   balance is unknown, and the turn scale has no evidence behind it.
 - Windows. A real terminal beyond the one pseudo-terminal run.
 - Whether "positive `linear.x`" is forward on the robot (the keyboard follows the gamepad's signs).
-- Procedure: [drive-with-keyboard.md](../guides/drive-with-keyboard.md), first under the tethered
+- Procedure: drive-with-keyboard.md (`drive-with-keyboard.md`, removed 2026-11-22; in git history), first under the tethered
   conditions of proposal 0008; proposal 0012 asks a person to confirm the speeds.
 
 ### Review rounds

@@ -64,7 +64,7 @@ if [ "$DO_CONTAINER" = 1 ]; then
   if [ "$DO_SIM" = 1 ]; then
     step "Tier 3 verify_sim.sh (S1 S2a H4 C3 C2 H6 FF)" "${CTR[@]}" /ros2_ws/src/ROCKO-env/verify_sim.sh
     step "Tier 3 verify_tools.sh (record, dashboard, foxglove)" "${CTR[@]}" /ros2_ws/src/ROCKO-env/verify_tools.sh
-    step "Tier 3 verify_sim.sh scenarios (U I V K KB S2b AB)" "${CTR[@]}" /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
+    step "Tier 3 verify_sim.sh scenarios (U I V K S2b AB)" "${CTR[@]}" /ros2_ws/src/ROCKO-env/verify_sim.sh scenarios
   fi
 fi
 

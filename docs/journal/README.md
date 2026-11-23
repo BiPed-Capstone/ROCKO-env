@@ -89,3 +89,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-19 | [Helper scripts for running ROCKO on the Pi as root, and the Pi workspace name](2026-11-19-pi-helper-scripts.md) |
 | 2026-11-19 | [First run on the robot since `ai-forward`: tank mode drives, the motors hum; known red checks; the plan for the Xbox controller and self-balancing](2026-11-19-first-robot-run-tank-mode.md) |
 | 2026-11-20 | [Drive tank mode with an Xbox controller over Bluetooth from the Mac, split arcade](2026-11-20-xbox-controller-split-arcade.md) |
+| 2026-11-22 | [Drive tank mode from an 8BitDo controller plugged into the Pi; remove keyboard and laptop driving](2026-11-22-usb-controller-tank-mode.md) |

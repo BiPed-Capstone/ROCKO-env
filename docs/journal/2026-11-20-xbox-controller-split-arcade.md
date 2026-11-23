@@ -59,7 +59,7 @@ Checkable criteria:
 | `rocko_env/.../launch/rocko_tank_mode.launch.py` | Passes -15.0 m/s and -93.75 rad/s, derived in a comment from the motor plugin's duty formula and the wheel separation. `rocko.launch.py` untouched |
 | `tools/xbox_teleop_test.py` (new), `tools/teleop_watchdog_test.py`, `tools/computer_joystick_heartbeat_test.py` | Host tests, below |
 | [Proposal 0014](../proposals/0014-tank-mode-full-speed-for-shaped-sticks.md) | Proposed, applied at the owner's request, for the owner to confirm: raise tank mode's stick ceiling from about 68 % to 100 % duty, and the turning-acceleration issue it exposes |
-| [Guide](../guides/drive-with-xbox-controller.md), README, guides index, next-steps row 4.5 and handoff, the ladder's host-test table, the 2026-11-19 plan's status, `.gitignore` (`.venv-teleop/`) | Docs |
+| Guide (`drive-with-xbox-controller.md`, removed 2026-11-22; in git history), README, guides index, next-steps row 4.5 and handoff, the ladder's host-test table, the 2026-11-19 plan's status, `.gitignore` (`.venv-teleop/`) | Docs |
 
 **Research behind the macOS choices** (web, 2026-11-20): SDL's GameController layer maps a controller to
 named buttons and axes from its mapping database, while raw joystick axis numbers vary by platform, driver and
@@ -109,9 +109,9 @@ command line and killed the shell (exit 137); a leftover `foxglove_bridge` was t
 - **No real controller value was read.** The controller is paired with this Mac but was switched off
   (`system_profiler SPBluetoothDataType`: "Not Connected"). Whether SDL 2.32.10 has a GameController mapping for
   it over Bluetooth, which driver (HIDAPI or MFi) it uses, the resting offsets, and whether input continues with
-  the Terminal in the background are all for the probe: [guide, *First*](../guides/drive-with-xbox-controller.md#first-look-at-what-the-mac-sees-ten-minutes-no-robot).
+  the Terminal in the background are all for the probe: guide, *First* (`drive-with-xbox-controller.md`, removed 2026-11-22; in git history).
 - **Nothing on the robot.** The stand procedure, with the controller switched off mid-drive and the time to stop
-  recorded, is the guide's [*Drive*](../guides/drive-with-xbox-controller.md#drive) section. Abort with Ctrl-C on
+  recorded, is the guide's *Drive* (`drive-with-xbox-controller.md`, removed 2026-11-22; in git history) section. Abort with Ctrl-C on
   the Mac or by stopping the Pi's launch if a wheel keeps turning after the bumper is released.
 - **The 100 % ceiling** (proposal 0014) is arithmetic from the plugin's duty formula, which itself uses a disputed
   wheel radius and an integer-division `MAX_RAD_PER_SEC` (L-7). Whether 15 m/s is what the motors do is unknown.

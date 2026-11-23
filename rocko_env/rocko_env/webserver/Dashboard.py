@@ -41,10 +41,13 @@ from rcl_interfaces.msg import Log
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.serialization import deserialize_message
+from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool
 
 # The folder the recorder writes is the folder the run list reads: one constant, RecordRun.py's.
 from rocko_env.recording.RecordRun import DEFAULT_LOG_ROOT
+# The controller's layout (which /joy index is which stick or button): the shared teleop module.
+from rocko_env.teleop import gamepad
 
 DEFAULT_PORT = 8080
 SAMPLE_PERIOD_S = 0.05   # [s] the history gets one point this often: 20 per second is plenty for a
@@ -75,6 +78,7 @@ class Dashboard(Node):
         self.history = deque(maxlen=int(HISTORY_S / SAMPLE_PERIOD_S))  # (unix time, {signal: value})
         self.log_lines = deque(maxlen=LOG_LINES_KEPT)  # {"t", "level", "node", "text"}
         self.tipover_by_node = {}  # controller node name -> True (tripped) / False (re-armed), from its log
+        self.controller = None  # the newest /joy as {"axes": {name: value}, "buttons": {name: 0/1}}, or None
         self.recorder = None    # the running RecordRun.py process, or None
         self.recording_label = ""
 
@@ -102,6 +106,11 @@ class Dashboard(Node):
         self.create_subscription(
             Bool, "/diff_drive_controller/command_timed_out", self.on_command_timed_out, latched)
         self.create_subscription(Log, "/rosout", self.on_log, 20)
+        # Tank mode's game controller (joy's game_controller_node, 20 messages a second) and whether
+        # TankTeleop.py lets it drive. Slow enough to decode in the callback. Neither exists in
+        # balancing mode or the simulation; the page then says "no controller data".
+        self.create_subscription(Joy, "/joy", self.on_joy, 5)
+        self.create_subscription(Bool, "/tank_teleop/enabled", self.on_teleop_enabled, 5)
         self.create_timer(SAMPLE_PERIOD_S, self.sample)
 
     # --- ROS callbacks: keep bytes, or copy a number; nothing slow ---------------------------------
@@ -159,6 +168,20 @@ class Dashboard(Node):
     def on_command_timed_out(self, msg):
         self.set_values("watchdog", {"command_timed_out": bool(msg.data)})
 
+    def on_joy(self, msg):
+        # By NAME (gamepad.AXIS_NAMES / BUTTON_NAMES), so the page never needs the index numbers.
+        # A shorter message (another node's layout) simply has fewer names.
+        # A non-finite axis becomes None: NaN is not valid JSON, and the browser would reject the reply.
+        controller = {"axes": dict(zip(gamepad.AXIS_NAMES,
+                                       (float(v) if math.isfinite(v) else None for v in msg.axes))),
+                      "buttons": dict(zip(gamepad.BUTTON_NAMES, (int(v) for v in msg.buttons)))}
+        with self.lock:
+            self.controller = controller
+            self.updated_s["controller"] = time.monotonic()
+
+    def on_teleop_enabled(self, msg):
+        self.set_values("teleop_enabled", {"teleop_enabled": bool(msg.data)})
+
     def on_log(self, msg):
         if msg.level < Log.WARN:
             return
@@ -203,7 +226,9 @@ class Dashboard(Node):
                       for key, value in self.latest.items()}
             ages = {group: now - t for group, t in self.updated_s.items()}
             logs = list(self.log_lines)
+            controller = self.controller
         return {
+            "controller": controller,
             "time": time.time(), "values": latest, "age_s": ages, "stale_after_s": STALE_AFTER_S,
             "logs": logs, "recording": self.recording_status(),
             "launch": self.launch_name, "hardware": self.hardware,

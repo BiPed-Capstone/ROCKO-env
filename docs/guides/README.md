@@ -7,10 +7,9 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 | --- | --- |
 | [`reproducing-results.md`](reproducing-results.md) | Recording a result so someone else gets the same number |
 | [`verify-in-container.md`](verify-in-container.md) | Building and checking a change on your laptop with no robot: build, static checks, the mock, and the simulated robot (`verify_sim.sh`) |
-| [`drive-with-keyboard.md`](drive-with-keyboard.md) | Driving the robot from a laptop keyboard instead of a gamepad: what to run, the keys, what stops the robot, what goes wrong |
-| [`drive-with-xbox-controller.md`](drive-with-xbox-controller.md) | Driving in tank mode with an Xbox controller paired to a Mac over Bluetooth: split arcade, expo, full speed, the probe that checks the macOS mapping, what stops the robot |
+| [`drive-with-usb-controller.md`](drive-with-usb-controller.md) | Driving tank mode with a game controller (8BitDo) plugged into the Pi: split arcade, hold LB, what the dashboard shows, what stops the robot. The only way to drive since 2026-11-22 |
 | [`run-on-the-pi.md`](run-on-the-pi.md) | Running anything on the Pi: why every `ros2` command there runs as root, and the scripts in `pi/` that do it (`launch.sh`, `rocko_shell.sh`, `rocko_run.sh`); the workspace is `~/ROCKO-env` |
-| [`bench-test-tank-mode.md`](bench-test-tank-mode.md) | First run of tank mode with the wheels off the ground: do both wheels turn, at what command do they start, and why a keyboard's small commands only make the motors hum |
+| [`bench-test-tank-mode.md`](bench-test-tank-mode.md) | First run of tank mode with the wheels off the ground: do both wheels turn, at what command do they start, and why small commands only make the motors hum |
 | [`record-a-run.md`](record-a-run.md) | Recording a run on the robot with `record:=true`: what is recorded, the `run.yaml` that describes it, copying runs to a laptop |
 | [`use-the-dashboard.md`](use-the-dashboard.md) | Watching the robot's values in a browser on another machine, and recording from the page (`dashboard:=true`) |
 | [`measure-inertia.md`](measure-inertia.md) | Measuring the robot (mass, centre of mass, inertia, wheel radius, motor constants, IMU delay, encoder scale) to replace the simulator's estimates |
@@ -22,8 +21,7 @@ without the robot; it repeats only the commands and what to expect.
 
 ## What a guide in here must have
 
-1. **Which machine** — your laptop, the Pi, or inside the container. They differ, and the gamepad
-   script runs on a *different machine* from the robot code.
+1. **Which machine** — your laptop, the Pi, or inside the container. They differ, and the robot code runs on the Pi.
 2. **What to source first** — `source /opt/ros/jazzy/setup.bash`, then the workspace overlay, in every
    new terminal. On the Pi, `pi/rocko_shell.sh` does this (as root, which the robot needs); say so
    instead of listing the `source` lines ([Run ROCKO on the Pi](run-on-the-pi.md)).

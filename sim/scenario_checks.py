@@ -64,9 +64,7 @@ import json
 import math
 import os
 import re
-import socket
 import sys
-import threading
 import time
 from collections import namedtuple
 
@@ -1000,153 +998,6 @@ def check_velocity_step(args):
                   f"peak |pitch| {peak_pitch:.3f} deg")
 
 
-def connect_when_listening(port, wait_s):
-    """A TCP connection to 127.0.0.1:port, retried for up to wait_s because Joystick.py may not be
-    listening yet. Raises OSError (the last refusal) if it never is."""
-    deadline = time.monotonic() + wait_s
-    while True:
-        try:
-            sock = socket.create_connection(("127.0.0.1", port), timeout=1.0)
-        except OSError:
-            if time.monotonic() > deadline:
-                raise
-            time.sleep(0.2)
-            continue
-        sock.settimeout(None)
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        return sock
-
-
-def check_keyboard_drive(args):
-    """Scenario KB: the laptop keyboard script, over TCP, into the real Joystick.py.
-
-    joystick/keyboard_teleop.py's drive() runs in a thread with scripted key presses instead of a
-    terminal: --presses times "w" (one every --press-gap-s, starting --before-s after release), the
-    speed held for --hold-s, then space, then --after-s of standing still, then "q". This thread
-    records what Joystick.py publishes, what DiffDriveController.py sends on, and the plant."""
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "joystick"))
-    import keyboard_teleop  # the laptop script itself, not a copy of its logic
-
-    command_topic, reference_topic = "/diffbot_base_controller/cmd_vel", "/velocity_pid_controller/reference"
-    flag_topic = "/diff_drive_controller/command_timed_out"
-    latched = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-    rec = Recorder([("/dynamic_joint_states", DynamicJointState, DEPTH), (flag_topic, Bool, latched),
-                    (command_topic, TwistStamped, DEPTH), (reference_topic, MultiDOFCommand, DEPTH)])
-
-    stop_at_s = args.before_s + (args.presses - 1) * args.press_gap_s + args.hold_s
-    record_s = stop_at_s + args.after_s
-    # (seconds after release, key), in order. The keyboard thread plays them on the monotonic clock.
-    keys = [(args.before_s + i * args.press_gap_s, "w") for i in range(args.presses)]
-    keys += [(stop_at_s, " "), (record_s, "q")]
-    shared = {"release_mono_s": None, "error": None, "connected": False}
-
-    def read_key(timeout_s):
-        time.sleep(timeout_s)
-        if shared["release_mono_s"] is None or not keys:
-            return None
-        if time.monotonic() - shared["release_mono_s"] >= keys[0][0]:
-            return keys.pop(0)[1]
-        return None
-
-    def keyboard_thread():
-        try:
-            sock = connect_when_listening(args.port, args.wait)
-        except OSError as error:
-            shared["error"] = f"could not connect to Joystick.py on port {args.port}: {error}"
-            return
-        shared["connected"] = True
-        try:
-            keyboard_teleop.drive(sock, read_key)
-        except OSError as error:
-            shared["error"] = f"the connection to Joystick.py broke: {error}"
-        finally:
-            sock.close()
-
-    thread = threading.Thread(target=keyboard_thread, daemon=True)
-    thread.start()
-
-    def note_release(t_after_release):
-        if t_after_release is not None and shared["release_mono_s"] is None:
-            shared["release_mono_s"] = time.monotonic() - t_after_release
-
-    release, samples = record_from_release(rec, args, record_s, during=note_release)
-    rec.spin_for(0.5)  # let the last cmd_vel and reference messages arrive
-    thread.join(timeout=5.0)
-    if thread.is_alive():
-        # Without this, a drive() that hung after space would still leave "last command zero".
-        rec.destroy_node()
-        return finish(args.out, {}, COULD_NOT_JUDGE,
-                      "the keyboard thread did not finish: 'q' was never handled")
-    flags = [m.data for _, m in rec.received[flag_topic]]
-    commands = [(m.twist.linear.x, m.twist.angular.z) for _, m in rec.received[command_topic]]
-    references = [list(m.values) for _, m in rec.received[reference_topic]]
-    rec.destroy_node()
-    if release is None:
-        return finish(args.out, {}, COULD_NOT_JUDGE,
-                      f"no 'releasing the simulated robot' line in the launch log within {args.wait} s")
-    write_samples(args.out, samples)
-
-    top_speed = round(args.presses * args.step_m_s, 6)  # [m/s] what the presses add up to
-    linear = [c[0] for c in commands]
-    peak_command = max(linear, default=math.nan)
-    peak_reference = max((r[0] for r in references), default=math.nan)
-    peak_pitch = max((abs(s.pitch_deg) for s in samples), default=math.nan)
-    fell = fell_at(samples, args.tipover_deg)
-    # Every command must be a whole number of steps: 0, 1 x step, 2 x step, ...
-    off_grid = [x for x in linear if abs(x / args.step_m_s - round(x / args.step_m_s)) > 1e-4]
-    metrics = {
-        "samples": len(samples), "release_stamp_s": release, "connected": shared["connected"],
-        "keyboard_error": shared["error"], "commands_received": len(commands),
-        "distinct_command_speeds_m_s": sorted({round(x, 4) for x in linear}),
-        "peak_command_m_s": peak_command, "last_command": commands[-1] if commands else None,
-        "peak_reference_m_s": peak_reference, "last_reference": references[-1] if references else None,
-        "timed_out_flags_seen": flags, "peak_abs_pitch_deg": peak_pitch, "fell_at_s": fell,
-        "top_speed_m_s": top_speed, "max_pitch_deg": args.max_pitch_deg,
-    }
-    print(f"scenario_checks: keyboard over TCP: {len(commands)} commands from Joystick.py, speeds "
-          f"{metrics['distinct_command_speeds_m_s']} m/s, peak reference {peak_reference:.4f} m/s, last "
-          f"command {metrics['last_command']}, last reference {metrics['last_reference']}; peak |pitch| "
-          f"{peak_pitch:.3f} deg")
-    if shared["error"]:
-        return finish(args.out, metrics, FAIL, shared["error"])
-    if not commands:
-        return finish(args.out, metrics, FAIL,
-                      "Joystick.py published no command: the keyboard's packets did not get through")
-    # command_timed_out went False (a command arrived) and later True (the watchdog fired).
-    watchdog_fired = False in flags and True in flags[flags.index(False) + 1:]
-    if watchdog_fired:
-        return finish(args.out, metrics, COULD_NOT_JUDGE,
-                      "the teleop watchdog fired while the keyboard was connected, so the command was "
-                      "not the scripted one")
-    if fell is not None:
-        return finish(args.out, metrics, FAIL,
-                      f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s after release")
-    problem = coverage_problem(samples, args, record_s)
-    if problem:
-        return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
-    if off_grid or any(c[1] != 0.0 for c in commands):
-        return finish(args.out, metrics, FAIL,
-                      f"commands that no key asked for: speeds off the {args.step_m_s} m/s grid "
-                      f"{sorted(set(off_grid))[:5]}, or a turn. (One step is Joystick.py's precise "
-                      "scale / keyboard_teleop.py's STEPS_TO_FULL; KB_STEP_M_S must equal it.)")
-    if abs(peak_command - top_speed) > 1e-4:
-        return finish(args.out, metrics, FAIL,
-                      f"{args.presses} presses must command {top_speed} m/s; the peak was {peak_command}")
-    if not (top_speed - 1e-4 <= peak_reference <= top_speed + 1e-4):
-        return finish(args.out, metrics, FAIL,
-                      f"the velocity reference peaked at {peak_reference} m/s, not {top_speed} m/s")
-    if commands[-1] != (0.0, 0.0) or references[-1] != [0.0, 0.0]:
-        return finish(args.out, metrics, FAIL,
-                      f"after space and q the last command is {commands[-1]} and the last reference "
-                      f"{references[-1]}; both must be zero")
-    if peak_pitch > args.max_pitch_deg:
-        return finish(args.out, metrics, FAIL,
-                      f"|pitch| reached {peak_pitch:.3f} deg (limit {args.max_pitch_deg} deg)")
-    return finish(args.out, metrics, PASS,
-                  f"{args.presses} key presses reached Joystick.py over TCP as {top_speed} m/s, the "
-                  f"reference followed and returned to zero after space; peak |pitch| {peak_pitch:.3f} deg")
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="check", required=True)
@@ -1225,16 +1076,6 @@ def main():
     p.add_argument("--max-pitch-deg", type=float, required=True, help="limit on |pitch| [deg]")
     p.add_argument("--watchdog-trip-cannot-judge", action="store_true",
                    help="exit 2 instead of judging when command_timed_out went True during the step")
-    p = scenario("keyboard-drive", check_keyboard_drive, None)  # its timing is the arguments below
-    p.add_argument("--port", type=int, default=1234,
-                   help="Joystick.py's TCP port (ROCKO_PORT in joystick/computer_joystick.py)")
-    p.add_argument("--presses", type=int, required=True, help="how many times 'w' is pressed")
-    p.add_argument("--step-m-s", type=float, required=True, help="speed one press adds [m/s]")
-    p.add_argument("--before-s", type=float, required=True, help="first press this long after release [s]")
-    p.add_argument("--press-gap-s", type=float, required=True, help="time between presses [s]")
-    p.add_argument("--hold-s", type=float, required=True, help="the top speed is held this long [s]")
-    p.add_argument("--after-s", type=float, required=True, help="recorded this long after space [s]")
-    p.add_argument("--max-pitch-deg", type=float, required=True, help="limit on |pitch| [deg]")
     args = parser.parse_args()
 
     rclpy.init()

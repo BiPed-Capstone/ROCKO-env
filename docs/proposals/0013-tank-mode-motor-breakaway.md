@@ -47,7 +47,7 @@ simulated balancing robot (scenario `K`), not for tank mode, and never run on a 
 The goal is to get tank mode, the first thing run on the robot on this branch, to move the wheels from
 the keyboard, so the rest of the first-run checks (direction, encoders, odom) mean something. Without
 a change, only a command far above the keyboard's range moves the wheels, and a student following
-[drive-with-keyboard.md](../guides/drive-with-keyboard.md) sees a hum. The turn keys are weaker still:
+drive-with-keyboard.md (`drive-with-keyboard.md`, removed 2026-11-22; in git history) sees a hum. The turn keys are weaker still:
 a full `a` or `d` is `angular.z` 0.3 (`Joystick.py:233`), 0.048 m/s per wheel, about 2 % duty;
 in tank mode `diff_drive_controller` reads it as rad/s (the `Joystick.py:49` comment is true only for
 balance mode's `DiffDriveController.py`).

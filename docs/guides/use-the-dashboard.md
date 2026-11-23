@@ -49,6 +49,7 @@ from the laptop's browser the container's port 8080 would have to be published i
 | Pitch loop output [rad/s] | the wheel velocity the pitch loop commands, before the feedforward is added | `/pitch_pid_controller/controller_state` (its output) |
 | Teleop link | `driving` while commands arrive; `no commands` when the teleop watchdog has zeroed the speed | `/diff_drive_controller/command_timed_out` |
 | Tipover cutoff | `TRIPPED` while either wheel's controller has logged a trip and not a re-arm; `re-armed` after both have logged a re-arm; `no trip seen` if neither line has arrived since the dashboard started. **`no trip seen` is not "armed"**: a trip logged before the dashboard started cannot be known to it | `/rosout` |
+| Controller card | tank mode's USB game controller, drawn live: both sticks (the dot is the stick's position; up and left read +1), the triggers, every button, with **LB** (the drive button) outlined, and next to it what the robot will do. `ENABLED: driving` only while `TankTeleop.py` says so; `Disabled` (hold LB, or release it once to re-arm after start-up or a reconnect); `No controller` when nothing arrives on `/joy`; `Teleop not running` when `TankTeleop.py` is silent (not tank mode, or the node died). The drawing turns grey when `/joy` is stale. In balancing mode and the simulation it always says `Teleop not running` | `/joy`, `/tank_teleop/enabled` ([Drive tank mode with a USB controller](drive-with-usb-controller.md)) |
 | Three plots | the last 30 s of pitch and target pitch, the wheel speeds and the reference, and the pitch loop's output | the same topics, 20 points a second |
 | Warnings and errors | the newest 40 log lines at WARN or above, from every node | `/rosout` |
 
@@ -71,6 +72,7 @@ recording at a time. A run marked "open or not closed" is still being written, o
 
 It can start and stop a recording and hand recorded runs to the browser. That is all. It publishes on
 no topic and calls no service, so it cannot drive the robot, change a gain or re-arm the tipover cutoff.
+The controller card only shows: enabling the robot is the left bumper on the controller itself.
 
 **There is no login.** Anyone on the robot's network can open the page, press Record and download
 runs. Use it on the lab's own network, not on a network you do not trust.

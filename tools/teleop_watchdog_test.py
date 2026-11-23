@@ -13,8 +13,9 @@ message types, injects a fake clock, and checks:
     not crash it, a second TCP connection cannot replace a client that is still sending (only one
     silent for longer than CLIENT_SILENT_REPLACE_S), accept() errors are survived, and no more than
     MAX_BYTES_PER_TICK bytes are read per tick;
-  * Joystick's mappings: gamepad (expo, deadband), precise (keyboard) and shaped axes
-    (joystick/xbox_teleop.py), and that the tank launch file's full-duty scales match the YAML.
+  * Joystick's gamepad mapping (expo, deadband, scales), the only one since 2026-11-22.
+Joystick.py and DiffDriveController.py are balancing mode's nodes; tank mode's teleop is tested by
+tools/tank_teleop_test.py.
 What it cannot show: anything about ROS timing, DDS, or a robot. Tier 0 only.
 """
 import importlib.util
@@ -330,13 +331,7 @@ def test_joystick_reads_newest_of_several_and_handles_split_packets():
     check(abs(message.axes[1] - 0.3) < 1e-6, "the split message completes on the next read")
 
 
-def test_default_timeout_is_four_heartbeats():
-    # The robot's timeout and the laptop's heartbeat are set in two files; this keeps them in step.
-    spec = importlib.util.spec_from_file_location("computer_joystick", REPO / "joystick" / "computer_joystick.py")
-    cj = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cj)
-    check(math.isclose(diffdrive.DEFAULT_COMMAND_TIMEOUT_S, 4 * cj.HEARTBEAT_PERIOD_S),
-          "DEFAULT_COMMAND_TIMEOUT_S must be 4 x the laptop's HEARTBEAT_PERIOD_S")
+def test_default_timeout_is_used_without_a_parameter():
     node, _ = make_controller()
     check(node.command_watchdog.timeout_s == diffdrive.DEFAULT_COMMAND_TIMEOUT_S,
           "with no parameter the node must use DEFAULT_COMMAND_TIMEOUT_S")
@@ -567,124 +562,27 @@ def test_bad_ramp_parameter_falls_back_to_default():
         check(any(level == "error" for level, _ in node.logger.lines), f"bad ramp limit {bad} must log an error")
 
 
-# --- Joystick: gamepad mapping and precise mode (keyboard) ---------------------------------------
-def twist_for(axes, buttons, shaped_scales=(joystick.Joystick.DEFAULT_SHAPED_LINEAR_SCALE_M_S,
-                                         joystick.Joystick.DEFAULT_SHAPED_ANGULAR_SCALE)):
+# --- Joystick: the gamepad mapping (balancing mode) -----------------------------------------------
+def twist_for(axes, buttons):
     """What Joystick.convert_to_twist publishes for one gamepad message: (linear.x, angular.z)."""
     js, gamepad = make_joystick_with_socket()
     gamepad.close()
     js.linear_scale, js.angular_scale, js.deadband = -10.0, -35.0, 0.05  # as Joystick.__init__ sets them
-    js.precise_linear_scale = joystick.Joystick.DEFAULT_PRECISE_LINEAR_SCALE_M_S
-    js.precise_angular_scale = joystick.Joystick.DEFAULT_PRECISE_ANGULAR_SCALE_M_S
-    js.shaped_linear_scale, js.shaped_angular_scale = shaped_scales
     js.robot_body_vector_updated_topic = FakePublisher("cmd_vel")
     js.convert_to_twist(Msg(axes=axes, buttons=buttons))
     sent = js.robot_body_vector_updated_topic.sent[-1].twist
     return sent.linear.x, sent.angular.z
 
 
-def test_precise_mode_uses_the_low_scales_with_no_deadband_or_expo():
-    precise = [0] * 15 + [1]
-    linear, angular = twist_for([0.0, -0.2, 0, 0, 0, 0], precise)  # one keyboard step forward
-    check(abs(linear - 0.1) < 1e-9, f"one fifth of full axis must be 0.1 m/s forward, got {linear}")
-    check(angular == 0.0, "no turn was asked for")
-    linear, angular = twist_for([-1.0, -1.0, 0, 0, 0, 0], precise)  # full forward, full left
-    check(abs(linear - 0.5) < 1e-9 and abs(angular - 0.3) < 1e-9, "full axis must be the precise scales")
-    linear, angular = twist_for([0.02, 0.02, 0, 0, 0, 0], precise)
-    check(linear != 0.0 and angular != 0.0, "precise mode has no deadband: a small axis is a small command")
-
-
-def test_gamepad_mapping_is_unchanged_without_the_precise_button():
-    gamepad_buttons = [0] * 16
-    linear, angular = twist_for([0.0, -1.0, 0, 0, 0, 0], gamepad_buttons)
-    check(abs(linear - 10.0) < 1e-9, "full stick is still 10 'm/s' for a gamepad")
-    linear, _ = twist_for([0.0, -0.05, 0, 0, 0, 0], gamepad_buttons)
-    check(linear == 0.0, "the gamepad's deadband still applies")
-    # Buttons 0 to 13 do not switch the mode (14 is SHAPED_BUTTON, 15 is PRECISE_BUTTON).
-    linear, _ = twist_for([0.0, -0.5, 0, 0, 0, 0], [1] * 14 + [0, 0])
+def test_gamepad_mapping_expo_deadband_and_scales():
+    linear, angular = twist_for([0.0, -1.0, 0, 0, 0, 0], [0] * 16)
+    check(abs(linear - 10.0) < 1e-9 and angular == 0.0, "full stick is 10 'm/s' for a gamepad")
+    linear, _ = twist_for([0.0, -0.05, 0, 0, 0, 0], [0] * 16)
+    check(linear == 0.0, "the gamepad's deadband applies")
+    # No button changes the mapping any more (precise and shaped modes were removed 2026-11-22).
+    linear, _ = twist_for([0.0, -0.5, 0, 0, 0, 0], [1] * 16)
     check(abs(linear - 10.0 * joystick.expo_curve(0.5)) < 1e-6,
-          f"buttons 0-13 must leave the gamepad's expo mapping in place, got {linear}")
-
-
-def test_precise_scale_parameter_is_bounded():
-    js, gamepad = make_joystick_with_socket()
-    gamepad.close()
-    default = joystick.Joystick.DEFAULT_PRECISE_LINEAR_SCALE_M_S
-    for value, expected in ((-0.2, -0.2), (-1.0, -1.0), (0.5, default), (0.0, default),
-                            (-1.5, default), (math.nan, default)):
-        js.get_parameter = lambda name, v=value: SimpleNamespace(value=v)
-        got = js.precise_scale("precise_linear_scale_m_s", default)
-        check(got == expected, f"precise scale {value} must give {expected}, got {got}")
-
-
-# --- Joystick: shaped axes (joystick/xbox_teleop.py) ---------------------------------------------
-SHAPED = [0] * 14 + [1, 0]  # button 14 set
-TANK_SCALES = (-15.0, -15.0 / (0.32 / 2))  # what rocko_tank_mode.launch.py passes (checked below)
-
-
-def test_shaped_axes_are_scaled_with_no_expo_or_deadband():
-    linear, angular = twist_for([0.0, -0.5, 0, 0, 0, 0], SHAPED, TANK_SCALES)
-    check(abs(linear - 7.5) < 1e-9, f"half axis must be half the scale (no second expo), got {linear}")
-    check(angular == 0.0, "no turn was asked for")
-    linear, angular = twist_for([-1.0, -1.0, 0, 0, 0, 0], SHAPED, TANK_SCALES)
-    check(abs(linear - 15.0) < 1e-9 and abs(angular - 93.75) < 1e-9, "full axis must be the shaped scales")
-    linear, angular = twist_for([0.02, 0.02, 0, 0, 0, 0], SHAPED, TANK_SCALES)
-    check(linear != 0.0 and angular != 0.0, "no deadband here: the laptop already applied one")
-
-
-def test_precise_mode_wins_over_shaped():
-    linear, _ = twist_for([0.0, -1.0, 0, 0, 0, 0], [0] * 14 + [1, 1], TANK_SCALES)
-    check(abs(linear - 0.5) < 1e-9, f"with both buttons set the slow precise scale must win, got {linear}")
-
-
-def test_shaped_defaults_are_the_gamepad_scales():
-    # Balance mode (rocko.launch.py) passes no shaped_* parameter, so a full shaped stick there must ask
-    # for no more than a full gamepad stick does today (the -10 and -35 in Joystick.__init__).
-    check(joystick.Joystick.DEFAULT_SHAPED_LINEAR_SCALE_M_S == -10.0, "default linear must be -10")
-    check(joystick.Joystick.DEFAULT_SHAPED_ANGULAR_SCALE == -35.0, "default angular must be -35")
-
-
-def test_shaped_scale_parameter_is_bounded():
-    js, gamepad = make_joystick_with_socket()
-    gamepad.close()
-    default = joystick.Joystick.DEFAULT_SHAPED_LINEAR_SCALE_M_S
-    limit = joystick.Joystick.MAX_SHAPED_LINEAR_SCALE_M_S
-    for value, expected in ((-15.0, -15.0), (-0.1, -0.1), (0.0, default), (5.0, default),
-                            (-15.1, default), (math.nan, default), (-math.inf, default)):
-        js.get_parameter = lambda name, v=value: SimpleNamespace(value=v)
-        got = js.shaped_scale("shaped_linear_scale_m_s", default, limit)
-        check(got == expected, f"shaped scale {value} must give {expected}, got {got}")
-
-
-def test_tank_launch_scales_match_this_test_and_the_yaml():
-    # The launch file computes the scales from two numbers; one of them is copied from the YAML.
-    import re
-    launch = (REPO / "rocko_env/rocko_env/bringup/launch/rocko_tank_mode.launch.py").read_text()
-    yaml = (REPO / "rocko_env/rocko_env/bringup/config/rocko_tank_mode_controllers.yaml").read_text()
-    speed = float(re.search(r"full_duty_wheel_speed_m_s = ([0-9.]+)", launch).group(1))
-    separation = float(re.search(r"wheel_separation_m = ([0-9.]+)", launch).group(1))
-    yaml_separation = float(re.search(r"^\s*wheel_separation: ([0-9.]+)", yaml, re.M).group(1))
-    check(separation == yaml_separation, f"launch wheel_separation_m {separation} != YAML {yaml_separation}")
-    check((-speed, -speed / (separation / 2)) == TANK_SCALES, "TANK_SCALES here must match the launch file")
-    check((-joystick.Joystick.MAX_SHAPED_LINEAR_SCALE_M_S, -joystick.Joystick.MAX_SHAPED_ANGULAR_SCALE)
-          == TANK_SCALES, "the launch file's scales must be exactly Joystick's largest accepted ones")
-    check("shaped_" not in (REPO / "rocko_env/rocko_env/bringup/launch/rocko.launch.py").read_text(),
-          "the balancing launch file must not pass shaped_* parameters")
-
-
-def test_xbox_teleop_packet_reaches_joystick_as_full_speed():
-    # The laptop's packet, through the real receive path and mapping, with the tank scales.
-    sys.path.insert(0, str(REPO / "joystick"))
-    import xbox_teleop
-    check(xbox_teleop.SHAPED_BUTTON == joystick.Joystick.SHAPED_BUTTON, "SHAPED_BUTTON differs between files")
-    check(xbox_teleop.SHAPED_BUTTON != joystick.Joystick.PRECISE_BUTTON, "the two mode buttons must differ")
-    js, gamepad = make_joystick_with_socket()
-    gamepad.sendall(xbox_teleop.packet_for(1.0, 0.25))  # full forward, a quarter left
-    message = js.read_newest_message()
-    check(message is not None, "the laptop's packet must be accepted")
-    linear, angular = twist_for(message.axes, message.buttons, TANK_SCALES)
-    check(abs(linear - 15.0) < 1e-5, f"full forward must be 15 m/s in tank mode, got {linear}")
-    check(abs(angular - 0.25 * 93.75) < 1e-4, f"a quarter left must be a positive (left) turn, got {angular}")
+          f"buttons must not change the expo mapping, got {linear}")
 
 
 # --- runner -----------------------------------------------------------------------------

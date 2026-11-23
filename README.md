@@ -138,10 +138,6 @@ ROCKO-env
 ├── sim/scenario_checks.py          The H4, C3, C2, H6 and FF checks of verify_sim.sh, and its balance scenarios: `check_upright`, `check_impulse`, `check_velocity_step` (container)
 ├── sim/cascade_linearisation.py    Laptop, standard library only: linearises the cascade and the plant model to explain the slow drift (finding H-12); not run by any verify script
 ├── sim/check_sim_config.py         Fails if the sim controller YAML's wiring, an untuned gain or the sim settings' defaults drift from the hardware YAML / the physics header (run by verify_urdf.sh)
-├── joystick/computer_joystick.py   Runs on YOUR laptop, not the robot. Sends gamepad input over TCP
-├── joystick/keyboard_teleop.py     Also on YOUR laptop: drive from the keyboard instead (same TCP protocol)
-├── joystick/xbox_teleop.py         Also on YOUR Mac: drive tank mode with a Bluetooth Xbox controller (split arcade)
-├── joystick/controller_probe.py    Prints what macOS/SDL sees of a controller, before you drive with it
 ├── rocko_env/                      The main package
 │   ├── CMakeLists.txt, package.xml     Build config and dependency list
 │   ├── rocko_env_hardware.xml          Registers the hardware plugins with ROS
@@ -153,8 +149,10 @@ ROCKO-env
 │       ├── controllers/
 │       │   ├── add_feedforward/        C++ controller that adds a feedforward term
 │       │   ├── diffdrive/              Turns steering commands into per-wheel targets
-│       │   ├── joystick/               TCP server that receives laptop gamepad input
+│       │   ├── joystick/               Balancing mode: TCP server for a laptop gamepad (no sender left in the repo)
+│       │   ├── tank_teleop/            Tank mode: TankTeleop.py, the USB controller on the Pi drives (hold LB)
 │       │   └── utils/                  RateLimiter.py (not used by any node)
+│       ├── teleop/gamepad.py           Shared by every teleop node and the dashboard: the controller layout, deadzone/expo/mixing, hold-to-drive
 │       ├── description/
 │       │   ├── urdf/                   The robot's physical shape and joints (xacro files)
 │       │   ├── ros2_control/           Which hardware plugin drives which joint, and GPIO pins; also the mock
@@ -170,7 +168,7 @@ ROCKO-env
 │       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
 │       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
 ├── rocko_interfaces/                   Custom message and service definitions
-└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), the gamepad heartbeat (computer_joystick_heartbeat_test.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
+└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
 ```
 
 A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
@@ -246,26 +244,16 @@ You can also run individual nodes, which is handy when debugging one piece:
 pi/rocko_run.sh ros2 run rocko_env DiffDriveController.py
 pi/rocko_run.sh ros2 run rocko_env QuadEncoders.py
 pi/rocko_run.sh ros2 run rocko_env ICM20948.py
-pi/rocko_run.sh ros2 run rocko_env Joystick.py
+pi/rocko_run.sh ros2 run rocko_env Joystick.py      # balancing mode's teleop input
+pi/rocko_run.sh ros2 run rocko_env TankTeleop.py    # tank mode's (needs joy's game_controller_node too)
 ```
 
-And the gamepad script, which runs **on your laptop** while the robot is running:
-
-```bash
-python3 joystick/computer_joystick.py
-```
-
-It opens a TCP connection to `Joystick.py` on the Pi at port 1234, so both machines need to be on the same network and you'll need the Pi's IP address. It also resends the unchanged stick position every 0.05 s: the robot's `DiffDriveController.py` zeroes the velocity reference when no command has arrived for 0.2 s (the teleop watchdog, finding C-3; the timeout is a proposed value), so an old copy of this script that sends only on a change would stop a robot whose stick is held steady. The script pads or cuts the gamepad's data to the 6 axes and 16 buttons that `Joystick.py` reads, and it has no reconnect code: restart it if the link drops. Copy the current script to the laptop. None of this has been run on a robot yet.
-
-No gamepad? `python3 joystick/keyboard_teleop.py <robot-ip>` drives from the keyboard over the same
-connection, at low speeds, with nothing but Python 3 on the laptop:
-[Drive the robot from a laptop keyboard](docs/guides/drive-with-keyboard.md). Checked in the simulation
-only.
-
-An Xbox controller paired with a Mac drives **tank mode** with `joystick/xbox_teleop.py` (split arcade,
-expo, full motor speed, hold a bumper to move):
-[Drive in tank mode with an Xbox controller](docs/guides/drive-with-xbox-controller.md). Checked with a
-fake controller and on the mock only.
+**Driving (tank mode):** plug a game controller (an 8BitDo in X-input mode) into the Pi's USB and start
+tank mode; hold the **left bumper** to drive, left stick for speed, right stick to turn. Nothing runs on your
+laptop. Needs `sudo apt install ros-jazzy-joy` on the Pi once:
+[Drive tank mode with a USB game controller](docs/guides/drive-with-usb-controller.md). Checked with fake
+controller messages and on the mock only. **Balancing mode cannot be driven at present:** keyboard and laptop
+driving were removed on 2026-11-22, and balancing mode's `Joystick.py` has no sender left.
 
 To keep a recording of a test, add `record:=true` to any of the launches above
 (`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):
@@ -344,7 +332,7 @@ Without `-DROCKO_SKIP_WIRINGPI=ON` the build stops with "WiringPi not found", on
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records: a choice, its alternatives, its cost |
 | [`docs/journal/`](docs/journal/README.md) | One entry per AI-written change: what was asked, what changed, which checks actually ran |
 | [`docs/proposals/`](docs/proposals/README.md) | Changes waiting on a human decision (gains, version pins, safety behavior) |
-| [`docs/claude-analysis/`](docs/claude-analysis/) | Code audits with findings and severities, and plans such as [driving with an Xbox controller from macOS](docs/claude-analysis/xbox-controller-macos-plan.md) |
+| [`docs/claude-analysis/`](docs/claude-analysis/) | Code audits with findings and severities, and plans (for example the [Xbox-on-macOS plan](docs/claude-analysis/xbox-controller-macos-plan.md), superseded by the USB controller on the Pi) |
 
 **If you are new**, read this README, then
 [`docs/architecture/control-cascade.md`](docs/architecture/control-cascade.md) for why "go faster"
