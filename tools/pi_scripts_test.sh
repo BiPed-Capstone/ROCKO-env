@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Host test of the Pi helper scripts (pi/rocko_env.sh, rocko_run.sh, rocko_shell.sh, launch.sh,
-# install_dashboard_service.sh's rendered unit).
+# Host test of the Pi helper scripts (pi/rocko_env.sh, rocko_run.sh, rocko_shell.sh, launch.sh and its
+# tank-service guard, install_boot_service.sh's rendered units).
 # No ROS, no robot, no real sudo: a fake ROS setup file, a fake `ros2` that prints what it was given
 # and what it can see, and a fake `sudo` that logs the call and runs the rest as the same user.
 #
@@ -143,18 +143,42 @@ for script in "launch.sh tank" "rocko_run.sh ros2 x"; do
   check "${script%% *}: run under sudo is refused (2) with the reason" "$r" "code $code: $out"
 done
 
-# 8. the dashboard boot service: the unit is rendered with the caller's paths, and installing under sudo is refused
-out="$(HOME="$home" ROCKO_VENV="$home/myvenv" ROCKO_DOMAIN_ID=23 "$repo/pi/install_dashboard_service.sh" print 2>&1)"; code=$?
+# 8. the boot services: each unit is rendered with the caller's paths; installing under sudo is refused
+out="$(HOME="$home" ROCKO_VENV="$home/myvenv" ROCKO_DOMAIN_ID=23 "$repo/pi/install_boot_service.sh" dashboard print 2>&1)"; code=$?
 r=0; [ "$code" -eq 0 ] || r=1
 has "$out" "Environment=ROCKO_VENV=$home/myvenv" || r=1
 has "$out" "Environment=ROCKO_DOMAIN_ID=23" || r=1
+has "$out" "Environment=HOME=/root" || r=1
 has "$out" "ExecStart=$repo/pi/rocko_run.sh ros2 run rocko_env Dashboard.py" || r=1
 has "$out" "log_root:=$home/rocko_logs" || r=1
 grep -qE '@[A-Z_]+@' <<<"$out" && r=1   # no @PLACEHOLDER@ left behind
-check "install_dashboard_service.sh print: the unit names this checkout, the caller's venv, logs and domain" "$r" "$out"
-out="$(PATH="$work/asroot:$PATH" "$repo/pi/install_dashboard_service.sh" install 2>&1)"; code=$?   # the asroot fake id says uid 0
+check "install_boot_service.sh dashboard print: this checkout, the caller's venv, logs, domain, HOME=/root" "$r" "$out"
+out="$(HOME="$home" ROCKO_VENV="$home/myvenv" "$repo/pi/install_boot_service.sh" tank print 2>&1)"; code=$?
+r=0; [ "$code" -eq 0 ] || r=1
+has "$out" "ExecStart=$repo/pi/launch.sh tank log_root:=$home/rocko_logs" || r=1
+has "$out" "Environment=ROCKO_BOOT_SERVICE=1" || r=1
+has "$out" "KillSignal=SIGINT" || r=1
+has "$out" "Environment=HOME=/root" || r=1
+grep -qE '@[A-Z_]+@' <<<"$out" && r=1
+check "install_boot_service.sh tank print: pi/launch.sh tank, the service marker, a SIGINT stop, HOME=/root" "$r" "$out"
+out="$(PATH="$work/asroot:$PATH" "$repo/pi/install_boot_service.sh" tank install 2>&1)"; code=$?   # the asroot fake id says uid 0
 r=0; [ "$code" -eq 2 ] || r=1; has "$out" "without sudo" || r=1
-check "install_dashboard_service.sh: install under sudo is refused (2) with the reason" "$r" "code $code: $out"
+check "install_boot_service.sh: install under sudo is refused (2) with the reason" "$r" "code $code: $out"
+out="$("$repo/pi/install_boot_service.sh" balance 2>&1)"; code=$?
+r=0; [ "$code" -eq 2 ] || r=1; has "$out" "usage" || r=1
+check "install_boot_service.sh: an unknown service name is refused with the usage" "$r" "code $code: $out"
+
+# 9. while the tank boot service runs, launch.sh refuses other launches; the service itself is let through
+mkdir -p "$work/tankup"
+# fake systemctl: reports "active" (exit 0) only for 'is-active --quiet rocko-tank.service'; anything else exits 3 (not active)
+printf '#!/bin/sh\n[ "$1 $2 $3" = "is-active --quiet rocko-tank.service" ] && exit 0\nexit 3\n' >"$work/tankup/systemctl"
+chmod +x "$work/tankup/systemctl"
+out="$(PATH="$work/tankup:$PATH" "$repo/pi/launch.sh" balance 2>&1)"; code=$?
+r=0; [ "$code" -eq 2 ] || r=1; has "$out" "sudo systemctl stop rocko-tank.service" || r=1; has "$out" "ros2 launch" && r=1
+check "launch.sh balance while rocko-tank.service runs: refused (2), says how to stop it" "$r" "code $code: $out"
+out="$(PATH="$work/tankup:$PATH" ROCKO_BOOT_SERVICE=1 "$repo/pi/launch.sh" tank 2>&1)"; code=$?
+r=0; [ "$code" -eq 0 ] || r=1; has "$out" "ros2 launch rocko_env rocko_tank_mode.launch.py" || r=1
+check "launch.sh tank from the service itself (ROCKO_BOOT_SERVICE=1): let through" "$r" "code $code: $out"
 
 echo
 echo "$pass passed, $fail failed"

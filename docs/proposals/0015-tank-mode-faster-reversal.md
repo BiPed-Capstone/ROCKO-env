@@ -102,6 +102,11 @@ to 90 % of reverse at 6 m/s; 0.10 s and 0.18 s at 15 m/s** (4 to 9 control cycle
 the driver feels; what remains is the motors' own response and the breakaway dead spot (proposal 0013). Ladder
 `--no-sim`: PASS. The floor risks in the test below apply in full: this is the harshest setting so far.
 
+**On the robot at 160 m/s²** (owner-run on blocks, commit `b77df84`, battery voltage not recorded, capture in the Pi's
+`/tmp`, not kept): the command reached
+-6 m/s within one 0.1 s sample; the wheel crossed zero at about 0.05 s and reached reverse speed by about 0.2 s (about
+0.6 s at 30 m/s², 1.1 s at 10 m/s²). The remaining delay is the motors' own response.
+
 ## Test on the robot (a human)
 
 1. Edit the YAML lines of the chosen option, rebuild (`./build_ros.sh` on the Pi), start

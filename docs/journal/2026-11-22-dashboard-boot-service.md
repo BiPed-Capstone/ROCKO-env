@@ -20,7 +20,7 @@ The owner asked (2026-11-22): "make it so the web dashboard starts on boot via a
 | File | What and why |
 | --- | --- |
 | `pi/rocko-dashboard.service` (new) | The unit template: `ExecStart` through `pi/rocko_run.sh` (already root under systemd, so no sudo), `Restart=always` with `RestartSec=10`, `launch`/`hardware` parameters saying "unknown" (a boot service cannot know the launch) |
-| `pi/install_dashboard_service.sh` (new) | `install` (render the template with this checkout, `ROCKO_VENV`, `~/rocko_logs`, `ROCKO_DOMAIN_ID`; enable and start), `status`, `remove`, `print`; refuses to run under sudo |
+| `pi/install_dashboard_service.sh` (new; later the same day renamed `pi/install_boot_service.sh dashboard`, when tank mode got a boot service too) | `install` (render the template with this checkout, `ROCKO_VENV`, `~/rocko_logs`, `ROCKO_DOMAIN_ID`; enable and start), `status`, `remove`, `print`; refuses to run under sudo |
 | `webserver/Dashboard.py` | On `EADDRINUSE` it logs why and exits 0 instead of raising |
 | `tools/pi_scripts_test.sh` | Two checks: the rendered unit names the caller's paths and leaves no `@PLACEHOLDER@`; install under sudo is refused |
 | Docs | use-the-dashboard.md "Start it at boot", run-on-the-pi.md's script table, next-steps row 4.11 |

@@ -6,6 +6,8 @@
 #     pi/launch.sh tank gui:=true                anything after the mode goes to `ros2 launch`
 #     pi/launch.sh balance record:=true record_label:=first_test battery_v:=12.1
 #
+# Refuses to start while the tank-mode boot service (rocko-tank.service) is running: stop that first.
+#
 # Hardware is real unless you pass use_mock_hardware:=true (the launch files' own default).
 # Run it as YOUR user, without `sudo` in front (see rocko_run.sh).
 set -eu
@@ -28,6 +30,16 @@ case "$mode" in
 esac
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
   echo "launch.sh: run this as your own user, without sudo (it calls sudo itself)." >&2; exit 2
+fi
+# Two launches would fight over the motors and the GPIO pins. If tank mode was started at boot by its
+# service (pi/rocko-tank.service), refuse every other launch until it is stopped. The service itself sets
+# ROCKO_BOOT_SERVICE=1 and is let through. No systemctl (a laptop, the container): nothing to check.
+if [ -z "${ROCKO_BOOT_SERVICE:-}" ] && command -v systemctl >/dev/null 2>&1 \
+   && systemctl is-active --quiet rocko-tank.service 2>/dev/null; then
+  echo "launch.sh: tank mode is already running as the boot service (rocko-tank.service)." >&2
+  echo "  Stop it first:  sudo systemctl stop rocko-tank.service   (it starts again at the next boot)" >&2
+  echo "  Never at boot:  pi/install_boot_service.sh tank remove" >&2
+  exit 2
 fi
 
 # Recordings go where tools/fetch_logs.sh looks: YOUR ~/rocko_logs. Left alone, the launch (running as

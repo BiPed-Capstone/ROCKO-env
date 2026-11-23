@@ -43,13 +43,13 @@ To have the page up whenever the Pi is on, with no launch running, install the b
 your own user (not root; it asks `sudo` itself), from `~/ROCKO-env`:
 
 ```bash
-pi/install_dashboard_service.sh
+pi/install_boot_service.sh dashboard
 ```
 
 Success: `Installed /etc/systemd/system/rocko-dashboard.service; enabled at boot; started.` Then check it:
 
 ```bash
-pi/install_dashboard_service.sh status
+pi/install_boot_service.sh dashboard status
 ```
 
 Success: `enabled at boot: enabled`, `running now: active`, and a `restarts` count that stays put (it climbs every
@@ -69,7 +69,7 @@ How it behaves:
 - Recordings go to your `~/rocko_logs`, as with `pi/launch.sh`.
 - **It also runs while the robot balances.** `rocko.launch.py` keeps its own dashboard off by default because what
   the dashboard costs the Pi's CPU beside the 100 Hz balance loop has never been measured. With the service
-  installed that choice no longer holds: run `pi/install_dashboard_service.sh remove` before a balancing test until the
+  installed that choice no longer holds: run `pi/install_boot_service.sh dashboard remove` before a balancing test until the
   cost is measured.
 - **It is always on, with no login:** anyone on the robot's network can open the page and press Record whenever the Pi
   is powered. Remove it on a network you do not trust.
@@ -77,7 +77,7 @@ How it behaves:
 To stop it starting at boot (and stop it now):
 
 ```bash
-pi/install_dashboard_service.sh remove
+pi/install_boot_service.sh dashboard remove
 ```
 
 Its log: `sudo journalctl -u rocko-dashboard.service`. Re-run the install after moving the checkout or the venv; it

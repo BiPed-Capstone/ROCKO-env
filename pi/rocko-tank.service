@@ -1,0 +1,47 @@
+# systemd service: start ROCKO in TANK MODE (no balancing; driven by the USB controller, hold LB) when the
+# Pi boots. A TEMPLATE: pi/install_boot_service.sh fills in the @...@ paths for the user who runs it and
+# installs the result as /etc/systemd/system/rocko-tank.service. Do not copy this file by hand.
+#
+# What starts: exactly `pi/launch.sh tank`, so everything that launch starts (motors, controller reader,
+# TankTeleop.py, Foxglove bridge, its dashboard, which steps aside if the dashboard service runs).
+# The wheels cannot move until someone RELEASES and then HOLDS LB on the controller (TankTeleop.py's
+# re-arm rule), so a robot that boots with the bumper pressed or stuck does not drive off.
+# While this runs, pi/launch.sh refuses to start any other launch (two launches would fight over the
+# motors): stop it first with `sudo systemctl stop rocko-tank.service`.
+# Guide: docs/guides/drive-with-usb-controller.md, "Start tank mode at boot".
+
+[Unit]
+Description=ROCKO tank mode (USB controller, hold LB to drive)
+Wants=network-online.target
+After=network-online.target
+# Retry a crash of the launch at most StartLimitBurst=3 times in StartLimitIntervalSec=120 s (RestartSec=5 s between
+# attempts, below), then stay stopped: a launch that keeps dying needs a person, not a loop that re-energises the
+# motors every few seconds. These two keys MUST be in [Unit]: under [Service] systemd ignores the interval
+# (found in review, 2026-11-22).
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+# A root service gets no HOME from systemd, and ROS logging needs one, so it is given /root. The user's venv and
+# domain id are passed separately (pi/rocko_env.sh reads them); the user's log folder comes through log_root:= below.
+Environment=HOME=/root
+Environment=ROCKO_VENV=@VENV@
+Environment=ROCKO_DOMAIN_ID=@DOMAIN_ID@
+# Tells pi/launch.sh that this IS the tank service, so its "tank service is running" guard lets it through.
+Environment=ROCKO_BOOT_SERVICE=1
+ExecStart=@REPO@/pi/launch.sh tank log_root:=@LOG_ROOT@
+# Stop it the way Ctrl-C does, so ros2 launch shuts its nodes down in order. Whether the motor plugin then writes 0 %
+# duty before it exits is NOT verified (finding H-7: it zeroes the PWM in on_deactivate, and a shutdown may skip that);
+# Ctrl-C on a manual launch has the same open question.
+KillSignal=SIGINT
+# If the launch has not exited 30 s after SIGINT, systemd kills it: a generous bound on a clean shutdown.
+TimeoutStopSec=30
+# on-failure covers the LAUNCH failing (a bad install, an exception, launch.sh refusing). A node that crashes INSIDE a
+# running launch (e.g. ros2_control_node) does not end the launch, so it does not restart it: status still says active,
+# and the log shows the crash.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

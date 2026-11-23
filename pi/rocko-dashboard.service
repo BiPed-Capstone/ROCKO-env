@@ -1,5 +1,5 @@
 # systemd service: start ROCKO's web dashboard (http://<robot-ip>:8080) when the Pi boots.
-# A TEMPLATE: pi/install_dashboard_service.sh fills in the @...@ paths for the user who runs it and
+# A TEMPLATE: pi/install_boot_service.sh fills in the @...@ paths for the user who runs it and
 # installs the result as /etc/systemd/system/rocko-dashboard.service. Do not copy this file by hand.
 #
 # It runs as root, like every ros2 command on the Pi (pi/rocko_run.sh explains why), in the robot's

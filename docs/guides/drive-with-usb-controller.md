@@ -147,6 +147,36 @@ On the stand, check in this order, and **record the battery voltage and the comm
    stop. Plug it back in while still holding LB: the robot must **not** drive until you let go of LB and hold it again.
 5. Raise the caps in steps. Only then put the robot on the floor, with space around it.
 
+## Start tank mode at boot
+
+To have the robot come up in tank mode whenever it is switched on, with nothing to type, install the tank boot service
+once. On the **Pi**, as your own user (not root), from `~/ROCKO-env`:
+
+```bash
+pi/install_boot_service.sh tank
+```
+
+Success: `Installed /etc/systemd/system/rocko-tank.service; enabled at boot; started.` It starts tank mode **now** as
+well, so do this with the robot on blocks or with space around it. Check it:
+
+```bash
+pi/install_boot_service.sh tank status
+```
+
+Success: `enabled at boot: enabled`, `running now: active`, `restarts: 0`, and log lines ending in `tank teleop: hold
+LB to drive`. After every boot the robot is in tank mode within about half a minute; plug in the controller (any time),
+**release LB once, then hold it** to drive.
+
+- It runs exactly `pi/launch.sh tank` with the default caps (`max_speed` and `max_turn` 1.0: full speed). For other
+  settings, edit `ExecStart` in `pi/rocko-tank.service` and install again.
+- The re-arm rule protects a boot with LB pressed: nothing moves until LB has been seen released.
+- If the launch itself fails, the service tries again at most 3 times in 2 minutes, then stays stopped (status shows
+  it). A node that crashes inside a running launch does not restart it: read the log (`sudo journalctl -u rocko-tank.service`).
+- **While it runs, `pi/launch.sh` refuses to start any other launch** (a second one would fight over the motors). To
+  run balancing or the bench test: `sudo systemctl stop rocko-tank.service` (it comes back at the next boot), or
+  `pi/install_boot_service.sh tank remove` to stop starting it at boot.
+- Its log: `sudo journalctl -u rocko-tank.service`.
+
 ## What stops the robot
 
 | Event | What happens |
@@ -154,11 +184,11 @@ On the stand, check in this order, and **record the battery voltage and the comm
 | LB released | A zero command within 20 ms. The wheels then slow at tank mode's deceleration limit (`linear.x.max_deceleration`, [proposal 0015](../proposals/0015-tank-mode-faster-reversal.md)); a turn stops almost at once |
 | Controller unplugged, or `game_controller_node` stops | Nothing arrives on `/joy`; after 0.25 s `TankTeleop.py` commands zero and needs LB released before driving again |
 | `TankTeleop.py` stops | `diff_drive_controller` zeroes the wheels after its `cmd_vel_timeout` of 1.0 s |
-| The launch is stopped (Ctrl-C on the Pi) | Everything stops |
+| The launch is stopped (Ctrl-C on the Pi, or `sudo systemctl stop rocko-tank.service` for the boot service) | Everything stops |
 
 Tank mode limits turning acceleration to 1000 rad/s², so a full turn reaches its speed in about a tenth of a second
-(proposal 0014). **Reversing:** `diff_drive_controller` ramps forward/back changes. The ramp was made three times steeper on 2026-11-22
-(the owner found full forward to full reverse slow); the numbers, before and after, are in
+(proposal 0014). **Reversing:** `diff_drive_controller` ramps forward/back changes. On 2026-11-22 the owner found full forward to full
+reverse slow and the ramp was raised to match turning; the numbers, before and after, are in
 [proposal 0015](../proposals/0015-tank-mode-faster-reversal.md). A short dead spot remains while the command crosses the
 motors' breakaway band (proposal 0013).
 

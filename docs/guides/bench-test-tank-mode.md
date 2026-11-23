@@ -24,6 +24,9 @@ the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) nee
 - **The robot with both drive wheels off the ground** (on blocks, or held so the wheels spin free).
   It must not be able to drive off the bench.
 - **A way to read battery voltage** (multimeter or the robot's own meter).
+- **If tank mode starts at boot** (`rocko-tank.service`, [guide](drive-with-usb-controller.md#start-tank-mode-at-boot)),
+  stop it first: `sudo systemctl stop rocko-tank.service`, and check with `pi/install_boot_service.sh tank status`
+  (`running now: inactive`). `pi/launch.sh` refuses to start while it runs.
 - **Your laptop** is not needed for this guide. The launch below uses `teleop:=false`, which leaves out the
   USB controller nodes: `TankTeleop.py` would otherwise publish its own commands (zero, 50 times a second)
   and they would fight the test commands below. (Until 2026-11-22 this said to stop the laptop's keyboard and

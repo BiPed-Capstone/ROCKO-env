@@ -27,26 +27,38 @@ section). Row 2.7 was updated on 2026-11-03 for the
 [stage 5 entry](journal/2026-11-03-stage5-balance-in-sim.md) (built on `23c1117`): its cause is
 established under the model (finding H-12, proposal 0006).
 
-> **HANDOFF, 2026-11-19: start here.** Full account: [the first-robot-run journal](journal/2026-11-19-first-robot-run-tank-mode.md).
-> **Where it stands:** on the Pi, `pi/launch.sh tank` runs tank mode ([guide](guides/run-on-the-pi.md)); the
-> owner drove the robot from the keyboard, Foxglove works and most of the dashboard works (reported, not
-> recorded). The motors **hum a lot**: the owner suspects they spend their time near stall, and the numbers fit
-> (breakaway is 21 to 28 % duty, the plugin adds 2 %): [proposal 0013](proposals/0013-tank-mode-motor-breakaway.md),
-> **open**. Nothing about balancing was run. **2026-11-22:** keyboard and laptop driving were removed at the owner's
-> request (with them the two known-red checks); tank mode is now driven by a **USB game controller plugged into the
-> Pi** (row 4.5, [journal](journal/2026-11-22-usb-controller-tank-mode.md)). **Balancing mode has no driving input**
-> until it gets its own (row 4.8).
-> **Next, in the owner's order:** (1) **USB controller (8BitDo) on the Pi**, row 4.5: **written 2026-11-22**; the owner
-> runs the first check and the stand test in [the guide](guides/drive-with-usb-controller.md). The low-duty problem
-> (row 4.6, proposal 0013) is still open; `min_output` in `TankTeleop.py` works around it. (2) **Self-balancing**,
-> which is the queue below, in the order of [proposal 0008](proposals/0008-candidate-gains-and-tethered-test.md)'s
-> preconditions: check the velocity-loop sign on a stand (proposal 0006, row 2.7); measure the robot and
-> settle the wheel radius (0.7, 2.2, proposal 0007); verify the gyro axis, sign and unit on the robot and build
-> the `read_pitch_rate` wiring on the Pi (0008, preconditions 3 and 4); confirm the safety thresholds
-> (proposal 0004); then the first tethered test (0008), and retune last (3.3). The C-1 IMU/encoder read in C++
-> (row 1.1, proposal 0010, needs a wiring change) is **recommended before trusting balance timing, but is not
-> a 0008 precondition**.
-> **Every robot step is the owner's** (CLAUDE.md section 3); an agent writes the code and the procedure.
+> **HANDOFF, 2026-11-22: start here. Next goal: balance mode.** Full account and how this session worked with the robot:
+> [the handoff journal](journal/2026-11-22-tank-boot-service-and-handoff.md).
+> **Where the robot is:** tank mode works, driven by an 8BitDo **plugged into the Pi** (hold LB; [guide](guides/drive-with-usb-controller.md)),
+> and **it starts at boot** (`rocko-tank.service`), as does the web dashboard (`rocko-dashboard.service`). Keyboard and
+> laptop driving were removed. Tank drive acceleration is 160 m/s², raised by the owner to match turning
+> ([proposal 0015](proposals/0015-tank-mode-faster-reversal.md); floor test pending). Open: proposal 0013 (motor
+> breakaway, row 4.6), proposal 0014 (100 % duty, owner to confirm). Nothing about balancing has been run on the robot.
+> **Before any balancing work on the robot:**
+> (a) **stop the tank service**: `sudo systemctl stop rocko-tank.service` (until the next boot), check with
+> `pi/install_boot_service.sh tank status` (`running now: inactive`), restore with `sudo systemctl start rocko-tank.service`.
+> `pi/install_boot_service.sh tank remove` stops it starting at boot until reinstalled (`pi/install_boot_service.sh tank`).
+> `pi/launch.sh` refuses to start a launch while the service runs.
+> (b) **Stop the dashboard service** for balancing tests until its CPU cost beside the 100 Hz loop is measured:
+> `sudo systemctl stop rocko-dashboard.service` (until the next boot) or `pi/install_boot_service.sh dashboard remove`.
+> `rocko.launch.py` starts no dashboard of its own (`dashboard:=false` by default), so the service is the only one.
+> (c) **The encoder service** gives both wheels the left encoder's position and has unknown velocity timing (row 4.10);
+> balancing's velocity loop uses that velocity, so fix or measure it before the sign check (row 2.7, proposal 0006).
+> (d) **Balancing has no driving input** (row 4.8). The owner wants it **fully decoupled** from tank mode: its own
+> node and (lower) speeds, sharing only `rocko_env/teleop/gamepad.py`. Not needed to stand still on a tether; needed
+> before driving while balancing.
+> (e) **The motors' dead band** (no motion below 21 to 28 % duty; proposal 0013, row 4.6) is unresolved, and it matters
+> more for balancing than for tank mode: the balance loop lives on small corrections around zero, and tank mode's
+> `min_output` workaround does not apply to it.
+> **Then the queue,** in [proposal 0008](proposals/0008-candidate-gains-and-tethered-test.md)'s order: the velocity-loop
+> sign on a stand (proposal 0006, row 2.7); measure the robot and settle the wheel radius (0.7, 2.2, proposal 0007);
+> verify the gyro axis, sign and unit and build the `read_pitch_rate` wiring (0008, preconditions 3 and 4); confirm the
+> safety thresholds (proposal 0004); the first tethered test (0008); retune last (3.3). The C-1 IMU/encoder read in C++
+> (row 1.1, proposal 0010) is recommended before trusting balance timing, not a 0008 precondition.
+> **Every robot step is the owner's** (CLAUDE.md section 3); an agent writes the code and the procedure. In this session
+> the owner, present at the robot, let the agent run commands on the Pi over SSH; a new session asks first.
+>
+> **Superseded 2026-11-22:** the 2026-11-19 handoff (first robot run, keyboard driving): [journal](journal/2026-11-19-first-robot-run-tank-mode.md).
 >
 > **Superseded 2026-11-08:** stages 4 and 5 are pushed, Tier 3 is marked built with limits, stage 6 is
 > partly done (framing helper, host test, proposal 0010); see the final-report journal and row 1.1.
@@ -183,7 +195,8 @@ journal's HANDOFF box is the live status of this wave; a new session starts ther
 | 4.8 | **Balancing mode gets a driving input** (it has none since 2026-11-22: `Joystick.py` still listens for a laptop over TCP, but no sender is left in the repo) | agent writes; human decides when | host test with stand-ins (as `tools/tank_teleop_test.py`); T3 a `/joy`-driven scenario in place of the TCP path | open. The owner wants balancing **fully decoupled** from tank mode: its own node, its own (lower) speeds, using only the shared `teleop/gamepad.py`. Only worth doing once balancing itself is near its first tethered test (proposal 0008); sim checks C3, V and K start `Joystick.py` today and would move with it |
 | 4.9 | **Tank mode reverses slowly** (owner, 2026-11-22: "wind down, then wind up") | human decides ([proposal 0015](proposals/0015-tank-mode-faster-reversal.md)); human tests | measured on the robot (command vs encoder) and on the mock (`tools/measure_reversal_ramp.sh`) | **applied 2026-11-22; floor test pending.** Cause measured: `diff_drive_controller`'s acceleration ramp; the wheels follow it closely, plus a dead spot in the motors' breakaway band (row 4.6). Option B (30 m/s²) was stand-tested, then the owner raised it to 160 m/s² to match turning; numbers in proposal 0015 |
 | 4.10 | **The encoder service gives both wheels the left encoder's position, and its velocity assumes 0.01 s between calls** (found 2026-11-22) | agent writes; human tests | host test with a fake encoder; then on the robot | open. `QuadEncoders.py` answers `encoder_data` with one position (the left wheel's) and the average of both filtered velocities; both motor plugins call it every cycle, so the service runs twice per cycle while dividing by a fixed 0.01 s (tank mode runs at 50 Hz, balancing at 100 Hz). Because the second call comes right after the first, its position change (and so its velocity sample) is near zero, which the low-pass filter (`filter_alpha` 0.05) then averages in: the reported velocity's scale and lag are unknown until measured. In tank mode this only affects what is displayed and recorded (it drives open loop); in balancing the velocity loop uses that velocity, so check it before row 2.7 / proposal 0006. Related: C-1 (proposal 0010), L-6 |
-| 4.11 | **The web dashboard starts at boot** (owner, 2026-11-22) | agent writes; agent installs at the owner's request | host test `tools/pi_scripts_test.sh` (the rendered unit); container: a second `Dashboard.py` on a taken port exits 0 | done 2026-11-22: `pi/rocko-dashboard.service` (template) and `pi/install_dashboard_service.sh` (install, status, remove, print); `Dashboard.py` steps aside cleanly when the port is taken. Installed on the robot: [journal](journal/2026-11-22-dashboard-boot-service.md). It is always on with no login (use-the-dashboard.md says so) |
+| 4.11 | **The web dashboard starts at boot** (owner, 2026-11-22) | agent writes; agent installs at the owner's request | host test `tools/pi_scripts_test.sh` (the rendered unit); container: a second `Dashboard.py` on a taken port exits 0 | done 2026-11-22: `pi/rocko-dashboard.service` (template) and `pi/install_boot_service.sh dashboard` (install, status, remove, print); `Dashboard.py` steps aside cleanly when the port is taken. Installed on the robot: [journal](journal/2026-11-22-dashboard-boot-service.md). It is always on with no login (use-the-dashboard.md says so) |
+| 4.12 | **Tank mode starts at boot** (owner, 2026-11-22) | agent writes; agent installs at the owner's request | host test `tools/pi_scripts_test.sh` (rendered unit; the launch guard, red on 2 breaks) | done 2026-11-22: `pi/rocko-tank.service`, `pi/install_boot_service.sh tank`; `pi/launch.sh` refuses other launches while it runs. Installed on the robot: [journal](journal/2026-11-22-tank-boot-service-and-handoff.md). Stop it before balancing (handoff box) |
 
 ## Decisions waiting on the maintainer
 

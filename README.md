@@ -219,6 +219,8 @@ colcon build --packages-select rocko_env --symlink-install
 
 ## Running it
 
+**If tank mode starts at boot** (`rocko-tank.service`, [guide](docs/guides/drive-with-usb-controller.md#start-tank-mode-at-boot)), the robot is already in tank mode after power-on, and `pi/launch.sh` refuses to start another launch until you run `sudo systemctl stop rocko-tank.service` (it comes back at the next boot).
+
 **On the Pi the robot's launches run as root** (the motor plugin uses WiringPi, which needs it), in a terminal with the right environment. The scripts in `pi/` do that: [Run ROCKO on the Pi](docs/guides/run-on-the-pi.md) explains why, and what each script does. Run from the repo root:
 
 ```bash
