@@ -64,3 +64,9 @@ motor or driver gets hot, or a wheel runs away on the stand.
 ## Decision
 
 (Human fills in: date, who, accepted/declined, where the records are.)
+
+**Evidence for step 5, 2026-11-23** ([journal](../journal/2026-11-23-encoder-service-u2.md#on-the-robot-2026-11-23-owner-at-the-robot-agent-over-ssh)):
+five hand-counted turns of the left wheel, unloaded, read 1.8017 m through `QuadEncoders.py` (145 counts x 1.355 per
+wheel turn, `WHEEL_RADIUS_M` 0.06): 0.3603 m per turn, 4.4 % under the 0.3770 m that a 60 mm radius gives. The belt
+ratio's direction is right. Either the rolling radius is about 57.3 mm or the counts per turn are off by 4.4 %:
+measure the tyre's outside diameter (114.7 mm would mean the radius; 120 mm, the counts). Not yet a decision.

@@ -80,12 +80,33 @@ were tuned elsewhere and are untouched.
 
 ## Review rounds
 
-Not run (the task was to implement and verify; the orchestrator runs the reviewers).
+| Round | Reviewer | Findings | Fixed / declined |
+| --- | --- | --- | --- |
+| 1 | realtime-auditor (mandatory, section 6 file) | no new real-time defect; an empty `encoder_service` value would throw out of `on_init` instead of failing cleanly | fixed (empty name refused). Pre-existing and unchanged: C-1 (no timeout on the service call), M-5/L-6 (a failed call returns OK with stale values), M-1 (unthrottled error log) |
+| 1 | ros2-control-reviewer | none confirmed | — |
+| 1 | explainability-reviewer | the halving's cause missing from the code; table numbers vs the repeats; a speculative sentence about K; the conversion comment; the 50 Hz example; unused CSV columns | all fixed |
+
+## On the robot, 2026-11-23 (owner at the robot, agent over SSH)
+
+- Built on the Pi (`6974714`, motor plugin included: the first real build of the plugin change); `rocko.service`
+  restarted into tank, disabled, ready, all nodes alive. While the OLD stack stopped, `ros2_control_node` did not exit
+  10 s after SIGTERM and was SIGKILLed (C-1's shutdown hang; the robot was disabled, so the motors were commanded 0).
+- **Hand turns** (`docs/journal/data/2026-11-23-encoder-wheel-test/hand_turns.csv`, `/joint_states` at 49 Hz):
+  the left wheel turned forward moved only the left position (0 to 0.138 m, right stayed 0.000); the right wheel
+  turned forward moved only the right (0 to 0.182 m, left held); the right turned backward went negative (to
+  -0.073 m). **Each wheel reports its own encoder (the U-2 symptom is gone) and a forward turn reads positive on
+  both wheels.** Speeds 0.03 to 0.1 m/s during the hand turns, 0 at rest.
+- **Five exact turns of the left wheel** (a tape mark, `fiveturns.csv`): **1.8017 m**, so **0.3603 m per wheel
+  turn**, against 0.3770 m for the 60 mm radius in the code (4.4 % less). The 1.355 belt ratio is applied the right
+  way round (backward would read 1.03 or 3.47 m). The 4.4 % means either the rolling radius is about **57.3 mm**, or
+  the counts per wheel turn differ from 145 x 1.355; measuring the tyre's outside diameter separates the two. Recorded
+  in proposal 0007. Hand turning, so the wheel was unloaded (no tyre compression).
+- Not done yet: a motor-driven speed check against a stopwatch (comes with the stand sign check, proposal 0006).
 
 ## Not verified, needs a human
 
-- Nothing about the robot. The Python node was exercised only with stand-ins (no real `Encoder` module, no DDS).
-- `Motor12VoltQuadEncoder.cpp` is **not built in the container**; only the compile-only check ran. It needs a Pi build.
+- On the robot: per-wheel positions and the forward sign were checked by hand (above). Not checked: a motor-driven
+  speed against a stopwatch, and the reported speed while balancing (100 Hz).
 - Procedure on the Pi (tethered, wheels off the ground), after a build there: start tank mode, check
   `ros2 service list` shows `/left_encoder_data` and `/right_encoder_data` and not `/encoder_data`; spin one wheel by hand
   and confirm only that wheel's `position` in `/joint_states` changes (this is the old bug's symptom: both used to follow
