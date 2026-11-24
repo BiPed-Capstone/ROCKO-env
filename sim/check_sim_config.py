@@ -170,12 +170,11 @@ def gains_of(controllers):
 SIM_TUNED_GAINS = {
     ("pitch_pid_controller", "p"): 10.0,
     ("pitch_pid_controller", "d"): 0.1,
-    ("velocity_pid_controller", "p"): 2.0,
-    ("velocity_pid_controller", "i"): 5.0,
-    # d joined the list 2026-11-24: the sim's velocity gains are negative (measured signs, proposal 0006
-    # option A) while the hardware file still has the old positive ones. When the owner applies option A
-    # to rocko_controllers.yaml, change these three pins to -2.0, -5.0 and -0.2, and drop the d entry.
-    ("velocity_pid_controller", "d"): 0.2,
+    # Proposal 0006 option A (the owner, 2026-11-24) made the hardware velocity gains negative: the encoder
+    # reads positive on the robot. The pins follow that; the sim's `d` (-0.2) is the hardware's now, so it
+    # left this list.
+    ("velocity_pid_controller", "p"): -2.0,
+    ("velocity_pid_controller", "i"): -5.0,
 }
 
 

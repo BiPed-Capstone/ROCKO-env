@@ -28,9 +28,16 @@ cmake=rocko_env/CMakeLists.txt
 docker=docker/Dockerfile
 motor=rocko_env/rocko_env/hardware/motors/Motor.cpp
 worktree_motor=.claude/worktrees/wt1/$motor
-for f in $yaml $tank $cmake $docker; do
+for f in $tank $cmake $docker; do
   mkdir -p "$fixture/$(dirname "$f")" && cp "$repo/$f" "$fixture/$f"
 done
+# The controller YAML is taken FROZEN, as it was at a8e3c38 (2026-11-24, before the owner flipped the velocity
+# gains and reformatted the file), not from the working tree: the cases below edit exact text in it, so a later
+# gain change or reformat would turn every case into a "TEST SETUP ERROR" although the hook still works. The hook
+# itself reads whatever file it is given; a frozen copy tests the same logic on real gain lines.
+mkdir -p "$fixture/$(dirname "$yaml")"
+git -C "$repo" show "a8e3c38:$yaml" > "$fixture/$yaml" \
+  || { echo "TEST SETUP ERROR: cannot read $yaml at a8e3c38 (shallow clone? fetch the history)"; exit 1; }
 mkdir -p "$fixture/$(dirname $motor)" "$fixture/$(dirname $worktree_motor)" "$fixture/.claude" "$fixture/docs"
 cat > "$fixture/$motor" <<'EOF'
 // Fake driver: what matters is the safety words, plus a harmless "default".

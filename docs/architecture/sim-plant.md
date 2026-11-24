@@ -22,7 +22,8 @@ something that falls over.
 
 Whether Tier 3 counts as built is recorded only in the [verification ladder](verification-ladder.md),
 which (since 2026-11-07) says it is built **with limits**: this plant has ESTIMATED, unmeasured
-parameters, `encoder_sign:=-1` is ASSUMED, and a pass says nothing about whether the robot balances.
+parameters, and a pass says nothing about whether the robot balances. Both signs (`pitch_sign`, `encoder_sign`) have been
+measured on the robot and the sim's defaults match them (§2.4).
 [ADR 0003](../decisions/0003-simulation-target.md) (still `Proposed`) chose Gazebo; the 2026-10-31 run
 ([journal](../journal/2026-10-31-sim-plant-and-critical-fixes.md)) builds `SimPlant` first, as finding
 **M-4** recommends. The proposal to amend the ADR is
@@ -292,18 +293,25 @@ matter through that sum.
 parameters, `pitch_sign` and `encoder_sign` (§4), and **declares each choice an assumption**:
 
 - `pitch_sign = −1` (default): a positive wheel command makes the exported pitch go up. Basis: it is the
-  only value under which the inner loop can work, and the robot reportedly balances partly. If it were
-  wrong, nothing else in the sim would be testable.
+  only value under which the inner loop can work, and the robot reportedly balances partly. **Measured on
+  the robot 2026-11-23** ([gyro check](../journal/2026-11-23-gyro-check.md)): pitch goes *down* when the
+  robot leans toward the direction a positive command drives it, so a positive command (wheels forward,
+  body tips back) makes it go up. The default agrees.
 - `encoder_sign = +1` (default): the encoder reads positive when the robot rolls the way a positive
-  command drives it. Basis: the authors' intent read from `DiffDriveController.py`, and the convention
-  a builder would expect. **Consequence: with the hardware YAML as it is, the sim's outer loop is
-  positive feedback. That is the finding above showing up in the sim, and the sim must show it.**
-  Setting `encoder_sign = −1` is allowed only as a labelled assumption ("assumes the encoder reads
-  negative when a positive command drives the robot; not checked on the robot"), carried on every
-  result obtained that way. Flipping the velocity loop's gains negative in a `*_sim.yaml` encodes the
-  same assumption the other way round and needs the same label. A sim that picks whichever sign makes
-  the YAML work would pass by construction: finding **C-2**'s mistake, a sensor that always reads
-  "fine".
+  command drives it. **Measured on the robot 2026-11-24** ([stand sign check](../journal/2026-11-24-stand-sign-check.md)):
+  both wheels' encoder velocity is positive under a positive command, so this default is the robot's
+  sign. (Until 2026-11-24 the scenarios ran `encoder_sign:=-1` as a labelled assumption, chosen so that
+  all-positive velocity gains could work; the robot has the other sign.) **Consequence: with all-positive
+  velocity gains, as the hardware YAML had them, the outer loop is positive feedback** (the finding above).
+  The fix the owner chose is [proposal 0006](../proposals/0006-velocity-loop-sign-check.md) option A:
+  negative velocity gains. `rocko_sim_controllers.yaml` has them negative since 2026-11-24, so the sim
+  runs the sign combination the robot will have. Setting `encoder_sign = −1` is now a deliberate break, not
+  a convention.
+- **What scenario AB means now.** AB is the as-built, *unflipped* cascade: the measured encoder sign with
+  positive velocity gains. The sim's gains are negative and the launch file has no gain-file argument, so
+  AB runs `encoder_sign:=-1` against the negative gains. At a zero velocity reference (AB is the upright
+  scenario) negating the gains and negating the encoder give the same feedback, so that is the positive-gain
+  loop with the measured sign; it is expected to fall by the slow run-away, and it does.
 
 **The robot check that settles both signs.** Neither needs the robot to balance. A human does this;
 record it as in [reproducing-results.md](../guides/reproducing-results.md).
@@ -625,8 +633,8 @@ assumed period `0.01` s (`QuadEncoders.py:39`, `:71`).
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
-| `pitch_sign` | −1 | Exported pitch = `pitch_sign × lean toward sim-forward`. Assumption, §2.4 |
-| `encoder_sign` | +1 | Exported position and velocity = `encoder_sign × motion toward sim-forward`. Assumption, §2.4 |
+| `pitch_sign` | −1 | Exported pitch = `pitch_sign × lean toward sim-forward`. Measured on the robot 2026-11-23 (§2.4) |
+| `encoder_sign` | +1 | Exported position and velocity = `encoder_sign × motion toward sim-forward`. Measured on the robot 2026-11-24 (§2.4) |
 | `model_write_quirks` | true | Replicate today's `write()` exactly (§3.3) |
 | `model_encoder_node` | true | Replicate today's `QuadEncoders.py`: filtered speed over the real call period (§3.7); false: the unfiltered true speed |
 | `imu_delay_max_ms` | 100 | Ring-buffer size, allocated in `on_init` |

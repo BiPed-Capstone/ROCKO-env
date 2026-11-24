@@ -261,7 +261,7 @@ process is left over afterwards, restart the container to clear all of it:
 
 ## 5. Run the simulated robot (Tier 3, built with limits)
 
-Tier 3 is built: a model with ESTIMATED, unmeasured parameters (row 2.2, proposal 0007, not done), `encoder_sign:=-1` ASSUMED (proposal 0006, not checked), scenarios U, I and V pass with sim-tuned gains that differ from the hardware gains (a candidate only: proposal 0008), S2b fails as it must; in the ±30 % sweep one corner fails V's overshoot (`m+h+k−d+`, about 46 %), four cases are marginal, one case could not be judged (a clock step), and one real V failure (31.5 %) followed a late control cycle; it says nothing about whether the robot balances. The [ladder](../architecture/verification-ladder.md) has the detail.
+Tier 3 is built: a model with ESTIMATED, unmeasured parameters (row 2.2, proposal 0007, not done), the robot's measured signs (proposal 0006, 2026-11-24), scenarios U, I and V pass with sim-tuned gains that differ from the hardware gains (a candidate only: proposal 0008), S2b fails as it must; in the ±30 % sweep one corner fails V's overshoot (`m+h+k−d+`, about 46 %), four cases are marginal, one case could not be judged (a clock step), and one real V failure (31.5 %) followed a late control cycle; it says nothing about whether the robot balances. The [ladder](../architecture/verification-ladder.md) has the detail.
 
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh
@@ -339,7 +339,7 @@ possible and is not a broken check; a red S2b or AB is never expected. What each
 [verification ladder](../architecture/verification-ladder.md#the-balance-scenarios-verify_simsh-scenarios-a-separate-mode),
 the [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md) and, for the tuning, the
 [stage 5c-1 journal](../journal/2026-11-03-stage5c1-sim-gain-tuning.md). The results are about a model with
-estimated parameters and an assumed encoder sign (`encoder_sign:=-1`, proposal 0006), not the robot.
+estimated parameters and the robot's measured signs (proposal 0006), not the robot.
 
 The ±30 % robustness sweep runs U, I and V on a changed model (about 35 minutes; use a new `--stem` so
 the committed results in `sim/results/` are not appended to):

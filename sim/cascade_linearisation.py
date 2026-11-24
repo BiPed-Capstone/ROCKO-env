@@ -19,7 +19,10 @@ loops exactly as rocko_sim_controllers.yaml wires them, and prints closed-loop p
   D. margins: how far the inner loop's gain can be scaled, and how much IMU delay it tolerates.
 
 Tuning modes (stage 5c-1, docs/journal/2026-11-03-stage5c1-sim-gain-tuning.md), all with the
-scenarios' signs (encoder_sign = -1, an ASSUMPTION, proposal 0006) and the 20 ms IMU delay:
+scenarios' signs (encoder_sign = +1, MEASURED on the robot 2026-11-24, proposal 0006) and the 20 ms IMU
+delay. Since 2026-11-24 the sim YAML's velocity gains are NEGATIVE, so `--candidate KP,KD,KPV,KIV,KDV` needs
+negative KPV, KIV, KDV, and `--sweep`'s grid (written for positive velocity gains and encoder_sign = -1) was NOT
+updated and finds nothing stable. `--candidate yaml` and the default report are right:
 
     python3 -I sim/cascade_linearisation.py --sweep [--top N]     # grid sweep, ~1-2 min
     python3 -I sim/cascade_linearisation.py --candidate 12,0.8,20,0,0.2    # or: --candidate yaml
@@ -212,7 +215,7 @@ def read_yaml(path):
     text = "\n".join(line.split("#")[0] for line in lines)
 
     def gains(key):
-        m = re.search(re.escape(key) + r":\s*\{p:\s*([-\d.eE+]+),\s*i:\s*([-\d.eE+]+),\s*d:\s*([-\d.eE+]+)", text)
+        m = re.search(re.escape(key) + r":\s*\{\s*p:\s*([-\d.eE+]+),\s*i:\s*([-\d.eE+]+),\s*d:\s*([-\d.eE+]+)", text)
         return tuple(float(x) for x in m.groups())
 
     pitch = gains("left_add_feedforward_controller/left_wheel_joint")
@@ -438,11 +441,11 @@ def slow_and_fast(z_list):
 # 6. The report
 # ------------------------------------------------------------------------------------------------
 # 6. Tuning tools (stage 5c-1): margins, a time simulation of scenarios U, I, V, and a sweep.
-#    All with pitch_sign = -1 and encoder_sign = -1 (the scenarios' labelled ASSUMPTION, proposal
-#    0006) and the 20 ms IMU delay, unless stated. A candidate found here is confirmed in the
+#    All with pitch_sign = -1 and encoder_sign = +1 (the signs measured on the robot, proposal 0006;
+#    the sim YAML's velocity gains are negative since 2026-11-24) and the 20 ms IMU delay, unless stated. A candidate found here is confirmed in the
 #    nonlinear sim (verify_sim.sh scenarios) before anyone believes it.
 # ------------------------------------------------------------------------------------------------
-SCEN_PITCH_SIGN, SCEN_ENCODER_SIGN, SCEN_DELAY_MS = -1, -1, 20
+SCEN_PITCH_SIGN, SCEN_ENCODER_SIGN, SCEN_DELAY_MS = -1, +1, 20
 DIFFDRIVE_WHEEL_RADIUS_M = 0.06  # [m] DiffDriveController.py's wheel_radius_meters (its feedforward); equals the plant's r today but is a separate fact
 
 
@@ -605,7 +608,7 @@ def gains_with(base, numbers):
 
 def report_candidate(gains, label):
     print(f"\n{label}: pitch p={gains['pitch'][0]} d={gains['pitch'][2]}; velocity p={gains['velocity'][0]} "
-          f"i={gains['velocity'][1]} d={gains['velocity'][2]}  (encoder_sign -1 ASSUMED, 20 ms)")
+          f"i={gains['velocity'][1]} d={gains['velocity'][2]}  (encoder_sign +1 measured, 20 ms)")
     rad = radius(gains)
     print(f"   largest |z| = {rad:.5f} per 10 ms cycle (slowest decay {-math.log(rad) / T:.3f} 1/s)"
           if rad < 1 else f"   largest |z| = {rad:.5f}: UNSTABLE in the linear model")
@@ -644,7 +647,7 @@ def sweep(base, top):
         scored.append((radius(gains_with(base, numbers)), numbers))
     stable = [s for s in scored if s[0] < 1.0]
     print(f"SWEEP: {len(points)} grid points, {len(stable)} stable in the linear model "
-          f"(encoder_sign -1 ASSUMED, 20 ms IMU delay)")
+          f"(encoder_sign +1 measured, 20 ms IMU delay)")
     for name, values in g.items():
         counts = [sum(1 for _, nb in stable if nb[list(g).index(name)] == v) for v in values]
         print(f"   stable points by {name}: " + ", ".join(f"{v}: {c}" for v, c in zip(values, counts)))
@@ -679,7 +682,7 @@ def main():
     parser.add_argument("--top", type=int, default=15, help="--sweep: how many to time-simulate")
     args = parser.parse_args()
     if args.candidate or args.sweep:
-        print("ESTIMATED MODEL (sim-plant.md §4), encoder_sign = -1 ASSUMED (proposal 0006): numbers "
+        print("ESTIMATED MODEL (sim-plant.md §4), encoder_sign = +1 (measured, proposal 0006; sections that sweep positive velocity gains below assume the old -1 convention, see their text): numbers "
               "about a model, not about the robot. Not a gain recommendation for the robot.\n")
         base = read_yaml(SIM_YAML)
         if args.sweep:

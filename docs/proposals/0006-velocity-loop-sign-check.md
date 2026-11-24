@@ -1,6 +1,6 @@
 # Proposal 0006 — Check the robot's velocity-loop sign on a stand, then flip one sign if it is wrong
 
-- **Status:** Open
+- **Status:** Accepted (option A, 2026-11-24)
 - **Gate:** on-robot step (the check), then hardware gains (if the fix is the gains)
 - **Raised:** 2026-11-03, built on `23c1117`, run journal:
   [stage 5](../journal/2026-11-03-stage5-balance-in-sim.md). Finding
@@ -125,4 +125,11 @@ So **pitch decreases when the robot leans toward the direction a positive comman
 velocity **positive** (e.g. +15 m/s commanded: +0.9 and +1.4 m/s within 0.2 s, +1.2 and +1.7 m/s at 0.4 s), a
 negative command made both negative, and turns split the wheels the right way. So `s_v` is **positive**: the
 encoder agrees with the command, as the authors intended. With `s_θ` "down", **step 2 applies: one sign must be
-flipped** (option A or B). Which one is the owner's decision, not yet made.
+flipped** (option A or B).
+
+**Decided 2026-11-24 by the owner: option A.** The owner edited `rocko_controllers.yaml` (commits `5dbe41d`, `f9a612b`):
+the `velocity_pid_controller` gains are now `p -2.0, i -5.0, d -0.2` on both wheels, clamps unchanged, with a comment
+giving the reason. Why A: every measured signal (`/joint_states`, the dashboard, recordings) keeps its physical sign;
+the one inversion sits in the controller. The magnitudes are the old, untuned ones: re-deriving them is proposal
+0008's job, from the simulation updated to the measured signs. **Status: accepted; not yet run on the robot in
+balance mode.**

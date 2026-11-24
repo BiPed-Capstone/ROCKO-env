@@ -94,13 +94,15 @@ velocity_pid_controller:
     # the motor's back-EMF and friction (sim-plant.md §2.4: stable only if k*p > c) and because, with
     # no integral, the steady speed overshoots the reference by about c / (k*p - c). i = 0 because in
     # the model the integral only added to scenario V's overshoot.
-    # NEGATIVE since 2026-11-24 (proposal 0006, option A), because the robot's signs were MEASURED: the
-    # encoder reads positive under a positive command (stand check, 2026-11-24) and the pitch goes DOWN
-    # when the robot leans toward the direction a positive command drives it (2026-11-23). With those
-    # signs the outer loop is negative feedback only if its gains are negative (sim-plant.md §2.4). The
-    # magnitudes below are the stage 5c-1 ones until the retune of 2026-11-24 changes them (see the
-    # journal docs/journal/2026-11-24-sim-measured-signs-retune.md); the owner makes the same sign
-    # change in rocko_controllers.yaml (a gated file), so the sim runs the sign the robot will have.
+    # RE-SIGNED AND RETUNED 2026-11-24 (proposal 0006 option A; journal
+    # docs/journal/2026-11-24-sim-measured-signs-retune.md). The robot's signs were MEASURED: the encoder
+    # reads positive under a positive command (stand check, 2026-11-24) and the pitch goes DOWN when the
+    # robot leans toward the direction a positive command drives it (2026-11-23). With those signs the
+    # outer loop is negative feedback only if its gains are NEGATIVE (sim-plant.md §2.4), so p and d are
+    # negative (i is 0). The owner makes the same sign change in rocko_controllers.yaml (a gated file).
+    # The magnitude of p went 25 -> 12.5: since the encoder replica reports the true wheel speed instead of
+    # half of it (finding U-2, fixed 2026-11-23) the loop gain had doubled, and V overshot (34 %) with p -25.
+    # Halving it restored the old loop gain; d stays -0.2 (one change at a time; it did not need to move).
     gains:
-      pitch_pid_controller/left_wheel_joint:   {p: -25.0, i: 0.0, d: -0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
-      pitch_pid_controller/right_wheel_joint:   {p: -25.0, i: 0.0, d: -0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      pitch_pid_controller/left_wheel_joint:   {p: -12.5, i: 0.0, d: -0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      pitch_pid_controller/right_wheel_joint:   {p: -12.5, i: 0.0, d: -0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}

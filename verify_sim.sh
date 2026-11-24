@@ -180,9 +180,11 @@ FEEDFORWARD_RAD_S=5.0  # [rad/s] wheel command added by S1's command run: 6 % du
                        #   write() copy, well clear of its 0.05 rad/s deadband, far from saturation
 S1_STILL_DEG=0.01      # [deg] the baseline must stay closer than this to its start. The model's
                        #   upright equilibrium is exact (unit test #10), so the measured baseline is 0
-S1_CHANGE_DEG=0.5      # [deg] the command run must move at least this much: 50x S1_STILL_DEG, and
-                       #   far below what the command produces (several degrees, measured). A plant
-                       #   whose pitch ignored the wheels would give exactly 0
+S1_CHANGE_DEG=0.2      # [deg] the command run must move at least this much: 20x S1_STILL_DEG. A plant
+                       #   whose pitch ignored the wheels would give exactly 0. Lowered from 0.5 on
+                       #   2026-11-24: with the measured signs and the retuned outer loop the cascade now
+                       #   RESISTS the feedforward kick, and the command moved pitch 0.443 deg (it used to
+                       #   be several degrees, under a loop that ran away). Red with disable_torque (0 deg)
 TIPOVER_DEG=35         # [deg] the tipover angle of finding H-4; also tipover_pitch_deg's default
 FALL_LIMIT_S=0.48      # [s] the model falls 2 -> 35 deg in 0.4273 s with no torque (unit test #6);
                        #   the probe sees it to within one 10 ms cycle. 0.48 adds ~40 ms for timing

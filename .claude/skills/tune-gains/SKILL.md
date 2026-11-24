@@ -22,8 +22,7 @@ Check the [verification ladder](../../../docs/architecture/verification-ladder.m
 Tier 3 (a physics simulation) is built, with limits. A simulator exists, but it is a model with estimated,
 unmeasured parameters ([`sim-plant.md`](../../../docs/architecture/sim-plant.md)). Its balance
 scenarios (`verify_sim.sh scenarios`, thresholds committed 2026-11-03 before any tuning) fail with
-the hardware gains and pass with the sim gains tuned in stage 5c-1 (V narrowly), and they assume an encoder sign nobody has checked on the robot (finding H-12,
-proposal 0006), so any gain found against it is a candidate and never a result. The mock
+the hardware gains and pass with the sim gains (tuned in stage 5c-1, the velocity loop re-signed and retuned 2026-11-24 for the signs measured on the robot, proposal 0006), so any gain found against it is a candidate and never a result. The mock
 hardware, which always exists, echoes commands and holds pitch at 0.0, so a balance controller always
 looks fine against it and tuning against it teaches nothing. Do not invent a number or a pass
 threshold (the scenario thresholds are in `verify_sim.sh`, and change only with a written reason).

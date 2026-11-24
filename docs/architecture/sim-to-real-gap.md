@@ -26,15 +26,14 @@ Last written 2026-11-04, on top of `77664f4`; sweep and V-metric figures updated
 
 ## 1. The numbers this page is about
 
-The sim gains of stage 5c-1 (the CANDIDATES of proposal 0008; hardware values in brackets):
+The sim gains (stage 5c-1; the velocity loop re-signed and its `p` halved on 2026-11-24 for the measured signs; the CANDIDATES of proposal 0008; hardware values in brackets):
 
 | Loop | p | i | d | Unit of p / i / d |
 | --- | --- | --- | --- | --- |
 | `pitch_pid_controller` | 15 [10] | 0 [0] | 1.0 [0.1] | (rad/s) per deg, per (deg·s), per (deg/s). In the sim the D term reads the **gyro rate** (`pitch_rate`); on the robot today it differentiates the delayed angle |
-| `velocity_pid_controller` | 25 [2] | 0 [5] | 0.2 [0.2] | deg of target pitch per (m/s), per m, per (m/s²) |
+| `velocity_pid_controller` | −12.5 [2] | 0 [5] | −0.2 [0.2] | deg of target pitch per (m/s), per m, per (m/s²) |
 
-Linear-model margins of those gains (estimated plant, 20 ms IMU delay, `encoder_sign:=-1`; stage
-5c-1): the loop's gain on everything the motors deliver can rise ×3.20 (+10.1 dB) or fall to ×0.123
+Linear-model margins of those gains (estimated plant, 20 ms IMU delay, the stage 5c-1 gains with `encoder_sign:=-1` assumed then; not recomputed for the 2026-11-24 gains): the loop's gain on everything the motors deliver can rise ×3.20 (+10.1 dB) or fall to ×0.123
 (−18.2 dB) before the model goes unstable; the IMU delay can grow from 20 ms to 50 ms, a **delay
 margin of 30 ms**.
 
@@ -283,16 +282,17 @@ for a given wheel speed), the feedforward (divided by 0.06) and the encoder conv
 separately, and **the sweep did not vary it.** Measuring it is item 5 of
 [measure-inertia.md](../guides/measure-inertia.md).
 
-## 6. The assumption `encoder_sign:=-1` ([proposal 0006](../proposals/0006-velocity-loop-sign-check.md))
+## 6. The encoder sign, now measured ([proposal 0006](../proposals/0006-velocity-loop-sign-check.md))
 
 With every gain positive the outer velocity loop is stable **only if the encoder reads negative
 when a positive wheel command drives the robot** (finding H-12). The code's authors assumed the
-opposite. Nobody has checked the robot. Every scenario that passes (U, I, V, the sweep) was run
-with `encoder_sign:=-1`, labelled as an assumption. With the as-built sign, scenario AB shows the
-model running away and falling about 3.8 s after release with the sim gains (9.4 s with the
-hardware gains). **If the robot's encoder has the other sign, none of the gain results on this
-page or in the stage 5 journals describes it**, and the velocity loop's sign has to be fixed
-first (proposal 0006, options A and B).
+opposite, and until 2026-11-24 every scenario (U, I, V, the stage 5c sweep) ran `encoder_sign:=-1`
+as a labelled assumption. **The robot's encoder reads positive** (stand check, 2026-11-24), so the
+robot needs negative velocity gains (option A, the owner's choice). Since 2026-11-24 the sim runs the
+measured sign with negative gains and the outer `p` retuned for the true wheel speed
+([journal](../journal/2026-11-24-sim-measured-signs-retune.md)). The stage 5 and 5c journals and the
+sweep results were obtained with the assumed sign and the halved speed signal; they describe the
+earlier model, not the current one, and the sweep has not been re-run.
 
 ## 7. What the sweep covered, and what it did not
 
