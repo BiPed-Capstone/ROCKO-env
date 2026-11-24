@@ -27,7 +27,57 @@ section). Row 2.7 was updated on 2026-11-03 for the
 [stage 5 entry](journal/2026-11-03-stage5-balance-in-sim.md) (built on `23c1117`): its cause is
 established under the model (finding H-12, proposal 0006).
 
-> **HANDOFF, 2026-11-23: start here. Next goal: balance mode.** Written for the robot supervisor change
+> **HANDOFF, 2026-11-24: start here. Next goal: get everything READY TO TUNE, before any candidate gains.** The owner
+> chose this order on 2026-11-24: settle every measurement, signal and safeguard first, so that the first tuning data
+> can be trusted; candidate gains (proposal 0008) and the tethered test come after the list below.
+> **Where the robot is (seen 2026-11-23/24, agent over SSH with the owner present):** `rocko.service` is installed and
+> running: it boots into **tank, disabled**; LB+RB and LT+RT+RB worked from the 8BitDo; balance mode reaches `ready` on the
+> real hardware (left disabled; never enabled). The IMU node runs (the owner installed `gpiod` and
+> `adafruit-circuitpython-bno055`). Nothing has balanced, and **balance mode must not be enabled** until the list is done.
+> **Settled on the robot:** the gyro rate is gyro X with sign **-1**, unit correct ([journal](journal/2026-11-23-gyro-check.md));
+> pitch goes **down** when the robot leans forward; the encoder service now serves each wheel its own encoder over the
+> measured time step, checked by hand ([journal](journal/2026-11-23-encoder-service-u2.md)); the encoder reads **positive**
+> under a positive command ([journal](journal/2026-11-24-stand-sign-check.md)); so the owner flipped the velocity-loop gains'
+> signs (proposal 0006 option A: `p -2.0, i -5.0, d -0.2`, magnitudes still untuned). The simulation runs these measured
+> signs, retuned (outer `p -12.5`), every scenario passing ([journal](journal/2026-11-24-sim-measured-signs-retune.md)).
+> **Ready to tune: the list, in order** (who; what checks it):
+> 1. **Measure the robot** ([proposal 0007](proposals/0007-measure-robot-parameters.md)), owner: the tyre's outside
+>    diameter first (five wheel turns read 0.360 m per turn, 4.4 % under the 60 mm radius in the code: 114.7 mm means the
+>    radius is wrong, 120 mm means the encoder counts are), then mass, centre-of-mass height and inertia
+>    ([guide](guides/measure-inertia.md)). The agent then puts the numbers in one place each (`QuadEncoders.py`,
+>    `DiffDriveController.py`'s wheel radius, the sim's parameters) and reruns the ladder.
+> 2. **A motor-driven speed check on the stand**, owner drives, agent logs over SSH: a steady stick hold of several seconds,
+>    the encoder speed against a tape mark and a stopwatch, at two or three speeds (the 2026-11-24 bursts were too short).
+>    Also gives the command-to-speed scale.
+> 3. **Fix finding C-1** (row 1.1, [proposal 0010](proposals/0010-c1-imu-uart-and-encoders-in-cpp.md)), agent writes, owner
+>    tests: the IMU and encoder reads move into the C++ plugins, removing the unbounded service waits that hung shutdown
+>    twice ([2026-11-22](journal/2026-11-22-tank-boot-service-and-handoff.md), [2026-11-23](journal/2026-11-23-encoder-service-u2.md#on-the-robot-2026-11-23-owner-at-the-robot-agent-over-ssh)) and that make loop timing unpredictable. Tuning data taken before this is not trustworthy
+>    on timing.
+> 4. **Measure loop timing on the Pi**, agent over SSH, balance stack running but **disabled** (the loop runs while the
+>    controllers are inactive): cycle-time spread with and without the dashboard (row 4.3), `joint_state_broadcaster`
+>    (row 4.15) and recording (row 4.2). Decide what may run during a tuning session.
+> 5. **Wire the gyro rate into the pitch loop** (proposal 0008 preconditions 4 and the L-8 caveat), agent writes, owner
+>    approves: `read_pitch_rate:=true` for the IMU node, and the gated YAML change that makes `pitch_pid_controller` use
+>    `pitch_rate`. The axis and sign are measured; the wiring is not done.
+> 6. **The motors' dead band** ([proposal 0013](proposals/0013-tank-mode-motor-breakaway.md), row 4.6), owner decides: the
+>    balance loop lives on small corrections, and 21 to 28 % duty does nothing. Decide whether balancing gets a stiction
+>    compensation before tuning.
+> 7. **Safety thresholds** ([proposal 0004](proposals/0004-safety-thresholds.md)), owner confirms: tipover 35 deg, re-arm
+>    10 deg, the watchdog timeouts; then a stand test that the tipover cutoff zeroes the motors when tilted past it while
+>    enabled. Also row 4.14 (zero-on-deactivate can fail silently), agent writes.
+> 8. **The tuning rig and records**: a tether, a way to read battery voltage, `record:=true` for every balance run
+>    ([guide](guides/record-a-run.md)), the Foxglove layout (row 4.4), and the fields of
+>    [reproducing-results.md](guides/reproducing-results.md).
+> **Then:** re-derive proposal 0008's candidate gains from the sim with the measured parameters; the first tethered test
+> (0008's procedure); tuning ([tune-gains](../.claude/skills/tune-gains/SKILL.md) skill, row 3.3).
+> **Smaller open items:** the supervisor does not pass `max_speed:=`/`max_turn:=` through to the mode stacks; the dashboard's
+> history check failed twice inside full ladder runs (38 points) but passes alone and passed in the last ladder. **Every robot step is the
+> owner's** (CLAUDE.md section 3); in these sessions the owner let the agent run commands on the Pi over SSH (`ssh rocko`)
+> while present; a new session asks again.
+>
+> **Superseded 2026-11-24, kept for the details:** the 2026-11-23 handoff.
+>
+> **Handoff of 2026-11-23 (superseded by the box above).** Written for the robot supervisor change
 > ([journal](journal/2026-11-23-robot-supervisor.md), [design](architecture/robot-supervisor.md),
 > [ADR 0006](decisions/0006-robot-supervisor.md), row 4.13). **Nothing from this change has run on the Pi.**
 > **Where the robot is:** once the owner installs it (`pi/install_boot_service.sh robot`), the Pi boots `rocko.service`,
@@ -239,7 +289,7 @@ journal's HANDOFF box is the live status of this wave; a new session starts ther
 | 4.10 | **The encoder service gives both wheels the left encoder's position, and its velocity assumes 0.01 s between calls** (found 2026-11-22) | agent writes; human tests | host test with a fake encoder; then on the robot | **done 2026-11-23, checked by hand on the robot** ([journal](journal/2026-11-23-encoder-service-u2.md#on-the-robot-2026-11-23-owner-at-the-robot-agent-over-ssh)): each wheel reports its own encoder, forward reads positive; 0.360 m per wheel turn, 4.4 % under the 60 mm radius (proposal 0007). Left: a motor-driven speed check; Tier 3 V and AB now fail (sim gains tuned against the halved speed). `QuadEncoders.py` serves `left_encoder_data` and `right_encoder_data`; each motor plugin names its own in the `encoder_service` hardware parameter (the plugin refuses to start without it). Each wheel's velocity is its position change over the measured time between its calls, low-passed (0.05; time constant about 0.2 s at 100 Hz, 0.4 s at 50 Hz). Host tests: `tools/quad_encoders_test.py`, `tools/sim_plant_model_test.cpp`; `verify_urdf.sh` checks the parameter; the motor plugin only passed the compile-only check. **Finding: the Tier 3 scenarios V and AB now FAIL** (V overshoot 47 % against 30 %, AB falls at 2.47 s against a 3.0 s floor) because the sim gains were tuned against the halved speed; K now passes. A human or the orchestrator decides on retuning (gains are gated). Numbers and robot procedure: [journal](journal/2026-11-23-encoder-service-u2.md). Related: C-1 (proposal 0010), L-6 |
 | 4.11 | **The web dashboard starts at boot** (owner, 2026-11-22) | agent writes; agent installs at the owner's request | host test `tools/pi_scripts_test.sh` (the rendered unit; container: a second `Dashboard.py` on a taken port exits 0) | **superseded 2026-11-23 by row 4.13** (`rocko.service` starts the dashboard; the old service is removed by the new install). History: `pi/rocko-dashboard.service`, installed on the robot 2026-11-22: [journal](journal/2026-11-22-dashboard-boot-service.md). Still always on with no login |
 | 4.12 | **Tank mode starts at boot** (owner, 2026-11-22) | agent writes; agent installs at the owner's request | host test `tools/pi_scripts_test.sh` (rendered unit; the launch guard, red on 2 breaks) | **superseded 2026-11-23 by row 4.13** (`rocko.service` boots into tank, disabled). History: `pi/rocko-tank.service`, installed on the robot 2026-11-22: [journal](journal/2026-11-22-tank-boot-service-and-handoff.md) |
-| 4.13 | **Robot supervisor: modes and enable from the controller or dashboard; boots into tank** (owner, 2026-11-23) | agent writes; owner installs and tests on the robot | host tests `tools/supervisor_state_machine_test.py`, `tools/balance_teleop_test.py`, `tools/tank_teleop_test.py`; T2 `verify_supervisor.sh` (and `verify_mock.sh`, both modes) | **written 2026-11-23, not run on the Pi.** `Supervisor.py` owns `mode`, `enabled` and `phase` and starts each mode's launch file as a child; LB+RB toggles enable (replacing tank's hold-LB deadman: the owner's decision, [ADR 0006](decisions/0006-robot-supervisor.md)); LT+RT+RB switches mode while disabled; the dashboard has the state card, buttons and a nodes table, and no login; `pi/rocko.service` boots it. Design: [robot-supervisor.md](architecture/robot-supervisor.md). Evidence and what was not checked: [journal](journal/2026-11-23-robot-supervisor.md). Left for the owner: `pi/install_boot_service.sh robot`, the first check and stand test in [the guide](guides/drive-with-usb-controller.md), and whether the toggle with its automatic disable is acceptable on the floor (a weaker stop than hold-LB; ADR 0006). Not measured: the supervisor's CPU cost on the Pi beside the 100 Hz loop, how long a mode change takes on the Pi |
+| 4.13 | **Robot supervisor: modes and enable from the controller or dashboard; boots into tank** (owner, 2026-11-23) | agent writes; owner installs and tests on the robot | host tests `tools/supervisor_state_machine_test.py`, `tools/balance_teleop_test.py`, `tools/tank_teleop_test.py`; T2 `verify_supervisor.sh` (and `verify_mock.sh`, both modes) | **done 2026-11-23; installed and running on the robot** (boots tank, disabled; LB+RB and LT+RT+RB worked; balance reaches ready, not enabled; [journal](journal/2026-11-23-robot-supervisor.md#on-the-robot-2026-11-23-owner-present-agent-over-ssh-with-the-owners-permission)). `Supervisor.py` owns `mode`, `enabled` and `phase` and starts each mode's launch file as a child; LB+RB toggles enable (replacing tank's hold-LB deadman: the owner's decision, [ADR 0006](decisions/0006-robot-supervisor.md)); LT+RT+RB switches mode while disabled; the dashboard has the state card, buttons and a nodes table, and no login; `pi/rocko.service` boots it. Design: [robot-supervisor.md](architecture/robot-supervisor.md). Evidence and what was not checked: [journal](journal/2026-11-23-robot-supervisor.md). Left for the owner: `pi/install_boot_service.sh robot`, the first check and stand test in [the guide](guides/drive-with-usb-controller.md), and whether the toggle with its automatic disable is acceptable on the floor (a weaker stop than hold-LB; ADR 0006). Not measured: the supervisor's CPU cost on the Pi beside the 100 Hz loop, how long a mode change takes on the Pi |
 | 4.14 | **`AddFeedforwardController`'s zero-on-deactivate can fail silently** (found by the realtime audit, 2026-11-23): a failed `set_value` there is only counted and logged, and `on_deactivate` still returns `SUCCESS` | agent writes; build a red check first | none yet: the failure path cannot be provoked on the mock; a host test of the deactivate logic would be the check, shown red on a deliberate break first | open. A §6 file (`AddFeedforwardController.cpp`), so `realtime-auditor` is mandatory. It matters more since 2026-11-23: the supervisor's disable relies on deactivation to stop the wheels, and in balance mode it confirms through `list_controllers` that the controllers are inactive, which does not show that the zero was written. Related: H-7 (row 1.7), M-5 (row 0.3) |
 | 4.15 | **Measure `joint_state_broadcaster`'s cost in the 100 Hz balance stack** | human (robot-only measurement); agent writes the procedure | none: the container's timings say nothing about the Pi | open. Supervised balance mode now spawns `joint_state_broadcaster` so the supervisor can read pitch for its enable rule; the hand-launched balance stack did not. Compare the control-cycle spread (`/controller_manager/statistics/full`) with and without it on the robot, together with the dashboard's cost (row 4.3). Critical path: it runs inside `controller_manager`'s update loop |
 
