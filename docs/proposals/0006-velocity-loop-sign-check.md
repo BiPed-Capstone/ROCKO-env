@@ -115,3 +115,9 @@ If step 2 of *The change* applies, after the chosen flip, tethered, the robot he
 ## Decision
 
 (Human fills in: date, who, the two measured signs, which option if any, why.)
+
+**`s_θ` measured 2026-11-23** (owner tilting, agent logging over SSH; [journal](../journal/2026-11-23-gyro-check.md)):
+the owner tilted the robot **forward first** (toward where it drives when the left stick is pushed up, a positive
+`linear.x`), and the BNO055's pitch went **down** (raw -2 to -55 deg), then up when tilted backward (+42.5 deg).
+So **pitch decreases when the robot leans toward the direction a positive command drives it.**
+`s_v` (the encoder's sign) is still to be measured, after the encoder service is fixed (next-steps row 4.10).

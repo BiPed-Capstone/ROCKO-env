@@ -49,11 +49,10 @@ calls the node makes: `.gyro` and `.euler`).
 
 If the first tilt was **forward** as asked (toward where the robot drives when the left stick is pushed up, which is a
 positive `linear.x`), then **pitch decreases when the robot leans forward**. That is half of proposal 0006's sign check
-(`s_θ`). It depends on the direction the owner tilted first, which the owner should confirm before it is written
-into proposal 0006.
+(`s_θ`). The owner confirmed afterwards that the first tilt was forward, so this is now recorded in proposal 0006's
+Decision section: pitch decreases when the robot leans forward.
 
 ## Not verified — needs a human
 
-- Which way the first tilt went (above).
 - The rate through the real node and plugin (`read_pitch_rate:=true`), which comes with proposal 0008 precondition 4.
 - Re-measure if the IMU is moved or remounted.
