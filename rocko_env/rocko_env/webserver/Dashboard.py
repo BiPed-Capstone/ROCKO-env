@@ -10,15 +10,23 @@ HISTORY_S seconds of them, and a small web server (Python's standard library: no
 install) that hands them to the page as JSON. The page is one file, dashboard.html, with no outside
 scripts, so it works on a network with no internet.
 
-What it can change: it can start and stop a recording (it runs RecordRun.py, the same program
-record:=true runs) and hand recorded runs to the browser. That is ALL. It publishes on no topic and
-calls no service, so it cannot drive the robot, re-arm the tipover cutoff or touch a controller.
+What it can change: (1) it can start and stop a recording (it runs RecordRun.py, the same program
+record:=true runs) and hand recorded runs to the browser; (2) it can ASK the robot supervisor
+(Supervisor.py, docs/architecture/robot-supervisor.md) to enable or disable the motion controllers
+and to switch between tank and balance mode, through the services /rocko/set_enabled and
+/rocko/set_mode. That is ALL. It publishes on no topic and calls no other service, so it cannot
+drive the robot, re-arm the tipover cutoff or touch a controller itself: the supervisor decides, and
+refuses what its rules forbid (for example a mode change while enabled). It shows the supervisor's
+state (/rocko/state) at the top of the page.
 
 It is NOT on the 100 Hz control path: it is a separate process, and it lowers its own priority
 (NICENESS) so the control loop is served first. What it costs the Pi's CPU is not measured.
 
-There is no login. Anyone on the robot's network can see the page and press Record. Do not run it
-on a network you do not trust.
+There is no login. "No login" means anyone on the robot's network can see the page and press Record,
+Enable, Disable, Tank or Balance: Enable makes the motion controllers active, so a stick can then move
+the wheels. The only check is that a POST comes from this page and not from another website
+(is_own_address). Do not run it on a network you do not trust. Closing the page does NOT disable
+the robot: the dashboard is not a deadman.
 """
 import errno
 import ipaddress
@@ -41,6 +49,8 @@ from control_msgs.msg import DynamicJointState, MultiDOFCommand, MultiDOFStateSt
 from rcl_interfaces.msg import Log
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rocko_interfaces.msg import RobotState
+from rocko_interfaces.srv import SetEnabled, SetMode
 from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool
@@ -57,6 +67,9 @@ HISTORY_S = 60.0         # [s] how far back the page's plots can go
 NICENESS = 10            # added to this process's "nice" value: higher = lower priority (0 = normal)
 STALE_AFTER_S = 1.0      # [s] a value older than this is shown as stale: its publisher has gone quiet
 LOG_LINES_KEPT = 40      # newest warnings and errors kept for the page
+SUPERVISOR_STALE_S = 2.0   # [s] no /rocko/state for this long = "no supervisor" (it publishes at 2 Hz)
+SERVICE_TIMEOUT_S = 3.0    # [s] how long a button press waits for the supervisor's answer
+SOURCE = "dashboard"       # the `source` field of every request: shows in /rocko/state's last_source
 WHEELS = ("left_wheel_joint", "right_wheel_joint")
 
 
@@ -80,6 +93,8 @@ class Dashboard(Node):
         self.log_lines = deque(maxlen=LOG_LINES_KEPT)  # {"t", "level", "node", "text"}
         self.tipover_by_node = {}  # controller node name -> True (tripped) / False (re-armed), from its log
         self.controller = None  # the newest /joy as {"axes": {name: value}, "buttons": {name: 0/1}}, or None
+        self.robot = None       # the newest /rocko/state as a dict (see on_robot_state), or None
+        self.robot_at_s = None  # time.monotonic() when it arrived
         self.recorder = None    # the running RecordRun.py process, or None
         self.recording_label = ""
 
@@ -112,6 +127,13 @@ class Dashboard(Node):
         # balancing mode or the simulation; the page then says "no controller data".
         self.create_subscription(Joy, "/joy", self.on_joy, 5)
         self.create_subscription(Bool, "/tank_teleop/enabled", self.on_teleop_enabled, 5)
+        # The supervisor's state: reliable + transient-local depth 1, so a dashboard that starts late
+        # still gets the last state at once. (Must match the publisher's QoS or nothing arrives.)
+        self.create_subscription(
+            RobotState, "/rocko/state", self.on_robot_state,
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.set_enabled_client = self.create_client(SetEnabled, "/rocko/set_enabled")
+        self.set_mode_client = self.create_client(SetMode, "/rocko/set_mode")
         self.create_timer(SAMPLE_PERIOD_S, self.sample)
 
     # --- ROS callbacks: keep bytes, or copy a number; nothing slow ---------------------------------
@@ -183,6 +205,30 @@ class Dashboard(Node):
     def on_teleop_enabled(self, msg):
         self.set_values("teleop_enabled", {"teleop_enabled": bool(msg.data)})
 
+    def on_robot_state(self, msg):
+        robot = {
+            "mode": msg.mode, "enabled": bool(msg.enabled), "phase": msg.phase,
+            "requested_mode": msg.requested_mode, "last_source": msg.last_source, "message": msg.message,
+            "available_modes": list(msg.available_modes),
+            "nodes": [{"name": n.name, "group": n.group, "alive": bool(n.alive)} for n in msg.nodes],
+            "controllers": [{"name": c.name, "state": c.state, "expected_state": c.expected_state}
+                            for c in msg.controllers],
+        }
+        with self.lock:
+            self.robot = robot
+            self.robot_at_s = time.monotonic()
+
+    def robot_snapshot(self):
+        """The supervisor's state for the page: {"present": False, ...} when none was heard in
+        SUPERVISOR_STALE_S (a launch started by hand has no supervisor; so does a dead one)."""
+        with self.lock:
+            robot, at = self.robot, self.robot_at_s
+        age = None if at is None else time.monotonic() - at
+        if robot is None or age > SUPERVISOR_STALE_S:
+            # The old values are not repeated: a stale "enabled: false" would be a safe-looking guess.
+            return {"present": False, "age_s": age, "message": "no supervisor"}
+        return {"present": True, "age_s": age, **robot}
+
     def on_log(self, msg):
         if msg.level < Log.WARN:
             return
@@ -233,11 +279,55 @@ class Dashboard(Node):
             "time": time.time(), "values": latest, "age_s": ages, "stale_after_s": STALE_AFTER_S,
             "logs": logs, "recording": self.recording_status(),
             "launch": self.launch_name, "hardware": self.hardware,
+            "robot": self.robot_snapshot(),
         }
 
     def history_since(self, since):
         with self.lock:
             return [{"t": t, **point} for t, point in self.history if t > since]
+
+    # --- asking the supervisor ---------------------------------------------------------------------
+    def call_supervisor(self, client, request):
+        """Send `request` to a supervisor service and wait up to SERVICE_TIMEOUT_S for the answer.
+        Returns (success, message).
+
+        Why waiting here does not block ROS: this runs in an HTTP handler thread (ThreadingHTTPServer
+        gives each request its own), while main() runs rclpy.spin() in the main thread. The executor
+        keeps spinning, so it delivers the supervisor's reply and runs the future's done-callback,
+        which sets the Event this thread waits on. Waiting with future.result() or spin_until_future_
+        complete() from here would be wrong: the first can hang if the executor is busy, the second
+        would start a second executor on the same node."""
+        if not client.service_is_ready():
+            return False, "supervisor did not answer (service not available)"
+        done = threading.Event()
+        future = client.call_async(request)
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(SERVICE_TIMEOUT_S):
+            client.remove_pending_request(future)  # forget it, so a late answer is not kept forever
+            return False, "supervisor did not answer"
+        try:
+            response = future.result()
+        except Exception as error:  # the call failed (for example the supervisor went away)
+            return False, f"supervisor call failed: {error}"
+        return bool(response.success), response.message
+
+    def set_enabled(self, enabled):
+        request = SetEnabled.Request()
+        request.enabled = enabled
+        request.source = SOURCE
+        return self.call_supervisor(self.set_enabled_client, request)
+
+    def set_mode(self, mode):
+        request = SetMode.Request()
+        request.mode = mode
+        request.source = SOURCE
+        return self.call_supervisor(self.set_mode_client, request)
+
+    def launch_label(self):
+        """launch_name, plus the mode when the supervisor is heard, so run.yaml says which stack ran
+        (rocko_robot.launch.py starts whichever mode's launch file as a child)."""
+        robot = self.robot_snapshot()
+        return f"{self.launch_name} (mode {robot['mode']})" if robot["present"] else self.launch_name
 
     # --- recording: start and stop RecordRun.py --------------------------------------------------
     def recording_status(self):
@@ -246,6 +336,10 @@ class Dashboard(Node):
             return {"running": running, "label": self.recording_label if running else ""}
 
     def start_recording(self, label, battery_v, surface):
+        # Taken BEFORE the lock: launch_label() -> robot_snapshot() takes self.lock itself, and a
+        # threading.Lock is not re-entrant. Asking for it while holding it froze this HTTP thread, then
+        # every ROS callback and /api/state behind it, and made SIGINT hang (verify_tools.sh, 2026-11-23).
+        launch_label = self.launch_label()
         with self.lock:
             if self.recorder is not None and self.recorder.poll() is None:
                 return False, "a recording is already running"
@@ -253,7 +347,7 @@ class Dashboard(Node):
             # the terminal, once from stop_recording below).
             self.recorder = subprocess.Popen(
                 ["ros2", "run", "rocko_env", "RecordRun.py", "--label", label, "--log-root", self.log_root,
-                 "--launch", self.launch_name, "--hardware", self.hardware, "--config", self.config,
+                 "--launch", launch_label, "--hardware", self.hardware, "--config", self.config,
                  "--battery-v", battery_v, "--surface", surface, "--notes", "started from the dashboard"],
                 start_new_session=True)
             self.recording_label = label
@@ -391,6 +485,15 @@ def make_handler(dashboard, page):
                     str(body.get("surface") or "")[:60])
             elif self.path == "/api/record/stop":
                 ok, message = dashboard.stop_recording()
+            elif self.path in ("/api/enable", "/api/disable", "/api/mode"):
+                # The supervisor decides: a refusal comes back as success false with its reason.
+                if self.path == "/api/mode":
+                    ok, message = dashboard.set_mode(str(body.get("mode") or "")[:30])
+                else:
+                    ok, message = dashboard.set_enabled(self.path == "/api/enable")
+                status = 200 if ok else (504 if message.startswith("supervisor did not answer") else 409)
+                self.send_json({"success": ok, "message": message}, status)
+                return
             else:
                 self.send_json({"error": "not found"}, 404)
                 return
@@ -427,7 +530,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     dashboard.get_logger().info(
         f"dashboard: open http://<this machine's address>:{dashboard.port} in a browser "
-        "(read-only apart from Record/Stop; no login)")
+        "(read-only apart from Record/Stop and the supervisor's Enable/Disable/mode buttons; no login)")
     try:
         rclpy.spin(dashboard)
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):

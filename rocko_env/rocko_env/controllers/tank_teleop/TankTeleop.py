@@ -5,16 +5,19 @@ balancing mode has its own nodes and never starts this one.
     controller --USB--> joy's game_controller_node --/joy--> THIS NODE --cmd_vel--> diff_drive_controller
 
 SPLIT ARCADE: the LEFT stick, up and down, drives forward and back; the RIGHT stick, left and right,
-turns. Hold the LEFT bumper (LB) to drive: let go and the command is zero.
+turns. There is no hold-to-drive button (owner's decision, 2026-11-23, docs/decisions/0006-robot-supervisor.md):
+driving is switched on and off by the robot supervisor, from the controller (LB + RB) or the dashboard, and
+this node follows /rocko/state.
 
 Every PUBLISH_PERIOD_S this node publishes one command on diffbot_base_controller/cmd_vel and whether
-driving is enabled on tank_teleop/enabled (std_msgs/Bool; the dashboard shows it). The command is
-zero unless all of these hold:
+it is sending stick commands on tank_teleop/enabled (std_msgs/Bool; the dashboard shows it). It does NOT
+mean the wheels are enabled: that is /rocko/state. The command is zero unless all of these hold:
+  * /rocko/state (published by Supervisor.py) says enabled == true and mode == "tank", and was heard
+    within STATE_TIMEOUT_S. No state yet, or a silent supervisor, counts as disabled;
   * a /joy message arrived within gamepad.JOY_TIMEOUT_S (the joy node republishes 20 times a second
     while a controller is connected and goes SILENT when it is unplugged);
-  * LB is held;
-  * LB has been seen released since the controller was last silent or since start-up
-    (gamepad.DeadmanSwitch explains why).
+  * both sticks have been seen inside the dead zone since the last disabled -> enabled change
+    (gamepad.CentreRearm), so a stick held over when you press enable does not make the robot lurch.
 If this node itself dies, diff_drive_controller stops the wheels after its cmd_vel_timeout (1.0 s,
 rocko_tank_mode_controllers.yaml).
 
@@ -22,6 +25,7 @@ From stick to wheel: gamepad.shape() (deadzone, expo) on each stick, gamepad.mix
 asked for more than full speed, then the full-speed scales below. Guide:
 docs/guides/drive-with-usb-controller.md.
 """
+import math
 import time
 
 import rclpy
@@ -29,6 +33,8 @@ import rclpy.executors
 from geometry_msgs.msg import TwistStamped
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rocko_interfaces.msg import RobotState
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool
 
@@ -49,9 +55,11 @@ WHEEL_SEPARATION_M = 0.32  # MUST match wheel_separation in rocko_tank_mode_cont
 #                            asking for it at start-up would make this node wait on diff_drive_controller.
 FULL_TURN_RAD_S = FULL_WHEEL_SPEED_M_S / (WHEEL_SEPARATION_M / 2)  # [rad/s] 93.75; + = left (CCW)
 
-DEADMAN_BUTTON = gamepad.BUTTON_LEFT_BUMPER  # hold LB to drive
-PUBLISH_PERIOD_S = 0.02  # [s] 50 Hz: a released LB becomes a zero command within 20 ms of the joy node's
-#                          message. The wheels then slow at diff_drive_controller's acceleration limit
+MODE = "tank"            # the only /rocko/state mode this node drives in
+STATE_TIMEOUT_S = 3.0    # [s] the supervisor publishes /rocko/state at 2 Hz; six missed in a row means it is
+#                          gone, and a dead supervisor must not leave the last "enabled" in force
+PUBLISH_PERIOD_S = 0.02  # [s] 50 Hz: a disable or a silent controller becomes a zero command within 20 ms.
+#                          The wheels then slow at diff_drive_controller's acceleration limit
 #                          (linear.x.max_deceleration in the tank YAML, proposal 0015: about 0.5 s from
 #                          full speed).
 
@@ -75,14 +83,20 @@ class TankTeleop(Node):
         self.axes = []              # the newest /joy message's axes and buttons
         self.buttons = []
         self.last_joy_s = None      # [s] when the newest /joy arrived (None: never)
-        self.deadman = gamepad.DeadmanSwitch()
+        self.rearm = gamepad.CentreRearm()
+        self.state = None           # the newest /rocko/state (None: never heard)
+        self.last_state_s = None    # [s] when it arrived
         self.was_enabled = False
         self.was_heard = False
         self.create_subscription(Joy, "joy", self.on_joy, 10)
+        # Same QoS as the publisher: transient_local, so a node that starts late is told the current state
+        # at once instead of waiting for the next 2 Hz message.
+        self.create_subscription(RobotState, "/rocko/state", self.on_state, QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.cmd_publisher = self.create_publisher(TwistStamped, "diffbot_base_controller/cmd_vel", 10)
         self.enabled_publisher = self.create_publisher(Bool, "tank_teleop/enabled", 10)
         self.create_timer(PUBLISH_PERIOD_S, self.step)
-        self.get_logger().info(f"tank teleop: hold LB to drive; settings {self.settings}")
+        self.get_logger().info(f"tank teleop: drive when /rocko/state says enabled in tank mode; settings {self.settings}")
 
     def fraction_parameter(self, name, default):
         """A [0, 1] parameter; anything else (and a deadzone of 1, which leaves no stick) falls back
@@ -101,16 +115,37 @@ class TankTeleop(Node):
         self.buttons = list(msg.buttons)
         self.last_joy_s = self.now()
 
+    def on_state(self, msg):
+        self.state = msg
+        self.last_state_s = self.now()
+
+    def supervisor_allows(self):
+        """True while a recent /rocko/state says the robot is enabled in this node's mode."""
+        if self.state is None or self.now() - self.last_state_s > STATE_TIMEOUT_S:
+            # Throttled: this runs every 20 ms.
+            self.get_logger().warning(
+                "no /rocko/state: the supervisor (Supervisor.py) is not running; sending zero",
+                throttle_duration_sec=10.0)
+            return False
+        return bool(self.state.enabled) and self.state.mode == MODE
+
+    def sticks_centred(self):
+        """Both sticks inside the dead zone. A message too short to hold them, or a NaN reading, is not centred."""
+        if len(self.axes) <= gamepad.AXIS_RIGHT_X:
+            return False
+        dead = self.settings["deadzone"]
+        return all(math.isfinite(self.axes[i]) and abs(self.axes[i]) <= dead
+                   for i in (gamepad.AXIS_LEFT_Y, gamepad.AXIS_RIGHT_X))
+
     def command(self):
-        """(linear.x [m/s], angular.z [rad/s, + = left], enabled) from the newest /joy and its age."""
+        """(linear.x [m/s], angular.z [rad/s, + = left], sending) from the newest /joy, its age and /rocko/state."""
         heard = self.last_joy_s is not None and self.now() - self.last_joy_s <= gamepad.JOY_TIMEOUT_S
-        # A message too short to hold the deadman button or the two sticks (another node's layout,
-        # e.g. joy_node instead of game_controller_node) counts as "not held": it must not drive.
-        complete = len(self.buttons) > DEADMAN_BUTTON and len(self.axes) > gamepad.AXIS_RIGHT_X
-        held = complete and self.buttons[DEADMAN_BUTTON] == 1  # (DeadmanSwitch ignores it when not heard)
-        enabled = self.deadman.update(heard, held)
-        self.log_changes(heard, enabled)
-        if not enabled:
+        # CentreRearm sees every cycle, so "enabled" dropping (or the controller going silent) re-arms it.
+        # `heard` is part of its enabled input: the joy node keeps its last stick values across an unplug.
+        enabled = self.supervisor_allows() and heard
+        sending = self.rearm.update(enabled, enabled and self.sticks_centred())
+        self.log_changes(heard, sending)
+        if not sending:
             return 0.0, 0.0, False
         s = self.settings
         # No sign flips: the joy node's convention (up = +1, left = +1) is the robot's (gamepad.py).
@@ -126,7 +161,7 @@ class TankTeleop(Node):
                                    f"no /joy for {gamepad.JOY_TIMEOUT_S} s: controller gone, stopping")
             self.was_heard = heard
         if enabled != self.was_enabled:
-            self.get_logger().info("DRIVE ENABLED (LB held)" if enabled else "drive disabled")
+            self.get_logger().info("sticks drive the robot (enabled, sticks centred)" if enabled else "sticks do not drive (disabled, silent or not centred)")
             self.was_enabled = enabled
 
     def step(self):
@@ -145,10 +180,18 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
-        pass
+        pass  # Ctrl-C, or the launch asked us to stop: both are a normal end
+    except Exception:
+        # The 20 ms timer can fire just after SIGINT shut ROS down ("publisher's context is invalid"):
+        # also a normal end. Any error while ROS is still up is a real one.
+        if rclpy.ok():
+            raise
     finally:
-        node.destroy_node()
-        rclpy.try_shutdown()
+        try:
+            node.destroy_node()
+            rclpy.try_shutdown()
+        except KeyboardInterrupt:
+            pass  # a second SIGINT (the launch and the terminal each send one) while cleaning up
 
 
 if __name__ == "__main__":

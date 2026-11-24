@@ -2,24 +2,27 @@
 # Install, check or remove a systemd service that starts part of ROCKO when the Pi boots.
 # Run it ON THE PI, as YOUR user (it calls sudo itself), from anywhere:
 #
+#     pi/install_boot_service.sh robot               # the supervisor: tank at boot, controller/dashboard switch mode
+#                                                    # (pi/rocko.service). Replaces tank and dashboard (removes them)
 #     pi/install_boot_service.sh dashboard           # the web dashboard (pi/rocko-dashboard.service)
 #     pi/install_boot_service.sh tank                # tank mode, driven by the USB controller (pi/rocko-tank.service)
 #     pi/install_boot_service.sh tank status         # is it enabled and running?
 #     pi/install_boot_service.sh tank remove         # stop, disable, delete
 #     pi/install_boot_service.sh tank print          # print the unit it would install; changes nothing
 #
-# Each unit is pi/rocko-<name>.service with YOUR paths filled in: this checkout, your venv (ROCKO_VENV,
+# Each unit is pi/rocko-<name>.service (robot: pi/rocko.service) with YOUR paths filled in: this checkout, your venv (ROCKO_VENV,
 # default ~/.venv), your ~/rocko_logs, and ROCKO_DOMAIN_ID (default 17, as pi/rocko_env.sh).
 # Re-run it after moving the checkout. Guides: docs/guides/use-the-dashboard.md ("Start it at boot") and
-# docs/guides/drive-with-usb-controller.md ("Start tank mode at boot").
+# docs/guides/drive-with-usb-controller.md ("Start tank mode at boot"), docs/guides/run-on-the-pi.md.
 set -eu
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
-usage() { echo "usage: pi/install_boot_service.sh dashboard|tank [install|status|remove|print]" >&2; exit 2; }
-case "${1:-}" in dashboard|tank) ;; *) usage ;; esac
-name="rocko-$1.service"
+usage() { echo "usage: pi/install_boot_service.sh robot|dashboard|tank [install|status|remove|print]" >&2; exit 2; }
+case "${1:-}" in robot|dashboard|tank) ;; *) usage ;; esac
+if [ "$1" = robot ]; then name="rocko.service"; else name="rocko-$1.service"; fi
 template="$here/$name"
-target="/etc/systemd/system/$name"
+unit_dir="${ROCKO_UNIT_DIR:-/etc/systemd/system}"   # only the host test changes this
+target="$unit_dir/$name"
 action="${2:-install}"
 
 # Why sed: a systemd unit has no variables (it cannot read $HOME or find this checkout), and the service runs as
@@ -43,6 +46,21 @@ case "$action" in
   print)
     render ;;
   install)
+    if [ "$1" = robot ]; then
+      # rocko.service runs everything the other two start, so they conflict with it (two launches on the motors,
+      # two dashboards on port 8080). Replace them, and say so.
+      for old in rocko-tank.service rocko-dashboard.service; do
+        if [ -e "$unit_dir/$old" ]; then
+          echo "Removing $old: rocko.service replaces it (they would fight over the motors / port 8080)."
+          sudo systemctl disable --now "$old" 2>/dev/null || true
+          sudo rm -f "$unit_dir/$old"
+        fi
+      done
+    elif [ -e "$unit_dir/rocko.service" ]; then
+      echo "install_boot_service.sh: rocko.service is installed, and it already starts the $1 part (and more)." >&2
+      echo "  Installing $name too would fight it. Remove it first: pi/install_boot_service.sh robot remove" >&2
+      exit 2
+    fi
     mkdir -p "$HOME/rocko_logs"   # made as you, so recordings land in a folder you own
     render | sudo tee "$target" >/dev/null
     sudo systemctl daemon-reload

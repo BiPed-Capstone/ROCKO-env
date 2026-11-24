@@ -1,87 +1,66 @@
 # Watch the robot in a browser: the dashboard
 
-Use this to see what the robot is doing from another machine (pitch, wheel speeds, what the
-controllers are asking for, warnings) and to start and stop a recording without a terminal on the Pi.
+Use this to see what the robot is doing from another machine (the supervisor's state, pitch, wheel speeds, what
+the controllers are asking for, warnings), to **enable, disable and switch mode** (tank or balance), and to start and
+stop a recording, without a terminal on the Pi.
 
 **What has been checked:** the dashboard was run against the simulated robot (`verify_tools.sh`, in
 [the verification ladder](../architecture/verification-ladder.md)), and the page was looked at once in
-a browser with made-up data. **It has not been run on the Pi.** What it costs the Pi's CPU while the
-100 Hz balance loop runs is not known; that is why it is **off by default in balancing mode**
-(`rocko.launch.py`). **Tank mode starts it by default** (there is no balance loop to disturb; the
-CPU cost there was not measured either). Read
-[What is not known](#what-is-not-known) before using it during a balance test.
+a browser with made-up data. The supervisor the buttons ask was checked against the mock
+(`verify_supervisor.sh`; the buttons themselves were not clicked in a browser, as far as the
+[journal](../journal/2026-11-23-robot-supervisor.md) records), not on the Pi. **The dashboard has not been run on the Pi since the supervisor change
+(2026-11-23).** What it costs the Pi's CPU while the 100 Hz balance loop runs is not known; that is why
+`rocko.launch.py` run by hand leaves it **off by default**, whereas `rocko_robot.launch.py` (the boot launch) starts it.
+Read [What is not known](#what-is-not-known) before using it during a balance test.
 
 ## Start it
 
-On the **Pi**, from the repo root (`~/ROCKO-env`), add `dashboard:=true` to a balancing launch. `pi/launch.sh`
-runs it as root with the environment set up ([Run ROCKO on the Pi](run-on-the-pi.md)):
+**Normally you do not start it: the robot's boot service does.** `rocko.service` runs `pi/launch.sh robot`, which starts
+the supervisor and this dashboard together ([Run ROCKO on the Pi](run-on-the-pi.md#the-boot-service-the-supervisor)).
+By hand, on the **Pi**, from the repo root (`~/ROCKO-env`), stop the boot service first if it runs
+(`sudo systemctl stop rocko.service`), then:
 
 ```bash
-pi/launch.sh balance dashboard:=true
+pi/launch.sh robot
 ```
 
-Tank mode needs no argument: `pi/launch.sh tank` starts the dashboard, and `pi/launch.sh tank
-dashboard:=false` leaves it out.
+`pi/launch.sh robot dashboard:=false` leaves the dashboard out. The older single-mode launches still take it as an
+option: `pi/launch.sh tank` starts it (`dashboard:=false` leaves it out) and `pi/launch.sh balance dashboard:=true`
+adds it. **Those launches have no supervisor**, so the state card says NO SUPERVISOR and its buttons cannot work.
 
 Success looks like this line in the launch output:
 
 ```text
-[Dashboard.py-N] [INFO] [...] [rocko_dashboard]: dashboard: open http://<this machine's address>:8080 in a browser (read-only apart from Record/Stop; no login)
+[Dashboard.py-N] [INFO] [...] [rocko_dashboard]: dashboard: open http://<this machine's address>:8080 in a browser (read-only apart from Record/Stop and the supervisor's Enable/Disable/mode buttons; no login)
 ```
 
 Then, on **any machine on the same network**, open `http://<robot-ip>:8080` in a browser (`hostname -I`
 on the Pi prints its address). Nothing needs installing, and the page needs no internet.
 
-`dashboard_port:=9000` moves it to another port. `rocko_tank_mode.launch.py` takes the same
-arguments. In the dev container, `rocko_sim.launch.py` starts the dashboard by default; to open it
-from the laptop's browser the container's port 8080 would have to be published in
+`dashboard_port:=9000` moves it to another port. In the dev container, `rocko_sim.launch.py` starts the dashboard by
+default; to open it from the laptop's browser the container's port 8080 would have to be published in
 `docker/compose.yml`, which it is not.
 
-### Start it at boot (a systemd service)
+### It starts at boot with the robot
 
-To have the page up whenever the Pi is on, with no launch running, install the boot service once. On the **Pi**, as
-your own user (not root; it asks `sudo` itself), from `~/ROCKO-env`:
+The separate dashboard service (`rocko-dashboard.service`) is **replaced** by `rocko.service`. Installing the new
+service removes the old one, and `pi/install_boot_service.sh dashboard` refuses to install while `rocko.service` is
+installed (two dashboards would fight over port 8080). How to install, check and remove it, and how to migrate:
+[Run ROCKO on the Pi](run-on-the-pi.md#the-boot-service-the-supervisor).
 
-```bash
-pi/install_boot_service.sh dashboard
-```
+How it behaves under the supervisor:
 
-Success: `Installed /etc/systemd/system/rocko-dashboard.service; enabled at boot; started.` Then check it:
-
-```bash
-pi/install_boot_service.sh dashboard status
-```
-
-Success: `enabled at boot: enabled`, `running now: active`, and a `restarts` count that stays put (it climbs every
-10 s while a launch's own dashboard holds the port, which is expected). The page is at `http://<robot-ip>:8080` from then on,
-after every reboot.
-
-How it behaves:
-
-- It runs the same `Dashboard.py`, as root in the robot's `ROS_DOMAIN_ID` (17), so it shows whatever launch is
-  running, started before or after it. With no launch it shows the controller card and "No robot state".
-- **One dashboard per port.** A launch that also starts one (tank mode does by default) finds port 8080 taken: its
-  dashboard logs `port 8080 is already in use by another process (usually the boot service's dashboard); this one exits` and stops cleanly,
-  which is expected. If a launch's dashboard got the port first, the service retries every 10 s and takes over when
-  that launch stops.
-- It cannot know which launch is running, so a recording started from its page says `launch: unknown (dashboard boot
-  service)` and `hardware: unknown` in its `run.yaml`. Use `record:=true` on the launch when that matters.
-- Recordings go to your `~/rocko_logs`, as with `pi/launch.sh`.
-- **It also runs while the robot balances.** `rocko.launch.py` keeps its own dashboard off by default because what
-  the dashboard costs the Pi's CPU beside the 100 Hz balance loop has never been measured. With the service
-  installed that choice no longer holds: run `pi/install_boot_service.sh dashboard remove` before a balancing test until the
-  cost is measured.
-- **It is always on, with no login:** anyone on the robot's network can open the page and press Record whenever the Pi
-  is powered. Remove it on a network you do not trust.
-
-To stop it starting at boot (and stop it now):
-
-```bash
-pi/install_boot_service.sh dashboard remove
-```
-
-Its log: `sudo journalctl -u rocko-dashboard.service`. Re-run the install after moving the checkout or the venv; it
-writes your paths into the unit. The unit's template is `pi/rocko-dashboard.service`.
+- It runs as root in the robot's `ROS_DOMAIN_ID` (17), inside the same launch as the supervisor, so it is there in
+  every mode and survives a mode change.
+- A recording started from its page records what the supervisor was told (`launch: ...` in `run.yaml`); use
+  `record:=true` on the launch when the exact launch arguments matter. Recordings go to your `~/rocko_logs`, as with
+  `pi/launch.sh`.
+- **It is always on, and it also runs while the robot balances.** What it costs the Pi's CPU beside the 100 Hz balance
+  loop has never been measured. Until it is, a balancing test runs with the page open on the boot launch's own
+  dashboard; start the boot launch with `dashboard:=false` (`pi/launch.sh robot dashboard:=false` after stopping the
+  service) if you want it off.
+- **It is always on, with no login, and it can now enable the robot** (see below). Remove the service on a network you do
+  not trust.
 
 ## What the page shows
 
@@ -95,7 +74,9 @@ writes your paths into the unit. The unit's template is `pi/rocko-dashboard.serv
 | Pitch loop output [rad/s] | the wheel velocity the pitch loop commands, before the feedforward is added | `/pitch_pid_controller/controller_state` (its output) |
 | Teleop link | `driving` while commands arrive; `no commands` when the teleop watchdog has zeroed the speed | `/diff_drive_controller/command_timed_out` |
 | Tipover cutoff | `TRIPPED` while either wheel's controller has logged a trip and not a re-arm; `re-armed` after both have logged a re-arm; `no trip seen` if neither line has arrived since the dashboard started. **`no trip seen` is not "armed"**: a trip logged before the dashboard started cannot be known to it | `/rosout` |
-| Controller card | tank mode's USB game controller, drawn live: both sticks (the dot is the stick's position; up and left read +1), the triggers, every button, with **LB** (the drive button) outlined, and next to it what the robot will do. `ENABLED: driving` only while `TankTeleop.py` says so; `Disabled` (hold LB, or release it once to re-arm after start-up or a reconnect); `No controller` when nothing arrives on `/joy`; `Teleop not running` when `TankTeleop.py` is silent (not tank mode, or the node died). The drawing turns grey when `/joy` is stale. In balancing mode and the simulation it always says `Teleop not running` | `/joy`, `/tank_teleop/enabled` ([Drive tank mode with a USB controller](drive-with-usb-controller.md)) |
+| State card (top of the page) | what the supervisor says: **mode** (tank or balance), **ENABLED** or **DISABLED**, **phase** (`starting`, `ready`, `stopping`, `fault`, and `-> balance` while a change is under way), the **message** (why the last request was refused, or what the fault is) and the **last source** of a change (`gamepad`, `dashboard`, or `supervisor` for an automatic disable). It is the only place that says whether the wheels may move. `NO SUPERVISOR` and `UNKNOWN` when no state has arrived for 2 s | `/rocko/state` ([the supervisor](../architecture/robot-supervisor.md)) |
+| Nodes and controllers table | each node and controller the current mode expects, and whether it is up (`alive` or `MISSING`; a controller's actual state against its expected one). A wrong row is highlighted; during a mode change most rows are wrong for a few seconds, which is what the table is for | `/rocko/state` |
+| Controller card | the USB game controller, drawn live: both sticks (the dot is the stick's position; up and left read +1), the triggers, every button, with **LB** and **RB** (the enable combo) marked, and next to it what the teleop node is doing. `driving` only while the robot is enabled **and** the sticks have been centred since; otherwise it says why (disabled, or sticks must centre); `No controller` when nothing arrives on `/joy`; `Teleop not running` when the current mode's teleop node is silent. The drawing turns grey when `/joy` is stale | `/joy`, `/tank_teleop/enabled` ([Drive ROCKO with a USB controller](drive-with-usb-controller.md)) |
 | Three plots | the last 30 s of pitch and target pitch, the wheel speeds and the reference, and the pitch loop's output | the same topics, 20 points a second |
 | Warnings and errors | the newest 40 log lines at WARN or above, from every node | `/rosout` |
 
@@ -116,21 +97,35 @@ recording at a time. A run marked "open or not closed" is still being written, o
 
 ## What the page can and cannot do
 
-It can start and stop a recording and hand recorded runs to the browser. That is all. It publishes on
-no topic and calls no service, so it cannot drive the robot, change a gain or re-arm the tipover cutoff.
-The controller card only shows: enabling the robot is the left bumper on the controller itself.
+It can **ask the supervisor** to enable, disable or change mode, start and stop a recording, and hand recorded runs to
+the browser. It still cannot change a gain, re-arm the tipover cutoff by itself, or send a drive command: the sticks
+are the controller's. Each button only *asks*; the supervisor decides and the card shows the answer (a refusal says why).
 
-**There is no login.** Anyone on the robot's network can open the page, press Record and download
-runs. Use it on the lab's own network, not on a network you do not trust.
+| Button | Clickable when | What it does |
+| --- | --- | --- |
+| **Enable** | the phase is `ready` and the robot is disabled | Activates the motion controllers. In balance mode only near upright (a refusal says so). After this the sticks must return to centre before the robot moves |
+| **Disable** | always | Deactivates them. Never needs anything to go right first. In balance mode **the robot falls** |
+| **Tank** / **Balance** | the robot is disabled, the phase is `ready` or `fault`, and it is not already in that mode | Stops the current stack and starts the other: several seconds, with no motor stack between |
+
+Greyed buttons are the ones the supervisor would refuse. Record and Stop are as before.
+
+**There is no login, and that now matters more.** Anyone on the robot's network can open the page, press Record,
+download runs **and press Enable**. Until 2026-11-23 the page could not move the robot; now one click on a phone can
+let the wheels move (the sticks must still be centred and then moved, but nobody needs to be at the robot). Use the dashboard only on the lab's own network, and press **Disable** (or LB + RB) before you pick
+the robot up.
+
+**Closing the page does not disable the robot.** The dashboard is not a deadman: if you enable from it and the browser
+or the Wi-Fi goes away, the robot stays enabled. Disable with LB + RB on the controller, or reload the page.
 
 ## What commonly goes wrong
 
 | You see | Why | Do |
 | --- | --- | --- |
-| The browser cannot connect | A balancing launch was started without `dashboard:=true` (tank mode starts it unless `dashboard:=false`); the address is wrong; the machines are on different networks; a firewall blocks port 8080 | Check the launch output for the `dashboard: open ...` line; `ping <robot-ip>` |
+| The browser cannot connect | The launch was started with `dashboard:=false`, or it is a hand launch of `rocko.launch.py` (off by default; `rocko_robot.launch.py` and tank mode start it); the address is wrong; the machines are on different networks; a firewall blocks port 8080 | Check the launch output for the `dashboard: open ...` line; `ping <robot-ip>` |
 | `OSError: [Errno 98] Address already in use` in the launch output | Another program, or a dashboard left from an earlier launch, has the port | `dashboard_port:=8081`, or stop the other program |
 | Every value is a grey dash, amber bar on top | The controllers have not started, or have stopped | `ros2 control list_controllers` in a `pi/rocko_shell.sh` terminal on the Pi |
 | Pitch rate is a dash | The IMU node does not read the gyro by default | Expected; see next-steps row 1.2 |
+| State card says NO SUPERVISOR, Enable is refused or greyed | The launch was started by hand (`pi/launch.sh tank` or `balance`), the supervisor died, or the phase is not `ready` | Use `pi/launch.sh robot`; read the card's message and the nodes table |
 | "could not start: a recording is already running" | One is running, perhaps started from another browser | Press Stop first |
 | Record does nothing and the launch output says `NOT recording: ... MB free` | The disk is nearly full | [Record a run](record-a-run.md), "What commonly goes wrong" |
 
@@ -160,11 +155,11 @@ The name is the only link between the two files, so the spelling must match exac
 
 ## How it works, in five sentences
 
-`Dashboard.py` is a ROS node: it subscribes to the topics in the table above and keeps the newest
+`Dashboard.py` is a ROS node: it subscribes to the topics in the table above (including the supervisor's `/rocko/state`) and keeps the newest
 values and the last 60 s of them, sampled 20 times a second. In the same process, Python's built-in
-web server answers four kinds of request: the page itself, the newest values, the history since a
-given time, and the list of recorded runs. The page is one HTML file with its own small plotting code,
+web server answers the page itself, the newest values, the history since a given time, the list of recorded runs, and
+four kinds of request that do something. The page is one HTML file with its own small plotting code,
 no outside scripts; it asks for the newest values every quarter of a second and for new history every
-half second. Record and Stop are two more requests, which make the node start and stop `RecordRun.py`,
-the program `record:=true` runs. The node creates no publisher and no service client, which is what
-"cannot drive the robot" rests on, and `verify_tools.sh` checks it.
+half second. Record and Stop make the node start and stop `RecordRun.py`, the program `record:=true` runs; Enable,
+Disable and the mode buttons make it call the supervisor's `/rocko/set_enabled` and `/rocko/set_mode` services. The node
+creates no publisher, and its only service clients are those two, which is what "cannot drive the robot" rests on.

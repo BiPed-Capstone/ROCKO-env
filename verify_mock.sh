@@ -141,8 +141,8 @@ inspect() {
   grep -Eq "\[game_controller_node-[0-9]+\]: (exception occurred|process has died)" "$log" \
     && problems+=("node game_controller_node crashed (see the launch log below)")
   # ...and tank mode's teleop node must actually have started (its first log line), not just "not crashed".
-  [ "$mode" = tank ] && ! grep -q "tank teleop: hold LB to drive" "$log" \
-    && problems+=("TankTeleop.py did not start (no 'tank teleop: hold LB to drive' line)")
+  [ "$mode" = tank ] && ! grep -q "tank teleop: drive when /rocko/state says enabled" "$log" \
+    && problems+=("TankTeleop.py did not start (no 'tank teleop: drive when /rocko/state says enabled' line)")
 }
 
 # Poll until everything looks right, or STARTUP_TIMEOUT passes.

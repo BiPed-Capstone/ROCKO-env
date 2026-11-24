@@ -25,11 +25,18 @@ endif()
 
 # Compile custom services/messages
 find_package(rosidl_default_generators REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Icm20948Data.msg"
   "srv/Icm20948Data.srv"
   "srv/QuadEncoderData.srv"
+  "msg/NodeStatus.msg"
+  "msg/ControllerStatus.msg"
+  "msg/RobotState.msg"
+  "srv/SetMode.srv"
+  "srv/SetEnabled.srv"
+  DEPENDENCIES builtin_interfaces
 )
 
 ament_export_dependencies(rosidl_default_runtime)

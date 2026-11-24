@@ -1,9 +1,9 @@
 """What every ROCKO teleop node needs to know about a game controller, in ONE place.
 
-Imported by tank mode's teleop node (controllers/tank_teleop/TankTeleop.py) and the dashboard
-(webserver/Dashboard.py), and meant for balancing mode's teleop when it gets a controller of its own.
-Nothing here knows which mode is running: speeds, scales and which button is the deadman belong to
-the node that uses them.
+Imported by both teleop nodes (controllers/tank_teleop/TankTeleop.py, controllers/balance_teleop/BalanceTeleop.py),
+the supervisor (supervisor/Supervisor.py: the LB+RB and LT+RT+RB combos, ComboDetector) and the dashboard
+(webserver/Dashboard.py). Nothing here knows which mode is running: speeds, scales and gates belong to the node
+that uses them. How enable and the combos work: docs/architecture/robot-supervisor.md.
 
 WHERE THE NUMBERS COME FROM. The controller is read by ROS's own `joy` package, node
 `game_controller_node` (package ros-jazzy-joy). It uses SDL's GameController layer, which looks the
@@ -33,6 +33,11 @@ BUTTON_NAMES = ("a", "b", "x", "y", "back", "guide", "start", "left_stick", "rig
                 "misc1", "paddle1", "paddle2", "paddle3", "paddle4", "touchpad")
 BUTTON_LEFT_BUMPER = BUTTON_NAMES.index("left_bumper")    # 9  (LB, L1)
 BUTTON_RIGHT_BUMPER = BUTTON_NAMES.index("right_bumper")  # 10 (RB, R1)
+AXIS_TRIGGER_LEFT = AXIS_NAMES.index("trigger_left")      # 4  (LT, L2)
+AXIS_TRIGGER_RIGHT = AXIS_NAMES.index("trigger_right")    # 5  (RT, R2)
+# A trigger counts as pressed past half travel, whichever sign the joy node gives it (see above: a full
+# press is expected near -1, rest near 0; the magnitude test works either way). Not seen on the 8BitDo yet.
+TRIGGER_PRESSED_FRACTION = 0.5
 
 # --- how often the joy node publishes, and when silence means "the controller is gone" -----------
 # Passed to game_controller_node as autorepeat_rate (the tank launch file reads it from here): while a
@@ -90,23 +95,84 @@ def mix(forward, turn_left, max_speed=1.0, max_turn=1.0):
     return forward * max_speed, turn * max_speed
 
 
-class DeadmanSwitch:
-    """Hold-a-button-to-drive, with a re-arm rule.
+def trigger_pressed(axis_value):
+    """True if a trigger axis reads past half travel. NaN or inf is 'not pressed'."""
+    return math.isfinite(axis_value) and abs(axis_value) > TRIGGER_PRESSED_FRACTION
 
-    update() returns True (driving allowed) only while the controller is heard from AND the button
-    is held AND the button has been seen RELEASED since the controller was last silent (or since
-    start-up). Why the re-arm: the joy node does not reset its buttons when a controller is unplugged
-    and plugged back in, so a button held at the moment of the unplug can still read 1 afterwards. It
-    also means a robot started with the button already held does not drive off."""
+
+def pressed_inputs(axes, buttons):
+    """The set of input names held down in one /joy message: 'lb', 'rb', 'lt', 'rt'.
+    Only the four the supervisor's combos use. A message too short to hold an index reads as not pressed."""
+    def button(index):
+        return index < len(buttons) and buttons[index] == 1
+
+    def trigger(index):
+        return index < len(axes) and trigger_pressed(axes[index])
+
+    held = set()
+    if button(BUTTON_LEFT_BUMPER):
+        held.add("lb")
+    if button(BUTTON_RIGHT_BUMPER):
+        held.add("rb")
+    if trigger(AXIS_TRIGGER_LEFT):
+        held.add("lt")
+    if trigger(AXIS_TRIGGER_RIGHT):
+        held.add("rt")
+    return held
+
+
+# The supervisor's combos (docs/architecture/robot-supervisor.md). A combo matches only when EXACTLY its
+# inputs are held among the four, so LT+RT+RB is never also read as LB+RB, and pressing LB+RB with a
+# trigger half down does nothing.
+COMBO_TOGGLE_ENABLE = frozenset({"lb", "rb"})
+COMBO_TOGGLE_MODE = frozenset({"lt", "rt", "rb"})
+
+
+class ComboDetector:
+    """Turns a stream of /joy messages into one-shot combo events.
+
+    update() returns the name of a combo ("toggle_enable" or "toggle_mode") on the message where it
+    becomes held, else None. Rules:
+    - It fires on the RISING EDGE: once, when the last of its inputs goes down.
+    - It does not fire again until the held set has stopped matching it (a button released).
+    - After the controller was silent (controller_heard=False: start-up or an unplug), nothing fires until
+      the held set has been seen EMPTY once. The joy node keeps its last button state across an unplug, so a
+      combo held at that moment would otherwise fire on reconnect."""
+
+    COMBOS = {COMBO_TOGGLE_ENABLE: "toggle_enable", COMBO_TOGGLE_MODE: "toggle_mode"}
 
     def __init__(self):
-        self.armed = False  # True once the button has been seen released while the controller was heard
+        self.armed = False       # True once all four inputs have been seen released since the controller was heard
+        self.last_match = None   # the combo matched on the previous message, or None
 
-    def update(self, controller_heard, button_held):
+    def update(self, controller_heard, held):
         if not controller_heard:
             self.armed = False
-            return False
-        if not button_held:
+            self.last_match = None
+            return None
+        if not held:
             self.armed = True
+        match = self.COMBOS.get(frozenset(held))
+        if self.armed and match is not None and match != self.last_match:
+            fired = match   # fire once, on the message where the combo first matches
+        else:
+            fired = None
+        self.last_match = match
+        return fired
+
+
+class CentreRearm:
+    """After each disabled -> enabled change, hold the output at zero until both sticks have been seen
+    inside the dead zone, so a stick held over at the moment of enable does not make the robot lurch.
+    update(enabled, sticks_centred) returns True when the node may send its stick command."""
+
+    def __init__(self):
+        self.ready = False
+
+    def update(self, enabled, sticks_centred):
+        if not enabled:
+            self.ready = False
             return False
-        return self.armed
+        if sticks_centred:
+            self.ready = True
+        return self.ready

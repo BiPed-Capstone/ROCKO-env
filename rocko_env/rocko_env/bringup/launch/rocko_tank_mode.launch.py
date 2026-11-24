@@ -15,6 +15,7 @@
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     RegisterEventHandler,
     ExecuteProcess,
     LogInfo,
@@ -22,8 +23,10 @@ from launch.actions import (
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import (
+    AndSubstitution,
     Command,
     FindExecutable,
+    NotSubstitution,
     PathJoinSubstitution,
     LaunchConfiguration,
 )
@@ -91,7 +94,18 @@ def generate_launch_description():
     declared_arguments.append(DeclareLaunchArgument(
         "max_turn", default_value="1.0", description="turn stick strength, fraction of full (0 to 1)"))
 
+    # supervised:=true is how the robot supervisor (Supervisor.py, docs/architecture/robot-supervisor.md)
+    # starts this launch as a child. The base launch it runs from (rocko_robot.launch.py) already
+    # runs the joy node, the dashboard and foxglove_bridge, so they are left out here; and the motion
+    # controller (diffbot_base_controller) is spawned INACTIVE, so no command moves the wheels until
+    # the supervisor's "enable". false (default): exactly what this launch always did, for bench tests by hand.
+    declared_arguments.append(DeclareLaunchArgument(
+        "supervised", default_value="false",
+        description="true: started by the supervisor: no joy node, dashboard or foxglove (the base launch "
+                    "has them) and diffbot_base_controller starts inactive. false (default): standalone."))
+
     # Initialize Arguments
+    supervised = LaunchConfiguration("supervised")
     gui = LaunchConfiguration("gui")
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
 
@@ -155,18 +169,28 @@ def generate_launch_description():
         arguments=["joint_state_broadcaster"],
     )
 
+    # Two spawners, one runs: unsupervised loads and ACTIVATES the drive controller (as always);
+    # supervised loads and configures it but leaves it INACTIVE (spawner --inactive), so the
+    # supervisor's enable is what activates it.
     diffdrive_spawner = Node(
         package="controller_manager",
         executable="spawner",
         arguments=["diffbot_base_controller", "--param-file", robot_controllers],
+        condition=UnlessCondition(supervised),
+    )
+    diffdrive_spawner_inactive = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["diffbot_base_controller", "--param-file", robot_controllers, "--inactive"],
+        condition=IfCondition(supervised),
     )
 
-    delay_joint_state_broadcaster_after_robot_controller_spawner = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=diffdrive_spawner,
-            on_exit=[joint_state_broadcaster_spawner],
-        )
-    )
+    # joint_state_broadcaster goes after the drive spawner, whichever of the two ran.
+    delay_joint_state_broadcaster_after_robot_controller_spawner = [
+        RegisterEventHandler(event_handler=OnProcessExit(
+            target_action=spawner, on_exit=[joint_state_broadcaster_spawner]))
+        for spawner in (diffdrive_spawner, diffdrive_spawner_inactive)
+    ]
 
     encoders = Node(
         package="rocko_env",
@@ -188,7 +212,8 @@ def generate_launch_description():
         package="joy",
         executable="game_controller_node",
         parameters=[{"deadzone": 0.0, "autorepeat_rate": gamepad.JOY_AUTOREPEAT_RATE_HZ}],
-        condition=IfCondition(LaunchConfiguration("teleop")),
+        # The supervisor's base launch runs the joy node when supervised.
+        condition=IfCondition(AndSubstitution(LaunchConfiguration("teleop"), NotSubstitution(supervised))),
     )
     tank_teleop = Node(
         package="rocko_env",
@@ -211,9 +236,9 @@ def generate_launch_description():
         mock_banner,
         control_node,
         robot_state_pub_node,
-        foxglove_bridge,
         diffdrive_spawner,
-        delay_joint_state_broadcaster_after_robot_controller_spawner,
+        diffdrive_spawner_inactive,
+        *delay_joint_state_broadcaster_after_robot_controller_spawner,
         encoders,
         game_controller,
         tank_teleop,
@@ -228,12 +253,18 @@ def generate_launch_description():
             robot_controllers,
         )
     )
-    nodes.append(
-        dashboard_node(
-            "rocko_tank_mode.launch.py",
-            real_or_mock(use_mock_hardware),
-            robot_controllers,
-        )
-    )
+    # The dashboard and foxglove_bridge run in the supervisor's base launch when supervised, so they
+    # are grouped to run only when not supervised (their own dashboard:= / foxglove:= switches still apply).
+    nodes.append(GroupAction(
+        [
+            foxglove_bridge,
+            dashboard_node(
+                "rocko_tank_mode.launch.py",
+                real_or_mock(use_mock_hardware),
+                robot_controllers,
+            ),
+        ],
+        condition=UnlessCondition(supervised),
+    ))
 
     return LaunchDescription(declared_arguments + nodes)

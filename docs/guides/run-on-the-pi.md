@@ -37,14 +37,16 @@ a laptop is different: there the checkout sits inside a workspace, `/ros2_ws/src
 
 | Script | What it does | Use it for |
 | --- | --- | --- |
-| `pi/launch.sh tank` or `pi/launch.sh balance` | Launches `rocko_tank_mode.launch.py` or `rocko.launch.py` as root. Anything after the mode goes to `ros2 launch`: `pi/launch.sh tank gui:=true` | Starting the robot |
+| `pi/launch.sh robot` | Launches `rocko_robot.launch.py` as root: the supervisor, the controller reader, the dashboard and Foxglove. The supervisor starts tank mode, **disabled**, and switches modes when asked | The normal way to run the robot, and what the boot service runs |
+| `pi/launch.sh tank` or `pi/launch.sh balance` | Launches `rocko_tank_mode.launch.py` or `rocko.launch.py` by hand as root, **with no supervisor**. Anything after the mode goes to `ros2 launch`: `pi/launch.sh tank gui:=true` | Bench tests of one stack. The controller cannot enable these (the teleop nodes wait for the supervisor) |
 | `pi/rocko_shell.sh` | Opens a root shell that already has the environment, in the workspace. `exit` leaves it. The prompt ends in `#` | One per extra terminal: `ros2 control list_controllers`, `ros2 topic echo ...` |
 | `pi/rocko_run.sh <command>` | Runs one command as root in the environment | A single command without opening a shell: `pi/rocko_run.sh ros2 topic list` |
-| `pi/install_boot_service.sh dashboard` or `... tank` | Installs (or with `status` / `remove`, checks or removes) a systemd service that starts the web dashboard, or tank mode, at boot, as root | Once: [dashboard](use-the-dashboard.md#start-it-at-boot-a-systemd-service), [tank mode](drive-with-usb-controller.md#start-tank-mode-at-boot). **While the tank service runs, `pi/launch.sh` refuses to start another launch**: `sudo systemctl stop rocko-tank.service` first |
+| `pi/install_boot_service.sh robot` | Installs (or with `status` / `remove`, checks or removes) the systemd service `rocko.service` that starts `pi/launch.sh robot` at boot, as root | Once: [below](#the-boot-service-the-supervisor). **While it runs, `pi/launch.sh` refuses to start another launch**: `sudo systemctl stop rocko.service` first |
+| `pi/install_boot_service.sh dashboard` or `... tank` | The older single-purpose services (`rocko-dashboard.service`, `rocko-tank.service`). **Replaced by `robot`**: do not install them next to it (the script refuses) | Only on a Pi that has not moved to `robot` yet |
 | `pi/rocko_env.sh` | **Sourced**, not run: `source pi/rocko_env.sh`. Sets up the terminal as your user (no root) | Building: it needs no root |
 
 Typical session, two terminals (SSH twice). Each command starts with `sudo`'s password prompt the
-first time. If tank mode starts at boot (`rocko-tank.service`), stop it first with `sudo systemctl stop rocko-tank.service`:
+first time. If the robot starts at boot (`rocko.service`), stop it first with `sudo systemctl stop rocko.service`:
 `pi/launch.sh` refuses to start while it runs.
 
 ```bash
@@ -91,6 +93,63 @@ Set these in the terminal before running a script. The defaults are the robot's.
   `log_root:=$HOME/rocko_logs` (your home) unless you pass your own `log_root:=`. The run folders are
   still **owned by root**: delete one with `sudo rm -r ~/rocko_logs/<run folder>`.
 
+## The boot service: the supervisor
+
+`rocko.service` starts `pi/launch.sh robot` when the Pi boots. The supervisor inside it starts tank mode, **disabled**, so
+the wheels cannot move until someone presses LB + RB on the controller or Enable on the dashboard
+([Drive ROCKO with a USB controller](drive-with-usb-controller.md); design: [the robot supervisor](../architecture/robot-supervisor.md)).
+**This has not been installed or run on the Pi yet** (written 2026-11-23; the install is the owner's).
+
+On the **Pi**, as your own user (not root; the script calls `sudo` itself), from `~/ROCKO-env`, with the robot on blocks or
+with space around it (it starts now as well):
+
+```bash
+pi/install_boot_service.sh robot
+```
+
+Success: `Installed /etc/systemd/system/rocko.service; enabled at boot; started.` Then check it:
+
+```bash
+pi/install_boot_service.sh robot status
+```
+
+Success: `enabled at boot: enabled`, `running now: active`, `restarts: 0`, and recent log lines from the supervisor.
+Open `http://<robot-ip>:8080`: the state card says tank, DISABLED, phase ready.
+
+To stop it starting at boot, and stop it now:
+
+```bash
+pi/install_boot_service.sh robot remove
+```
+
+- **Migrating from the two old services.** `pi/install_boot_service.sh robot` finds `rocko-tank.service` and
+  `rocko-dashboard.service`, if they are installed, stops and removes them, and says so: two launches would fight over
+  the motors, and two dashboards over port 8080. Installing either old one while `rocko.service` is installed is refused;
+  run `pi/install_boot_service.sh robot remove` first.
+- **The launch guard.** While `rocko.service` (or the old `rocko-tank.service`) runs, `pi/launch.sh` refuses every
+  launch, including `pi/launch.sh robot`, and prints how to stop it. This protects the motors from a second launch.
+- **Before a hand launch or a bench test** (`pi/launch.sh tank`, `pi/launch.sh balance`, the
+  [bench test](bench-test-tank-mode.md)): stop the service until the next boot, and check it stopped:
+
+  ```bash
+  sudo systemctl stop rocko.service
+  ```
+
+  ```bash
+  pi/install_boot_service.sh robot status
+  ```
+
+  Success: `running now: inactive`. Bring it back with `sudo systemctl start rocko.service` (or reboot). A hand launch has
+  no supervisor, so the controller cannot enable it: that is expected.
+- **Stopping the service stops the whole stack.** The supervisor signals its child launch's whole process group, and
+  systemd signals every process at once; this is deliberate (stopping only `ros2 launch` hung the motor plugin, finding C-1).
+  If the launch has not exited 40 s after SIGINT, systemd kills it.
+- If the launch fails to start, systemd retries at most 3 times in 2 minutes, then stays stopped (status shows it). A node
+  that crashes **inside** a running launch does not restart the launch: the supervisor reports a fault on the dashboard
+  (and, in tank mode, disables). Read the log: `sudo journalctl -u rocko.service`.
+- The unit's template is `pi/rocko.service`; re-run the install after moving the checkout or the venv, because it writes
+  your paths into the unit.
+
 ## Building
 
 Build as yourself, not as root (a root-owned `build/` and `install/` in your checkout is a nuisance):
@@ -112,4 +171,5 @@ cd ~/ROCKO-env
 | `rocko_env: note: .../install/setup.bash not found: build first` | Nothing is built here yet | `./build_ros.sh` |
 | `sudo: a terminal is required` or no password prompt when you run a script through `ssh pi 'pi/launch.sh tank'` | `sudo` needs a terminal to ask for the password, and a one-command `ssh` has none (not checked on this Pi) | `ssh -t pi ...`, or log in first and run the script there |
 | A WiringPi or GPIO error as the motor plugin starts | The launch was probably not run as root | Use `pi/launch.sh`, not a bare `ros2 launch` |
+| `launch.sh: ROCKO is already running as the boot service (rocko.service)` | The launch guard: the supervisor already owns the motors | `sudo systemctl stop rocko.service`, as the message says |
 | A launch started with `sudo ros2 launch ...` by hand fails to find ROCKO | `sudo` resets the environment (ROS, the workspace overlay and the domain are lost) | Use `pi/launch.sh`; that is what it is for |

@@ -58,6 +58,14 @@
   #pad .gauge { fill:var(--a); } #pad text { fill:var(--dim); font:600 9px system-ui, sans-serif; text-anchor:middle; }
   #pad.stale { opacity:.35; }
   .drive-state { font-size:22px; font-weight:700; margin-bottom:6px; }
+  /* The robot state card (top of the page): what the supervisor says, and the buttons that ask it. */
+  .state-card { margin-bottom:12px; border-width:2px; }
+  .state-head { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  .state-mode { font-size:40px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+  .badge { font-size:18px; font-weight:800; padding:4px 12px; border-radius:6px; background:var(--line); color:var(--ink); }
+  .badge.on { background:var(--bad); color:#fff; }
+  .state-buttons { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 6px; }
+  tr.wrong td { background:color-mix(in srgb, var(--bad) 18%, transparent); font-weight:600; }
   .nums { font:13px/1.6 ui-monospace, Menlo, Consolas, monospace; color:var(--dim); }
 </style>
 </head>
@@ -66,10 +74,30 @@
 <div class="sub" id="mode">connecting…</div>
 <div class="banner" id="banner"></div>
 
+<div class="card state-card" id="state-card">
+  <div class="state-head">
+    <div class="state-mode" id="s-mode">–</div>
+    <div class="badge" id="s-enabled">–</div>
+    <div><b id="s-phase">–</b> <span class="sub" id="s-source"></span></div>
+  </div>
+  <div class="sub" id="s-message" style="margin:6px 0 0"></div>
+  <div class="state-buttons">
+    <button class="stop" id="btn-enable">Enable</button>
+    <button id="btn-disable">Disable</button>
+    <button id="btn-tank">Tank</button>
+    <button id="btn-balance">Balance</button>
+  </div>
+  <div class="sub" id="s-action" style="margin:0 0 8px"></div>
+  <div class="two">
+    <table><thead><tr><th>node</th><th>group</th><th>alive</th></tr></thead><tbody id="s-nodes"></tbody></table>
+    <table><thead><tr><th>controller</th><th>expected</th><th>state</th></tr></thead><tbody id="s-controllers"></tbody></table>
+  </div>
+</div>
+
 <div class="grid" id="tiles"></div>
 
 <div class="card" style="margin-bottom:12px">
-  <h2>Controller (tank mode: USB pad on the robot; hold LB to drive)</h2>
+  <h2>Controller (USB pad on the robot; LB + RB together toggles enable, sticks drive while enabled)</h2>
   <div class="pad-wrap">
     <svg id="pad" viewBox="0 0 320 200" role="img" aria-label="game controller state">
       <!-- triggers (fill = how far pressed) and bumpers -->
@@ -77,8 +105,8 @@
       <rect class="well" x="204" y="4" width="72" height="9" rx="3"/><rect class="gauge" id="pad-rt" x="204" y="4" width="0" height="9" rx="3"/>
       <text x="80" y="24">LT</text><text x="240" y="24">RT</text>
       <rect class="key deadman" id="pad-left_bumper" x="40" y="28" width="80" height="16" rx="7"/>
-      <rect class="key" id="pad-right_bumper" x="200" y="28" width="80" height="16" rx="7"/>
-      <text x="80" y="40" style="fill:var(--ink)">LB · drive</text><text x="240" y="40">RB</text>
+      <rect class="key deadman" id="pad-right_bumper" x="200" y="28" width="80" height="16" rx="7"/>
+      <text x="80" y="40" style="fill:var(--ink)">LB · enable</text><text x="240" y="40" style="fill:var(--ink)">RB · enable</text>
       <!-- body -->
       <path class="body" d="M70 50 H250 C290 50 312 90 312 140 C312 178 290 194 268 194 C246 194 232 170 214 160 H106 C88 170 74 194 52 194 C30 194 8 178 8 140 C8 90 30 50 70 50 Z"/>
       <!-- left stick (drive) and right stick (turn): the dot shows the stick's position -->
@@ -142,6 +170,8 @@
 //   every STATE_PERIOD_MS    ask the robot for /api/state, fill the tiles, the banner and the log;
 //   every HISTORY_PERIOD_MS  ask for the history points newer than the last one we have, redraw the plots;
 //   every RUNS_PERIOD_MS     ask for the list of recorded runs;
+//   the state card          shows /api/state's "robot" (the supervisor's /rocko/state); its four buttons POST to
+//                            /api/enable, /api/disable, /api/mode, and the supervisor decides (see buttonRules);
 //   Record / Stop            send one POST each; the robot's Dashboard.py starts or stops the recorder.
 // To show one more signal: Dashboard.py must send it under some name (see its *_values functions);
 // add a row with that name to TILES, and to a plot's list in PLOTS if it should be drawn.
@@ -220,22 +250,68 @@ function showState(state) {
     return `<div><span class="${cls}">${time} ${line.level}</span> ${escapeHtml(line.node)}: ${escapeHtml(line.text)}</div>`;
   }).join("") || '<span class="sub">none</span>';
   showController(state);
+  showRobot(state.robot);
   $("record").disabled = state.recording.running;
   $("stop").disabled = !state.recording.running;
   if (state.recording.running) $("record-status").textContent = `recording "${state.recording.label}" …`;
 }
 
-// The drive state in words, WORST CASE FIRST: the first condition that holds decides.
-function driveStatus(teleopFresh, padFresh, enabled, lbHeld) {
+// What the teleop node is doing, WORST CASE FIRST: the first condition that holds decides.
+// "enabled" here is /tank_teleop/enabled, which now means "sending stick commands": the robot is
+// enabled (state card), the sticks have been re-centred since, and the controller is heard.
+// Whether the robot is enabled at all is the state card's job, not this line's.
+function driveStatus(teleopFresh, padFresh, sending) {
   if (!teleopFresh) return {text: "Teleop not running", cls: "bad-text",
     why: "No word from TankTeleop.py: not tank mode, or the node has stopped. The robot cannot be driven."};
   if (!padFresh) return {text: "No controller", cls: "bad-text",
     why: "Nothing on /joy: plug the controller into the Pi (or check game_controller_node in the launch output). Stopped."};
-  if (enabled) return {text: "ENABLED: driving", cls: "ok",
-    why: "LB is held; the sticks drive. Let go of LB to stop."};
-  if (lbHeld) return {text: "Disabled", cls: "warn-text",
-    why: "LB reads held but driving is not allowed yet: release LB once, then hold it (re-arm after start-up or a reconnect)."};
-  return {text: "Disabled", cls: "warn-text", why: "Hold LB to drive."};
+  if (sending) return {text: "Sending stick commands", cls: "ok",
+    why: "The robot is enabled and the sticks are live. Press LB + RB, or Disable above, to stop."};
+  return {text: "Not sending", cls: "warn-text",
+    why: "Not driving: either the robot is disabled (LB + RB together, or Enable above), or it was just enabled and both sticks must be centred first."};
+}
+
+// Which state-card buttons can be pressed, from the supervisor's state. The supervisor enforces the same
+// rules (docs/architecture/robot-supervisor.md, "The rules"); this only greys out what would be refused.
+// Disable is always available: it never needs anything to go right first.
+function buttonRules(robot) {
+  const present = robot.present;
+  const modeOk = present && !robot.enabled && (robot.phase === "ready" || robot.phase === "fault");
+  return {
+    enable: present && robot.phase === "ready" && !robot.enabled,
+    disable: true,
+    tank: modeOk && robot.mode !== "tank" && (robot.available_modes || []).includes("tank"),
+    balance: modeOk && robot.mode !== "balance" && (robot.available_modes || []).includes("balance"),
+  };
+}
+
+function showRobot(robot) {
+  if (!robot.present) {
+    $("s-mode").textContent = "NO SUPERVISOR";
+    $("s-enabled").textContent = "UNKNOWN"; $("s-enabled").className = "badge";
+    $("s-phase").textContent = "–"; $("s-source").textContent = "";
+    $("s-message").textContent = "No /rocko/state heard in the last 2 s: this launch was started by hand, or the supervisor has stopped. The buttons below cannot work; Disable is still sent.";
+    $("s-nodes").innerHTML = ""; $("s-controllers").innerHTML = "";
+  } else {
+    $("s-mode").textContent = robot.mode;
+    $("s-enabled").textContent = robot.enabled ? "ENABLED" : "DISABLED";
+    $("s-enabled").className = "badge" + (robot.enabled ? " on" : "");
+    const changing = robot.requested_mode ? ` → ${robot.requested_mode}` : "";
+    $("s-phase").textContent = "phase: " + robot.phase + changing;
+    $("s-source").textContent = robot.last_source ? `(last change: ${robot.last_source})` : "";
+    $("s-message").textContent = robot.message || "";
+    // A node or controller that is down, or not in its expected state, is highlighted: during a mode change
+    // most rows are wrong for a few seconds, and that is what this table is for.
+    $("s-nodes").innerHTML = robot.nodes.map(n =>
+      `<tr class="${n.alive ? "" : "wrong"}"><td>${escapeHtml(n.name)}</td><td>${escapeHtml(n.group)}</td><td>${n.alive ? "alive" : "MISSING"}</td></tr>`
+    ).join("") || '<tr><td colspan="3" class="sub">none expected</td></tr>';
+    $("s-controllers").innerHTML = robot.controllers.map(c =>
+      `<tr class="${c.state === c.expected_state ? "" : "wrong"}"><td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.expected_state)}</td><td>${escapeHtml(c.state)}</td></tr>`
+    ).join("") || '<tr><td colspan="3" class="sub">none expected</td></tr>';
+  }
+  const can = buttonRules(robot);
+  $("btn-enable").disabled = !can.enable; $("btn-disable").disabled = !can.disable;
+  $("btn-tank").disabled = !can.tank; $("btn-balance").disabled = !can.balance;
 }
 
 function showController(state) {
@@ -243,11 +319,10 @@ function showController(state) {
   const padAge = state.age_s.controller, enabledAge = state.age_s.teleop_enabled;
   const padFresh = pad && padAge !== undefined && padAge <= state.stale_after_s;
   const teleopFresh = enabledAge !== undefined && enabledAge <= state.stale_after_s;
-  const enabled = teleopFresh && state.values.teleop_enabled === true;
-  const lbHeld = padFresh && pad.buttons.left_bumper === 1;
+  const sending = teleopFresh && state.values.teleop_enabled === true;
   $("pad").classList.toggle("stale", !padFresh);
-  // What the robot will do, worst case first. "Enabled" is only ever what TankTeleop.py says.
-  const {text, cls, why} = driveStatus(teleopFresh, padFresh, enabled, lbHeld);
+  // What the teleop node is doing, worst case first; "sending" is only ever what TankTeleop.py says.
+  const {text, cls, why} = driveStatus(teleopFresh, padFresh, sending);
   $("drive-state").innerHTML = `<span class="${cls}">${text}</span>`;
   $("drive-why").textContent = why;
   if (!pad) { $("pad-nums").textContent = ""; return; }
@@ -352,6 +427,20 @@ async function post(path, body) {
   const response = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
   return response.json();
 }
+
+// The state card's buttons. The answer is shown under them; the card itself updates from /api/state.
+async function ask(path, body) {
+  $("s-action").textContent = "asking the supervisor …";
+  try {
+    const answer = await post(path, body);
+    $("s-action").textContent = (answer.success ? "done: " : "refused: ") + answer.message;
+  } catch (error) { $("s-action").textContent = "no answer from the dashboard: " + error; }
+  pollState();
+}
+$("btn-enable").onclick = () => ask("/api/enable", {});
+$("btn-disable").onclick = () => ask("/api/disable", {});
+$("btn-tank").onclick = () => ask("/api/mode", {mode: "tank"});
+$("btn-balance").onclick = () => ask("/api/mode", {mode: "balance"});
 
 $("record").onclick = async () => {
   $("record").disabled = true;

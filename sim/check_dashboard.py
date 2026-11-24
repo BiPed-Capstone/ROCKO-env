@@ -11,8 +11,10 @@ It listens to /dynamic_joint_states itself while it asks the dashboard for its h
     by name, with the NaN as null (valid JSON), and the page must contain the controller drawing;
   * every pitch point in the dashboard's history is within --tolerance-deg of the robot's own
     pitch at that moment, and the history really shows the start-up lean (>= --min-pitch-deg);
-  * the dashboard node publishes on no topic except ROS's own /rosout and /parameter_events, and
-    offers no service client or action: it cannot command the robot;
+  * the dashboard node publishes on no topic except ROS's own /rosout and /parameter_events, and its
+    only service clients are the supervisor's two (/rocko/set_enabled, /rocko/set_mode): it cannot
+    command the robot itself. This launch has no supervisor, so /api/state must answer fast with
+    robot.present false ("no supervisor"), and Enable must be refused fast, not hang;
   * Record over HTTP starts a recording, a second Record is refused, Stop closes it, the run is
     listed as closed and its .tar downloads; a POST from another website's Origin, or whose Host
     header is another site's name, is refused; a path that climbs out of the log folder is refused.
@@ -36,6 +38,8 @@ from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool
 
 OWN_TOPICS = {"/rosout", "/parameter_events"}  # every ROS node publishes these
+SUPERVISOR_SERVICES = {"/rocko/set_enabled", "/rocko/set_mode"}  # the only services the dashboard may call
+FAST_S = 2.0  # [s] an answer that needs no ROS round trip (no supervisor, state after Record) comes this fast
 
 
 def http(port, path, body=None, headers=None):
@@ -155,8 +159,20 @@ def main():
     # --- it cannot command the robot ---
     if publishers - OWN_TOPICS:
         problems.append(f"the dashboard node publishes on {sorted(publishers - OWN_TOPICS)}; it must publish nothing")
-    if clients:
-        problems.append(f"the dashboard node has service clients {clients}; it must call no service")
+    if {name for name, _ in clients} - SUPERVISOR_SERVICES:
+        problems.append(f"the dashboard node has service clients {clients}; only the supervisor's two are allowed")
+    # No supervisor in this launch: the state says so at once, and a button press is refused at once.
+    start = time.monotonic()
+    status, body = http(args.port, "/api/state")
+    robot = json.loads(body).get("robot", {}) if status == 200 else {}
+    if robot.get("present") is not False or robot.get("message") != "no supervisor" or time.monotonic() - start > FAST_S:
+        problems.append(f"/api/state robot is {robot} after {time.monotonic() - start:.1f} s; expected "
+                        f"present false, 'no supervisor', within {FAST_S:g} s")
+    start = time.monotonic()
+    status, body = http(args.port, "/api/enable", {})
+    if status != 504 or json.loads(body).get("success") is not False or time.monotonic() - start > FAST_S:
+        problems.append(f"Enable with no supervisor gave status {status} {body[:100]!r} after "
+                        f"{time.monotonic() - start:.1f} s; expected 504 within {FAST_S:g} s")
 
     # --- refusals ---
     status, _ = http(args.port, "/api/record/start", {"label": "x"}, {"Origin": "http://elsewhere.example"})
@@ -174,7 +190,11 @@ def main():
     if status != 200:
         problems.append(f"Record gave status {status}: {body[:200]!r}")
     time.sleep(args.record_s)
+    # Starting a recording once froze the dashboard (a lock taken twice): the state must still answer.
+    start = time.monotonic()
     running = json.loads(http(args.port, "/api/state")[1]).get("recording", {})
+    if time.monotonic() - start > FAST_S:
+        problems.append(f"/api/state took {time.monotonic() - start:.1f} s while recording")
     if not running.get("running"):
         problems.append("after Record, /api/state does not say a recording is running")
     status, _ = http(args.port, "/api/record/start", {"label": "second"})

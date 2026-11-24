@@ -1,0 +1,55 @@
+# systemd service: start the ROCKO ROBOT SUPERVISOR when the Pi boots. A TEMPLATE: pi/install_boot_service.sh fills in
+# the @...@ paths for the user who runs it and installs the result as /etc/systemd/system/rocko.service. Do not copy
+# this file by hand.
+#
+# What starts: exactly `pi/launch.sh robot`, i.e. rocko_robot.launch.py: the supervisor (Supervisor.py), the game
+# controller reader, the dashboard and the Foxglove bridge. The supervisor then starts TANK mode's stack as a child
+# (it boots into tank, DISABLED) and starts and stops tank or balance mode when asked from the controller or the
+# dashboard. The wheels cannot move until someone enables the robot (LB + RB, or the dashboard's Enable button).
+# This service REPLACES rocko-tank.service and rocko-dashboard.service: pi/install_boot_service.sh robot removes
+# them, and refuses to install either while this one is installed (two launches would fight over the motors).
+# While this runs, pi/launch.sh refuses to start any other launch: stop it first with `sudo systemctl stop rocko.service`.
+# Design: docs/architecture/robot-supervisor.md. Guide: docs/guides/run-on-the-pi.md.
+
+[Unit]
+Description=ROCKO robot supervisor (tank mode at boot; controller and dashboard switch modes)
+Wants=network-online.target
+After=network-online.target
+# Retry a crash of the launch at most StartLimitBurst=3 times in StartLimitIntervalSec=120 s (RestartSec=5 s between
+# attempts, below), then stay stopped: a launch that keeps dying needs a person, not a loop that re-energises the
+# motors every few seconds. These two keys MUST be in [Unit]: under [Service] systemd ignores the interval
+# (found in review, 2026-11-22).
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+# A root service gets no HOME from systemd, and ROS logging needs one, so it is given /root. The user's venv and
+# domain id are passed separately (pi/rocko_env.sh reads them); the user's log folder comes through log_root:= below.
+Environment=HOME=/root
+Environment=ROCKO_VENV=@VENV@
+Environment=ROCKO_DOMAIN_ID=@DOMAIN_ID@
+# Tells pi/launch.sh that this IS the robot service, so its "a boot service is running" guard lets it through.
+Environment=ROCKO_BOOT_SERVICE=1
+ExecStart=@REPO@/pi/launch.sh robot log_root:=@LOG_ROOT@
+# Stop it the way Ctrl-C does, so ros2 launch shuts its nodes down in order. Whether the motor plugin then writes 0 %
+# duty before it exits is NOT verified (finding H-7: it zeroes the PWM in on_deactivate, and a shutdown may skip that);
+# Ctrl-C on a manual launch has the same open question.
+KillSignal=SIGINT
+# KillMode stays the default (control-group: every process gets the SIGINT at once). Do NOT set KillMode=mixed:
+# tried on the robot 2026-11-22 with the tank service, it signals ros2 launch only, the launch stops the encoder node
+# first, and ros2_control_node then hangs in the motor plugin's read() (finding C-1: an encoder service call with no
+# timeout) until it is SIGKILLed, which can leave a PWM pin at its last level (H-7). With the default it exits cleanly.
+# The supervisor stops its child stack the same way (SIGINT to the child's whole process group).
+# If the launch has not exited 40 s after SIGINT, systemd kills it. The supervisor gives its child stack
+# stop_timeout_s = 15 s before it SIGKILLs it, and the rest of the launch needs a few seconds after that: 40 s is
+# that plus margin, so systemd's kill is the last resort and not part of a normal stop.
+TimeoutStopSec=40
+# on-failure covers the LAUNCH failing (a bad install, an exception, launch.sh refusing). A node that crashes INSIDE a
+# running launch (e.g. ros2_control_node) does not end the launch, so it does not restart it: status still says active,
+# and the log shows the crash. (The supervisor notices a missing node itself: it disables and reports a fault.)
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

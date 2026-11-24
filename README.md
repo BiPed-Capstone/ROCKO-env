@@ -25,16 +25,24 @@ If none of that is familiar yet, the [official ros2_control docs](https://contro
 
 ### How the pieces actually connect
 
-Here's the real signal path when you drive the robot, from gamepad to spinning wheel:
+Here's the real signal path when you drive the robot in balancing mode, from game controller to spinning wheel. The
+controller is plugged into the Pi's USB; nothing runs on your laptop:
 
 ```
- your laptop                    the Raspberry Pi
-┌──────────────────┐   TCP    ┌────────────────────────────────────────────────┐
-│ computer_        │  :1234   │ Joystick.py                                    │
-│ joystick.py      │─────────>│   publishes → diffbot_base_controller/cmd_vel  │
-│ (pygame gamepad) │          └───────────────────────┬────────────────────────┘
-└──────────────────┘                                  │
-                                                      v
+ the Raspberry Pi
+┌────────────────────────────────────────────────┐
+│ 8BitDo pad ──USB──> joy's game_controller_node │
+│                      publishes /joy            │
+└───────────┬────────────────────────┬───────────┘
+            v                        v
+┌───────────────────────┐  ┌───────────────────────────────────────┐
+│ Supervisor.py         │  │ BalanceTeleop.py                      │
+│  LB+RB: enable        │  │  drives only while /rocko/state says  │
+│  LT+RT+RB: mode       │─>│  enabled; publishes                   │
+│  publishes            │  │  diffbot_base_controller/cmd_vel      │
+│  /rocko/state         │  └───────────────────┬───────────────────┘
+└───────────────────────┘                      │
+                                               v
                               ┌────────────────────────────────────────────────┐
                               │ DiffDriveController.py                         │
                               │   → velocity_pid_controller/reference          │
@@ -58,11 +66,13 @@ Here's the real signal path when you drive the robot, from gamepad to spinning w
                               └────────────────────────────────────────────────┘
 ```
 
+In tank mode the same pad drives `TankTeleop.py` straight into `diff_drive_controller`, with no cascade. The **supervisor** (`Supervisor.py`) decides which mode's stack runs and whether it is enabled: [the robot supervisor](docs/architecture/robot-supervisor.md).
+
 To control the robot to go *faster*, the robot first has to *lean* further forward. So the velocity loop doesn't command wheel speed directly. It commands a target lean angle, and the pitch loop underneath it works out the wheel speed needed to hold that lean. The IMU supplies the actual pitch, and the wheel encoders supply the actual velocity.
 
-There are two ways to run the robot:
+There are two modes. A **supervisor** node starts at boot, owns which one runs and whether the robot is **enabled** (the motion controllers active), and starts and stops each mode's stack. The Pi boots into **tank mode, disabled**; press **LB + RB** on the controller (or Enable on the dashboard) to enable; **LT + RT + RB** (or the dashboard's Tank/Balance buttons) switches mode, only while disabled. Not run on the robot yet: [the robot supervisor](docs/architecture/robot-supervisor.md), [Drive ROCKO with a USB controller](docs/guides/drive-with-usb-controller.md).
 
-- **Balancing mode**: the cascade above. This is the real robot. Uses `rocko.urdf.xacro` + `rocko_controllers.yaml`.
+- **Balancing mode**: the cascade above. This is the real robot, **which has never balanced yet**. Uses `rocko.urdf.xacro` + `rocko_controllers.yaml`. Driven by `BalanceTeleop.py`, untested.
 - **Tank mode**: balancing disabled, plain differential drive, for when you just want it to move without fighting the control loop. Uses `rocko_tank_mode.urdf.xacro` + `rocko_tank_mode_controllers.yaml`.
 
 ---
@@ -145,14 +155,16 @@ ROCKO-env
 │   └── rocko_env/
 │       ├── bringup/
 │       │   ├── config/                 PID gains and controller settings. Tune here (rocko_sim_controllers.yaml holds the simulator's gains only)
-│       │   └── launch/                 The three "start everything" files, plus rocko_sim.launch.py for the simulated robot
+│       │   └── launch/                 rocko_robot.launch.py (what boots: supervisor, joy, dashboard, Foxglove), the two mode launches rocko.launch.py and rocko_tank_mode.launch.py, plus rocko_sim.launch.py for the simulated robot
 │       ├── controllers/
 │       │   ├── add_feedforward/        C++ controller that adds a feedforward term
 │       │   ├── diffdrive/              Turns steering commands into per-wheel targets
-│       │   ├── joystick/               Balancing mode: TCP server for a laptop gamepad (no sender left in the repo)
-│       │   ├── tank_teleop/            Tank mode: TankTeleop.py, the USB controller on the Pi drives (hold LB)
+│       │   ├── joystick/               Joystick.py: TCP server for a laptop gamepad (no sender left in the repo); only the simulation launch still uses it
+│       │   ├── tank_teleop/            Tank mode: TankTeleop.py, the USB controller on the Pi drives (when enabled)
+│       │   ├── balance_teleop/         Balancing mode: BalanceTeleop.py, the same pad with its own lower speeds (untested)
 │       │   └── utils/                  RateLimiter.py (not used by any node)
-│       ├── teleop/gamepad.py           Shared by every teleop node and the dashboard: the controller layout, deadzone/expo/mixing, hold-to-drive
+│       ├── supervisor/                 Supervisor.py: owns mode (tank/balance), enabled and phase; starts each mode's launch as a child (state_machine.py has the rules, modes.py the mode table)
+│       ├── teleop/gamepad.py           Shared by the teleop nodes, the supervisor and the dashboard: the controller layout, deadzone/expo/mixing, the LB+RB and LT+RT+RB combos, stick re-centre
 │       ├── description/
 │       │   ├── urdf/                   The robot's physical shape and joints (xacro files)
 │       │   ├── ros2_control/           Which hardware plugin drives which joint, and GPIO pins; also the mock
@@ -167,8 +179,8 @@ ROCKO-env
 │       │       └── quadEncoder/        Wheel encoder readers
 │       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
 │       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
-├── rocko_interfaces/                   Custom message and service definitions
-└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
+├── rocko_interfaces/                   Custom messages and services, including the supervisor's RobotState and SetEnabled/SetMode
+└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), balancing mode's (balance_teleop_test.py), the supervisor's rules (supervisor_state_machine_test.py, supervisor_flow_check.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
 ```
 
 A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
@@ -219,15 +231,16 @@ colcon build --packages-select rocko_env --symlink-install
 
 ## Running it
 
-**If tank mode starts at boot** (`rocko-tank.service`, [guide](docs/guides/drive-with-usb-controller.md#start-tank-mode-at-boot)), the robot is already in tank mode after power-on, and `pi/launch.sh` refuses to start another launch until you run `sudo systemctl stop rocko-tank.service` (it comes back at the next boot).
+**If the boot service is installed** (`rocko.service`, from `pi/install_boot_service.sh robot`; [guide](docs/guides/run-on-the-pi.md#the-boot-service-the-supervisor)), the robot is already running the supervisor after power-on: tank mode, **disabled** until you press LB + RB. `pi/launch.sh` then refuses to start another launch until you run `sudo systemctl stop rocko.service` (it comes back at the next boot). It replaces the older `rocko-tank.service` and `rocko-dashboard.service`; the install removes them. Written 2026-11-23; **not yet run on the robot.**
 
 **On the Pi the robot's launches run as root** (the motor plugin uses WiringPi, which needs it), in a terminal with the right environment. The scripts in `pi/` do that: [Run ROCKO on the Pi](docs/guides/run-on-the-pi.md) explains why, and what each script does. Run from the repo root:
 
 ```bash
-# Balancing mode (the real thing)
-pi/launch.sh balance
+# The whole robot, as it starts at boot: supervisor, tank mode (disabled), controller, dashboard
+pi/launch.sh robot
 
-# Tank mode (no balancing, just drives)
+# One mode by hand, with no supervisor (bench tests; the controller cannot enable these)
+pi/launch.sh balance
 pi/launch.sh tank
 
 # Just look at the robot model in RViz, no hardware needed (not on the robot; needs a display)
@@ -246,16 +259,20 @@ You can also run individual nodes, which is handy when debugging one piece:
 pi/rocko_run.sh ros2 run rocko_env DiffDriveController.py
 pi/rocko_run.sh ros2 run rocko_env QuadEncoders.py
 pi/rocko_run.sh ros2 run rocko_env ICM20948.py
-pi/rocko_run.sh ros2 run rocko_env Joystick.py      # balancing mode's teleop input
-pi/rocko_run.sh ros2 run rocko_env TankTeleop.py    # tank mode's (needs joy's game_controller_node too)
+pi/rocko_run.sh ros2 run rocko_env BalanceTeleop.py # balancing mode's (needs joy's game_controller_node and a supervisor)
+pi/rocko_run.sh ros2 run rocko_env TankTeleop.py    # tank mode's (needs joy's game_controller_node and a supervisor)
 ```
 
-**Driving (tank mode):** plug a game controller (an 8BitDo in X-input mode) into the Pi's USB and start
-tank mode; hold the **left bumper** to drive, left stick for speed, right stick to turn. Nothing runs on your
-laptop. Needs `sudo apt install ros-jazzy-joy` on the Pi once:
-[Drive tank mode with a USB game controller](docs/guides/drive-with-usb-controller.md). Checked with fake
-controller messages and on the mock only. **Balancing mode cannot be driven at present:** keyboard and laptop
-driving were removed on 2026-11-22, and balancing mode's `Joystick.py` has no sender left.
+**Driving:** plug a game controller (an 8BitDo in X-input mode) into the Pi's USB. The robot starts **disabled**; press
+**LB + RB** together to enable (and again to disable); then the left stick is speed and the right stick is turn, and both
+sticks must return to the centre once before it moves. **LT + RT + RB** together switches tank/balance while disabled.
+Letting go of a button does not stop the robot any more (the old hold-LB rule was replaced on 2026-11-23): press LB + RB.
+Nothing runs on your laptop. Needs `sudo apt install ros-jazzy-joy` on the Pi once:
+[Drive ROCKO with a USB game controller](docs/guides/drive-with-usb-controller.md). The web [dashboard](docs/guides/use-the-dashboard.md)
+(port 8080) shows the state and has the same buttons, with **no login**. Checked with fake controller messages and on the mock only.
+**Balancing mode has never balanced on the robot**: it can now be reached and driven from the controller, untested; see
+[next-steps.md](docs/next-steps.md). `rocko.launch.py` run by hand no longer starts `Joystick.py`, and without a supervisor its teleop node
+never enables, so drive balancing through `pi/launch.sh robot`.
 
 To keep a recording of a test, add `record:=true` to any of the launches above
 (`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):

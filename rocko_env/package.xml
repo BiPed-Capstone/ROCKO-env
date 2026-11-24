@@ -39,6 +39,8 @@
   <!-- Tank mode reads the USB game controller with joy's game_controller_node -->
   <exec_depend>joy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <!-- Supervisor.py talks to controller_manager (list/switch controllers) -->
+  <exec_depend>controller_manager_msgs</exec_depend>
   <!-- record:=true (RecordRun.py) runs `ros2 bag record` and writes MCAP -->
   <exec_depend>ros2bag</exec_depend>
   <!-- Dashboard.py imports these directly -->

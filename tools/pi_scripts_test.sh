@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Host test of the Pi helper scripts (pi/rocko_env.sh, rocko_run.sh, rocko_shell.sh, launch.sh and its
-# tank-service guard, install_boot_service.sh's rendered units).
+# tank-service guard, install_boot_service.sh's rendered units, the supervisor's rocko.service and its install rules).
 # No ROS, no robot, no real sudo: a fake ROS setup file, a fake `ros2` that prints what it was given
 # and what it can see, and a fake `sudo` that logs the call and runs the rest as the same user.
 #
@@ -8,7 +8,7 @@
 #
 # WHAT THIS PROVES: the scripts build the environment they say they build (ROS, venv, workspace
 # overlay, ROS_DOMAIN_ID, cd), go through sudo, hand sudo's fresh environment the settings that depend
-# on the caller's home, pass the command and its exit status through, and launch.sh maps tank/balance to
+# on the caller's home, pass the command and its exit status through, and launch.sh maps tank/balance/robot to
 # the right launch file and keeps recordings in the caller's ~/rocko_logs.
 # WHAT IT CANNOT PROVE: that real `sudo` accepts these calls, that the Pi's root can read the venv, or
 # that WiringPi then works. Those need the Pi (docs/guides/bench-test-tank-mode.md, step 1).
@@ -179,6 +179,60 @@ check "launch.sh balance while rocko-tank.service runs: refused (2), says how to
 out="$(PATH="$work/tankup:$PATH" ROCKO_BOOT_SERVICE=1 "$repo/pi/launch.sh" tank 2>&1)"; code=$?
 r=0; [ "$code" -eq 0 ] || r=1; has "$out" "ros2 launch rocko_env rocko_tank_mode.launch.py" || r=1
 check "launch.sh tank from the service itself (ROCKO_BOOT_SERVICE=1): let through" "$r" "code $code: $out"
+
+# 10. the supervisor: launch.sh robot, rocko.service rendered, and the guard that rocko.service sets
+out="$("$repo/pi/launch.sh" robot 2>&1)"
+check "launch.sh robot: rocko_robot.launch.py, recordings to ~/rocko_logs" \
+  "$(has "$out" "ros2 launch rocko_env rocko_robot.launch.py log_root:=$home/rocko_logs" && echo 0 || echo 1)" "$out"
+
+out="$(HOME="$home" ROCKO_VENV="$home/myvenv" ROCKO_DOMAIN_ID=23 "$repo/pi/install_boot_service.sh" robot print 2>&1)"; code=$?
+r=0; [ "$code" -eq 0 ] || r=1
+has "$out" "ExecStart=$repo/pi/launch.sh robot log_root:=$home/rocko_logs" || r=1
+has "$out" "Environment=ROCKO_VENV=$home/myvenv" || r=1
+has "$out" "Environment=ROCKO_DOMAIN_ID=23" || r=1
+has "$out" "Environment=ROCKO_BOOT_SERVICE=1" || r=1
+has "$out" "Environment=HOME=/root" || r=1
+has "$out" "KillSignal=SIGINT" || r=1
+has "$out" "TimeoutStopSec=40" || r=1   # > the supervisor's stop_timeout_s (15 s) plus the launch's own shutdown
+has "$out" "StartLimitBurst=3" || r=1
+grep -qE '^KillMode=' <<<"$out" && r=1  # the default control-group, see the comment in the unit
+grep -qE '@[A-Z_]+@' <<<"$out" && r=1
+check "install_boot_service.sh robot print: launch.sh robot, service marker, SIGINT, TimeoutStopSec=40, no placeholders left" "$r" "$out"
+
+mkdir -p "$work/robotup"
+printf '#!/bin/sh\n[ "$1 $2 $3" = "is-active --quiet rocko.service" ] && exit 0\nexit 3\n' >"$work/robotup/systemctl"
+chmod +x "$work/robotup/systemctl"
+out="$(PATH="$work/robotup:$PATH" "$repo/pi/launch.sh" tank 2>&1)"; code=$?
+r=0; [ "$code" -eq 2 ] || r=1; has "$out" "sudo systemctl stop rocko.service" || r=1; has "$out" "ros2 launch" && r=1
+check "launch.sh tank while rocko.service runs: refused (2), says how to stop it" "$r" "code $code: $out"
+out="$(PATH="$work/robotup:$PATH" ROCKO_BOOT_SERVICE=1 "$repo/pi/launch.sh" robot 2>&1)"; code=$?
+r=0; [ "$code" -eq 0 ] || r=1; has "$out" "ros2 launch rocko_env rocko_robot.launch.py" || r=1
+check "launch.sh robot from the service itself (ROCKO_BOOT_SERVICE=1): let through" "$r" "code $code: $out"
+
+# 11. installing: robot replaces the tank and dashboard units; tank/dashboard refuse while rocko.service exists.
+# A fake systemctl that logs, a unit folder in the work dir (ROCKO_UNIT_DIR), and the fake sudo above.
+mkdir -p "$work/units" "$work/sysctl"
+# (sudo's env_reset drops variables, so the log's path is written into the fake itself.)
+SYSTEMCTL_LOG="$work/systemctl.log"; : >"$SYSTEMCTL_LOG"
+printf '#!/bin/sh\necho "systemctl $*" >>"%s"\nexit 0\n' "$SYSTEMCTL_LOG" >"$work/sysctl/systemctl"; chmod +x "$work/sysctl/systemctl"
+touch "$work/units/rocko-tank.service" "$work/units/rocko-dashboard.service"
+out="$(PATH="$work/sysctl:$PATH" ROCKO_UNIT_DIR="$work/units" "$repo/pi/install_boot_service.sh" robot 2>&1)"; code=$?
+r=0; [ "$code" -eq 0 ] || r=1
+[ ! -e "$work/units/rocko-tank.service" ] || r=1; [ ! -e "$work/units/rocko-dashboard.service" ] || r=1
+[ -s "$work/units/rocko.service" ] || r=1
+has "$out" "Removing rocko-tank.service" || r=1; has "$out" "Removing rocko-dashboard.service" || r=1
+has "$(cat "$SYSTEMCTL_LOG")" "disable --now rocko-tank.service" || r=1
+has "$(cat "$SYSTEMCTL_LOG")" "enable --now rocko.service" || r=1
+check "install_boot_service.sh robot: stops, disables and removes the tank and dashboard units (and says so), installs rocko.service" "$r" "code $code: $out
+$(cat "$SYSTEMCTL_LOG")"
+
+for other in tank dashboard; do
+  : >"$SYSTEMCTL_LOG"
+  out="$(PATH="$work/sysctl:$PATH" ROCKO_UNIT_DIR="$work/units" "$repo/pi/install_boot_service.sh" $other 2>&1)"; code=$?
+  r=0; [ "$code" -eq 2 ] || r=1; has "$out" "rocko.service is installed" || r=1
+  [ ! -e "$work/units/rocko-$other.service" ] || r=1; [ ! -s "$SYSTEMCTL_LOG" ] || r=1
+  check "install_boot_service.sh $other while rocko.service is installed: refused (2), nothing installed" "$r" "code $code: $out"
+done
 
 echo
 echo "$pass passed, $fail failed"

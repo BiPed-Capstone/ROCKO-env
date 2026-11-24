@@ -159,6 +159,8 @@ install(PROGRAMS
   rocko_env/controllers/utils/RateLimiter.py
   rocko_env/controllers/joystick/Joystick.py
   rocko_env/controllers/tank_teleop/TankTeleop.py
+  rocko_env/controllers/balance_teleop/BalanceTeleop.py
+  rocko_env/supervisor/Supervisor.py
   rocko_env/recording/RecordRun.py
   rocko_env/webserver/Dashboard.py
   DESTINATION lib/${PROJECT_NAME}
