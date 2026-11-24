@@ -68,8 +68,12 @@ case "$action" in
     echo "Installed $target; enabled at boot; started."
     echo "Check: pi/install_boot_service.sh $1 status" ;;
   status)
-    echo "enabled at boot: $(systemctl is-enabled "$name" 2>/dev/null || echo no)"
-    echo "running now:     $(systemctl is-active "$name" 2>/dev/null || echo no)"
+    # These commands print their answer ("disabled", "failed") AND exit non-zero for it, so "|| echo no" would print
+    # both lines; "no" is only for an empty answer (systemctl missing).
+    at_boot="$(systemctl is-enabled "$name" 2>/dev/null)" || true
+    running="$(systemctl is-active "$name" 2>/dev/null)" || true
+    echo "enabled at boot: ${at_boot:-no}"
+    echo "running now:     ${running:-no}"
     # A climbing count means it keeps exiting (the dashboard does that, harmlessly, while a launch's own dashboard
     # holds port 8080; for tank mode it means the launch keeps failing: read the log).
     echo "restarts:        $(systemctl show -p NRestarts --value "$name" 2>/dev/null)"

@@ -72,9 +72,15 @@ def test_publishes_on_the_topic_diffdrive_listens_to():
     twist = node.publishers["diffbot_base_controller/cmd_vel"].sent[-1]
     check(twist.header.stamp == "stamp" and close(twist.twist.linear.x, 0.5), "stamped command at the default cap (0.5 m/s)")
     check(node.publishers["balance_teleop/enabled"].sent[-1].data is True, "enabled flag published")
+    cmd = node.publishers["diffbot_base_controller/cmd_vel"]
+    node.now.t += gamepad.JOY_TIMEOUT_S + 0.1
+    state(node, "balance")
+    node.step()
+    check(cmd.sent[-1].twist.linear.x == 0.0, "enabled, controller silent: zero velocity is sent (C-3)")
+    sent_before = len(cmd.sent)
     state(node, "balance", enabled=False)
     node.step()
-    check(node.publishers["diffbot_base_controller/cmd_vel"].sent[-1].twist.linear.x == 0.0, "zero when disabled")
+    check(len(cmd.sent) == sent_before, "disabled: no command sent")
 
 
 def test_decoupled_from_tank_mode():

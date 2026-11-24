@@ -353,10 +353,16 @@ def test_tank_step_publishes_stamped_command_and_enabled():
     enabled = node.publishers["tank_teleop/enabled"].sent[-1]
     check(twist.header.stamp == "stamp" and close(twist.twist.linear.x, 15.0), "stamped full-speed command")
     check(enabled.data is True, "enabled is published")
+    cmd = node.publishers["diffbot_base_controller/cmd_vel"]
+    node.now.t += gamepad.JOY_TIMEOUT_S + 0.1   # enabled, but the controller went silent: zero IS sent (lost input, C-3)
+    state(node, "tank")
+    node.step()
+    check(cmd.sent[-1].twist.linear.x == 0.0, "enabled, controller silent: a zero command is sent")
+    sent_before = len(cmd.sent)
     state(node, "tank", enabled=False)
     node.step()
     check(node.publishers["tank_teleop/enabled"].sent[-1].data is False, "disabled published")
-    check(node.publishers["diffbot_base_controller/cmd_vel"].sent[-1].twist.linear.x == 0.0, "and a zero command")
+    check(len(cmd.sent) == sent_before, "disabled: no command sent (an inactive diff_drive_controller warns on each)")
 
 
 # --- wiring and decoupling ---------------------------------------------------------------------------

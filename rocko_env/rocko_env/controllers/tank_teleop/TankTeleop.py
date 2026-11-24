@@ -95,6 +95,7 @@ class TankTeleop(Node):
             depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.cmd_publisher = self.create_publisher(TwistStamped, "diffbot_base_controller/cmd_vel", 10)
         self.enabled_publisher = self.create_publisher(Bool, "tank_teleop/enabled", 10)
+        self.allowed = False
         self.create_timer(PUBLISH_PERIOD_S, self.step)
         self.get_logger().info(f"tank teleop: drive when /rocko/state says enabled in tank mode; settings {self.settings}")
 
@@ -142,7 +143,8 @@ class TankTeleop(Node):
         heard = self.last_joy_s is not None and self.now() - self.last_joy_s <= gamepad.JOY_TIMEOUT_S
         # CentreRearm sees every cycle, so "enabled" dropping (or the controller going silent) re-arms it.
         # `heard` is part of its enabled input: the joy node keeps its last stick values across an unplug.
-        enabled = self.supervisor_allows() and heard
+        self.allowed = self.supervisor_allows()   # step() reads it: nothing is sent while the robot is disabled
+        enabled = self.allowed and heard
         sending = self.rearm.update(enabled, enabled and self.sticks_centred())
         self.log_changes(heard, sending)
         if not sending:
@@ -170,7 +172,12 @@ class TankTeleop(Node):
         twist.header.stamp = self.get_clock().now().to_msg()  # diff_drive_controller ages commands by this
         twist.twist.linear.x = linear
         twist.twist.angular.z = angular
-        self.cmd_publisher.publish(twist)
+        # While the supervisor says disabled (or another mode), send NOTHING: the motion controllers are inactive,
+        # and an inactive diff_drive_controller logs a warning for every command it is sent (50 a second filled the
+        # Pi's journal, 2026-11-23). While enabled, zero is still sent whenever the sticks may not drive (controller
+        # silent, not re-centred): that zero is the safe response to lost input (finding C-3).
+        if self.allowed:
+            self.cmd_publisher.publish(twist)
         self.enabled_publisher.publish(Bool(data=enabled))
 
 
