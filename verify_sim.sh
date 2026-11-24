@@ -112,12 +112,14 @@
 #   S2b  the verifier's own check: U again with pitch_sign:=+1 (the pitch loop's sign flipped). U must
 #        FAIL, and for the right reason: the wiring is up and |pitch| reaches TIPOVER_DEG within
 #        S2B_FALL_S of release. S2b is "ok" only then.
-#   AB   characterisation, "as-built signs": U with encoder_sign:=+1 (the sim's default, the
-#        authors' intent) for AB_RECORD_S. EXPECTED TO FALL by the slow run-away of finding H-12 (the
-#        outer loop is positive feedback at DC for any positive velocity gains). "ok" if it falls no
+#   AB   characterisation, "as-built signs": U for AB_RECORD_S with the velocity gains' sign NOT flipped
+#        relative to the hardware file, i.e. the measured encoder sign (+1) with positive velocity
+#        gains. The sim's gains are negative now, so AB runs encoder_sign:=AB_ENCODER_SIGN (-1), which at
+#        a zero reference is the same loop. EXPECTED TO FALL by the slow run-away of finding H-12 (the
+#        outer loop is positive feedback at DC for any positive velocity gains with this encoder). "ok" if it falls no
 #        sooner than AB_MIN_FALL_S; the time to fall is printed. A run that does NOT fall is a FAIL:
 #        the signs or the gains changed, and finding H-12's docs must be revisited.
-# U, I, V, K and S2b run with encoder_sign:=SCENARIO_ENCODER_SIGN, an ASSUMPTION (see its comment).
+# U, I, V, K and S2b run with encoder_sign:=SCENARIO_ENCODER_SIGN, the MEASURED sign (see its comment).
 # Scenarios exit status: 0 only if U, I, V and K pass AND S2b and AB are ok; 1 if any is not; 2 if a run
 # could not be judged and nothing failed. While SCENARIOS_EXPECTED_RED=1 a failing U, I or V is
 # printed "FAIL (expected until the sim gains are tuned)", but it still counts: the exit status is 1.
@@ -255,12 +257,18 @@ FF_LOG_GAP_S=1.0       # [s] kTimeoutLogMinCycles (100) at update_rate 100: afte
 SCENARIOS_EXPECTED_RED=0  # was 1 until the commit that first made U, I and V pass (stage 5c-1, sim
                           #   gains tuned; docs/journal/2026-11-03-stage5c1-sim-gain-tuning.md).
                           #   Only changes the wording of a FAIL; the exit status is 1 either way
-SCENARIO_ENCODER_SIGN=-1  # ASSUMPTION, NOT CHECKED ON THE ROBOT: the encoder reads NEGATIVE when a
-                          #   positive wheel command drives the robot. Chosen because with every gain
-                          #   positive it is the only encoder sign under which the outer loop can be
-                          #   negative feedback (finding H-12; sim-plant.md §2.4); the sim default (+1,
-                          #   the authors' intent) is kept in AB. Every scenario result carries this
-                          #   label. Proposal 0006 asks a human to settle the real sign
+SCENARIO_ENCODER_SIGN=1   # MEASURED on the robot 2026-11-24 (proposal 0006, stand sign check): the encoder
+                          #   reads POSITIVE when a positive wheel command drives the robot. It is also the
+                          #   sim's default (xacro, launch file, SimPlantParams). Until 2026-11-24 this was
+                          #   -1, an assumption chosen so that all-positive velocity gains could work; the
+                          #   robot has the other sign, so the sim's velocity gains are now NEGATIVE (proposal
+                          #   0006 option A) and the scenarios run the real sign
+AB_ENCODER_SIGN=-1        # AB only: the as-built, UNFLIPPED cascade (positive velocity gains, the measured
+                          #   encoder sign). The sim's velocity gains are now negated (proposal 0006 option
+                          #   A), and at a zero velocity reference negating the gains is the same as flipping
+                          #   the encoder's sign. So the negated gains with encoder_sign:=-1 are, in the
+                          #   feedback path, the positive gains with encoder_sign:=+1. The launch file has no
+                          #   gain-file argument; the encoder sign is the one knob AB can turn
 U_START_DEG=2.0        # [deg] U's initial pitch: small, the size used by C2 and H6; from exactly 0 the
                        #   model's equilibrium is exact (unit test #10) and nothing would happen
 U_RECORD_S=10          # [s] "hold upright for 10 s" (bootstrap-sim step 7)
@@ -1042,9 +1050,10 @@ scenario_s2b() {
   end_run
 }
 
-# AB: the as-built signs (encoder_sign:=+1, the sim's default), expected to fall slowly.
+# AB: the as-built (unflipped) velocity gains with the measured encoder sign, expected to fall slowly.
+# See AB_ENCODER_SIGN for why that is encoder_sign:=-1 against the negated sim gains.
 scenario_as_built() {
-  run_upright "AB-as-built-signs" "$AB_RECORD_S" encoder_sign:=1
+  run_upright "AB-as-built-signs" "$AB_RECORD_S" encoder_sign:="$AB_ENCODER_SIGN"
   local failures=(); scenario_launch_problems
   local fell; fell="$(metric "$dir/metrics.json" fell_at_s | rounded)"
   if [ ${#failures[@]} -ne 0 ]; then
@@ -1067,8 +1076,8 @@ scenario_as_built() {
 verdict_of() { case "$1" in 0) echo PASS ;; 1) echo FAIL ;; *) echo "COULD NOT JUDGE" ;; esac; }
 
 if [ "$mode" = scenarios ]; then
-  echo "SCENARIOS ($selected). ASSUMPTION for U, I, V, K, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN (not checked on"
-  echo "the robot; proposal 0006). Gains: rocko_sim_controllers.yaml as it is. A model with ESTIMATED parameters."
+  echo "SCENARIOS ($selected). U, I, V, K, S2b: encoder_sign:=$SCENARIO_ENCODER_SIGN, the sign MEASURED on the robot"
+  echo "(proposal 0006). Gains: rocko_sim_controllers.yaml as it is. A model with ESTIMATED parameters."
   [ ${#overrides[@]} -ne 0 ] && echo "MODEL CHANGED for this run (SIM_PLANT_OVERRIDES): ${overrides[*]}"
   wants U && scenario_upright
   wants I && scenario_impulse
@@ -1076,13 +1085,13 @@ if [ "$mode" = scenarios ]; then
   wants K && scenario_key_press
   wants S2b && scenario_s2b
   wants AB && scenario_as_built
-  echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN assumed for U, I, V, K, S2b; AB uses +1):"
+  echo "--- scenario results (encoder_sign:=$SCENARIO_ENCODER_SIGN, measured, for U, I, V, K, S2b; AB uses $AB_ENCODER_SIGN = the unflipped gains):"
   echo "  (ok = the check behaved as designed: S2b ok means U failed for the right reason; AB ok means the robot fell slowly as H-12 predicts)"
   if [ "$SCENARIOS_EXPECTED_RED" -eq 1 ]; then
     echo "  (red U/I/V are expected until the sim gains are tuned; red S2b or AB is not)"
   fi
   for s in $selected; do echo "  ${scenario_line[$s]}"; done
-  echo "  A pass would mean: the model, with its estimated parameters and the assumed signs, is held up by"
+  echo "  A pass would mean: the model, with its estimated parameters and the measured signs, is held up by"
   echo "  these gains. It would say nothing about the real robot."
   if [ "$scenario_failed" -ne 0 ]; then echo "SCENARIOS: FAIL (exit 1)"; exit 1; fi
   if [ "$scenario_could_not" -ne 0 ]; then echo "SCENARIOS: COULD NOT JUDGE (exit 2)"; exit 2; fi

@@ -61,8 +61,8 @@ pitch_pid_controller:
     # Units: the error is in degrees of pitch and the output is a wheel velocity in rad/s, so
     # p is [(rad/s) per deg of pitch error] and i_clamp_min/max are limits in rad/s. d is
     # [(rad/s) per deg/s of pitch rate], the same unit as before H-6.
-    # SIM-TUNED 2026-11-03 (stage 5c-1), against the MODEL with encoder_sign:=-1 ASSUMED (proposal
-    # 0006) and the estimated 20 ms IMU delay: p 10.0 -> 15.0, d 0.1 -> 1.0 (hardware: p 10.0, d 0.1).
+    # SIM-TUNED 2026-11-03 (stage 5c-1), against the MODEL (then with encoder_sign:=-1 ASSUMED, proposal
+    # 0006; now the measured +1, see the velocity loop below) and the estimated 20 ms IMU delay: p 10.0 -> 15.0, d 0.1 -> 1.0 (hardware: p 10.0, d 0.1).
     # d does most of the work: at 0.1 the 20 ms IMU delay leaves the pitch loop unstable in the model.
     # Candidates, not results: docs/journal/2026-11-03-stage5c1-sim-gain-tuning.md.
     gains:
@@ -94,6 +94,13 @@ velocity_pid_controller:
     # the motor's back-EMF and friction (sim-plant.md §2.4: stable only if k*p > c) and because, with
     # no integral, the steady speed overshoots the reference by about c / (k*p - c). i = 0 because in
     # the model the integral only added to scenario V's overshoot.
+    # NEGATIVE since 2026-11-24 (proposal 0006, option A), because the robot's signs were MEASURED: the
+    # encoder reads positive under a positive command (stand check, 2026-11-24) and the pitch goes DOWN
+    # when the robot leans toward the direction a positive command drives it (2026-11-23). With those
+    # signs the outer loop is negative feedback only if its gains are negative (sim-plant.md §2.4). The
+    # magnitudes below are the stage 5c-1 ones until the retune of 2026-11-24 changes them (see the
+    # journal docs/journal/2026-11-24-sim-measured-signs-retune.md); the owner makes the same sign
+    # change in rocko_controllers.yaml (a gated file), so the sim runs the sign the robot will have.
     gains:
-      pitch_pid_controller/left_wheel_joint:   {p: 25.0, i: 0.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
-      pitch_pid_controller/right_wheel_joint:   {p: 25.0, i: 0.0, d: 0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      pitch_pid_controller/left_wheel_joint:   {p: -25.0, i: 0.0, d: -0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}
+      pitch_pid_controller/right_wheel_joint:   {p: -25.0, i: 0.0, d: -0.2, i_clamp_max: 150.0, i_clamp_min: -150.0}

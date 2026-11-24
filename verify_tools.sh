@@ -99,11 +99,11 @@ else
 fi
 
 # --- 2. the dashboard: its values against the robot's, and Record/Stop over HTTP ---
-# initial_pitch_deg:=2.0 with the scenarios' encoder sign: the robot starts leaning and stands up,
+# initial_pitch_deg:=2.0 with the sim's default (measured) encoder sign: the robot starts leaning and stands up,
 # so there is a pitch transient to compare (see DASH_MIN_PITCH_DEG).
 # foxglove:=true: the same launch also serves part 3.
 start_launch dashboard:=true dashboard_port:="$DASH_PORT" log_root:="$out/dashlogs" \
-  initial_pitch_deg:=2.0 encoder_sign:=-1 foxglove:=true
+  initial_pitch_deg:=2.0 foxglove:=true
 sleep "$DASH_START_S"
 python3 "$here/sim/check_dashboard.py" --port "$DASH_PORT" --record-s "$DASH_RECORD_S" \
   --tolerance-deg "$DASH_TOLERANCE_DEG" --min-pitch-deg "$DASH_MIN_PITCH_DEG"
