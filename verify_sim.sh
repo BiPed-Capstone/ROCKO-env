@@ -183,8 +183,10 @@ S1_STILL_DEG=0.01      # [deg] the baseline must stay closer than this to its st
 S1_CHANGE_DEG=0.2      # [deg] the command run must move at least this much: 20x S1_STILL_DEG. A plant
                        #   whose pitch ignored the wheels would give exactly 0. Lowered from 0.5 on
                        #   2026-11-24: with the measured signs and the retuned outer loop the cascade now
-                       #   RESISTS the feedforward kick, and the command moved pitch 0.443 deg (it used to
-                       #   be several degrees, under a loop that ran away). Red with disable_torque (0 deg)
+                       #   RESISTS the feedforward kick: measured 0.44 deg on 2026-11-24, about 2x this floor
+                       #   (it used to be several degrees, under a loop that ran away). Red with
+                       #   disable_torque (0 deg). A later gain change that drops it below 0.2 is a wiring
+                       #   alarm to investigate, not a threshold to loosen
 TIPOVER_DEG=35         # [deg] the tipover angle of finding H-4; also tipover_pitch_deg's default
 FALL_LIMIT_S=0.48      # [s] the model falls 2 -> 35 deg in 0.4273 s with no torque (unit test #6);
                        #   the probe sees it to within one 10 ms cycle. 0.48 adds ~40 ms for timing
@@ -330,7 +332,7 @@ S2B_FALL_S=1.0         # [s] with the pitch loop's sign flipped the linear model
                        #   (1.218 per cycle, sim-plant.md §7.2): 2 -> 35 deg in ~0.2 s. 1.0 s is
                        #   generous and far below AB_MIN_FALL_S, so a slow drift cannot pass for it
 AB_RECORD_S=20         # [s] long enough to see the as-built fall (AB falls at 9.3-10.0 s with the
-                       #   hardware gains, about 3.8 s with the stage 5c-1 sim gains)
+                       #   hardware gains, and at about 4.1 s with the sim gains of 2026-11-24, p -12.5)
 AB_MIN_FALL_S=3.0      # [s] AB must fall by a slow run-away (linear model: a real pole at +0.82 /s),
                        #   not at once: a fall before 3 s would be a different fault
 

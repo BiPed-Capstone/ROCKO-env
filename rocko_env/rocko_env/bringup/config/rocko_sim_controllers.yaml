@@ -93,7 +93,8 @@ velocity_pid_controller:
     # i 5.0 -> 0.0 (hardware: p 2.0, i 5.0, d 0.2; d unchanged). A large p because the loop must beat
     # the motor's back-EMF and friction (sim-plant.md §2.4: stable only if k*p > c) and because, with
     # no integral, the steady speed overshoots the reference by about c / (k*p - c). i = 0 because in
-    # the model the integral only added to scenario V's overshoot.
+    # the model the integral only added to scenario V's overshoot. (Out of date since 2026-11-24: p is now -12.5, and
+    # the overshoot formula describes the 2026-11-03 gains; V's speed now settles slightly under the reference.)
     # RE-SIGNED AND RETUNED 2026-11-24 (proposal 0006 option A; journal
     # docs/journal/2026-11-24-sim-measured-signs-retune.md). The robot's signs were MEASURED: the encoder
     # reads positive under a positive command (stand check, 2026-11-24) and the pitch goes DOWN when the

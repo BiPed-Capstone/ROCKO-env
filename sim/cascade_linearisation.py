@@ -639,6 +639,8 @@ SWEEP_GRID = {  # pitch p, pitch d, velocity p, velocity i, velocity d
 def sweep(base, top):
     """Every grid point's largest |z| (scenario signs, 20 ms), then the `top` most damped points
     screened in the time simulation and given margins. Prints; changes nothing."""
+    print("NOT UPDATED for negative velocity gains: results below describe the old encoder_sign -1 convention "
+          "(proposal 0006 option A, 2026-11-24)")
     g = SWEEP_GRID
     points = [(kp, kd, kpv, kiv, kdv) for kp in g["kp"] for kd in g["kd"] for kpv in g["kpv"]
               for kiv in g["kiv"] for kdv in g["kdv"]]
@@ -682,7 +684,7 @@ def main():
     parser.add_argument("--top", type=int, default=15, help="--sweep: how many to time-simulate")
     args = parser.parse_args()
     if args.candidate or args.sweep:
-        print("ESTIMATED MODEL (sim-plant.md §4), encoder_sign = +1 (measured, proposal 0006; sections that sweep positive velocity gains below assume the old -1 convention, see their text): numbers "
+        print("ESTIMATED MODEL (sim-plant.md §4), encoder_sign = +1 (measured, proposal 0006; sections that sweep positive velocity gains below are NOT UPDATED for negative velocity gains and describe the old encoder_sign -1 convention): numbers "
               "about a model, not about the robot. Not a gain recommendation for the robot.\n")
         base = read_yaml(SIM_YAML)
         if args.sweep:

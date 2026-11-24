@@ -108,7 +108,8 @@ it is not a tally of anything and was repeated with the directory created.)
 | 0 host | `python3 -I sim/check_sim_config.py` | ok (defaults equal in the three places; the sim differs from the hardware gains in pitch p, pitch d, velocity p and i only) |
 | 3 | `verify_sim.sh scenarios` and the repeats above | U, I, V, K PASS; S2b and AB ok |
 | laptop | `python3 -I sim/cascade_linearisation.py --candidate yaml` | the linear model, with `encoder_sign +1` and these gains: largest per-cycle `\|z\|` 0.99334 (stable), gain margin x3.2 up, delay margin 49 ms over 20 ms; time sim U, I, V pass. It agrees with the nonlinear sim in sign and rough size, not in V's rise time (2.76 s there, 1.78 s in the sim) |
-| ladder | `tools/run_ladder.sh` (once, final gains) | **FAIL**: 3 red steps, none a scenario; see "Ladder result" below |
+| ladder | `tools/run_ladder.sh` (once, final gains) | **FAIL**: 3 red steps, none a scenario; see "Ladder result" below (resolved in "Follow-ups") |
+| ladder | `tools/run_ladder.sh`, re-run after the follow-ups (S1 at 0.2 deg, frozen hook-test YAML, the owner's one-line gains) | **PASS on every step**: Tiers 0 to 3, all host tests, hook tests, drift check, link scan; the dashboard check passed too |
 
 ## Review rounds
 
@@ -126,7 +127,7 @@ Not run (no C++ or real-time file changed; scripts, a sim YAML and docs only).
 - The true speed the real robot reports at 100 Hz (balancing) has not been checked against a stopwatch (see the
   [stand check](2026-11-24-stand-sign-check.md)).
 
-## Ladder result (`tools/run_ladder.sh`, once, final gains, `f9a612b` plus these edits, 13 dirty files)
+## Ladder result (`tools/run_ladder.sh`, once, final gains, `f9a612b` plus these edits, 13 dirty files) (resolved below)
 
 PASS: container mount, Tier 1 build (0 compiler warnings), Tier 0 `verify_urdf.sh`, Tier 2 `verify_mock.sh` balance and
 tank, `verify_supervisor.sh`, compile-only motor plugin, **Tier 3 `verify_sim.sh scenarios` (U I V K S2b AB)**, all 13 host
