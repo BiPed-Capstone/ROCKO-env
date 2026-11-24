@@ -41,11 +41,18 @@ established under the model (finding H-12, proposal 0006).
 > signs (proposal 0006 option A: `p -2.0, i -5.0, d -0.2`, magnitudes still untuned). The simulation runs these measured
 > signs, retuned (outer `p -12.5`), every scenario passing ([journal](journal/2026-11-24-sim-measured-signs-retune.md)).
 > **Ready to tune: the list, in order** (who; what checks it):
-> 1. **Measure the robot** ([proposal 0007](proposals/0007-measure-robot-parameters.md)), owner: the tyre's outside
->    diameter first (five wheel turns read 0.360 m per turn, 4.4 % under the 60 mm radius in the code: 114.7 mm means the
->    radius is wrong, 120 mm means the encoder counts are), then mass, centre-of-mass height and inertia
->    ([guide](guides/measure-inertia.md)). The agent then puts the numbers in one place each (`QuadEncoders.py`,
->    `DiffDriveController.py`'s wheel radius, the sim's parameters) and reruns the ladder.
+> 1. **Measure the wheel's outside diameter: required**, owner, ruler or calipers
+>    ([proposal 0007](proposals/0007-measure-robot-parameters.md) step 5). The robot's code uses it directly:
+>    `QuadEncoders.py` turns counts into metres and m/s with it, and `DiffDriveController.py` turns the speed command into
+>    wheel rad/s for the feedforward with it. Five wheel turns read 0.360 m per turn, 4.4 % under the 60 mm radius in the
+>    code: 114.7 mm means the radius is wrong, 120 mm means the encoder counts are. The agent then sets it in each place and
+>    reruns the ladder.
+>    **Centre-of-mass height: recommended** (about 5 minutes: the point where the robot balances across a straight edge,
+>    [guide](guides/measure-inertia.md)). No controller uses it; the simulation does, and it sets how fast the robot falls
+>    (time scale about sqrt(height / g)), so it decides whether the sim's starting gains are too slow or too aggressive.
+>    **Mass and inertia: optional.** Only the simulation uses them, and they matter less; measure them only if the sim's
+>    predictions turn out wrong on the tether. If the owner tunes by hand from low gains instead of starting from the sim,
+>    the height can be skipped too, at the cost of starting from guesses.
 > 2. **A motor-driven speed check on the stand**, owner drives, agent logs over SSH: a steady stick hold of several seconds,
 >    the encoder speed against a tape mark and a stopwatch, at two or three speeds (the 2026-11-24 bursts were too short).
 >    Also gives the command-to-speed scale.
@@ -68,7 +75,7 @@ established under the model (finding H-12, proposal 0006).
 > 8. **The tuning rig and records**: a tether, a way to read battery voltage, `record:=true` for every balance run
 >    ([guide](guides/record-a-run.md)), the Foxglove layout (row 4.4), and the fields of
 >    [reproducing-results.md](guides/reproducing-results.md).
-> **Then:** re-derive proposal 0008's candidate gains from the sim with the measured parameters; the first tethered test
+> **Then:** re-derive proposal 0008's candidate gains from the sim with whatever was measured (estimates stand in for the rest); the first tethered test
 > (0008's procedure); tuning ([tune-gains](../.claude/skills/tune-gains/SKILL.md) skill, row 3.3).
 > **Smaller open items:** the supervisor does not pass `max_speed:=`/`max_turn:=` through to the mode stacks; the dashboard's
 > history check failed twice inside full ladder runs (38 points) but passes alone and passed in the last ladder. **Every robot step is the
