@@ -120,4 +120,9 @@ If step 2 of *The change* applies, after the chosen flip, tethered, the robot he
 the owner tilted the robot **forward first** (toward where it drives when the left stick is pushed up, a positive
 `linear.x`), and the BNO055's pitch went **down** (raw -2 to -55 deg), then up when tilted backward (+42.5 deg).
 So **pitch decreases when the robot leans toward the direction a positive command drives it.**
-`s_v` (the encoder's sign) is still to be measured, after the encoder service is fixed (next-steps row 4.10).
+**`s_v` measured 2026-11-24** (robot on a stand, tank mode, owner on the 8BitDo, agent logging over SSH;
+[journal](../journal/2026-11-24-stand-sign-check.md)): a positive `linear.x` command made **both** wheels' encoder
+velocity **positive** (e.g. +15 m/s commanded: +0.9 and +1.4 m/s within 0.2 s, +1.2 and +1.7 m/s at 0.4 s), a
+negative command made both negative, and turns split the wheels the right way. So `s_v` is **positive**: the
+encoder agrees with the command, as the authors intended. With `s_θ` "down", **step 2 applies: one sign must be
+flipped** (option A or B). Which one is the owner's decision, not yet made.
