@@ -122,8 +122,9 @@ Heads up: **none of these are pinned**. There's no `requirements.txt` yet, so `p
 | `pygame` | the laptop gamepad script | no |
 | `tqdm`, `ahrs` | IMU calibration scripts | no |
 | `Adafruit-Blinka` (imported as `board`) | IMU | **yes**, needs real I²C |
-| `adafruit-circuitpython-icm20x` | IMU | **yes** |
-| `adafruit-circuitpython-bno055` | old IMU calibration script | **yes** |
+| `gpiod` (`gpiod>=2.2.2,<3`) | needed by `board` on a Raspberry Pi 5; without it `ICM20948.py` exits at start-up and balance mode cannot start (seen 2026-11-23) | **yes** |
+| `adafruit-circuitpython-bno055` | the IMU node `ICM20948.py` (the part fitted is a BNO055); missing on the Pi on 2026-11-23 | **yes** |
+| `adafruit-circuitpython-icm20x` | imported by `ICM20948.py` but not used for the fitted part | **yes** |
 | `Encoder` | wheel encoders | **yes**, needs real GPIO |
 
 ---

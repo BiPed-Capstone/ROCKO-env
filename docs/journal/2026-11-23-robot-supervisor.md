@@ -126,3 +126,25 @@ and `verify_tools.sh`'s history count (one failure in 5 runs), both without a fo
   6. While disabled press **LT+RT+RB**: the dashboard shows the stack stopping and starting, then **BALANCE, DISABLED,
      ready**. Do **not** enable it. **LT+RT+RB** again returns to tank. Try the dashboard buttons for the same.
   7. Record what each step did in a journal entry, including any step that failed.
+
+## On the robot, 2026-11-23 (owner present, agent over SSH with the owner's permission)
+
+- **First start failed:** the owner installed `rocko.service` after `git pull` without rebuilding. The log:
+  `file 'rocko_robot.launch.py' was not found in the share directory`, three restarts, then systemd gave up.
+  Fixed on the Pi with `./build_ros.sh` (both packages, the motor plugin included: the first Pi build of this code).
+  `pi/install_boot_service.sh robot` now refuses to install in an unbuilt checkout and says to build (host test, red
+  when the check is removed).
+- **Then it ran:** `rocko.service` active; `/api/state` on the Pi: tank, disabled, ready, `joint_state_broadcaster`
+  active, `diffbot_base_controller` inactive, every expected node alive; the page answers HTTP 200. The 8BitDo was found
+  by the joy node. From the log, the owner then enabled and disabled tank mode with LB+RB four times (each switch
+  logged by `controller_manager` within about 10 ms) and switched to balance with LT+RT+RB; the tank stack stopped
+  cleanly in about 0.5 s. What the wheels did is the owner's to report.
+- **Log flood found and fixed:** while disabled, `TankTeleop.py` sent a zero command 50 times a second to the inactive
+  `diff_drive_controller`, which logged a warning for each (1651 lines in a minute). Both teleop nodes now send nothing
+  while disabled. After the fix on the Pi: 0 such lines in 15 s.
+- **Balance mode could not start, and the supervisor handled it:** `ICM20948.py` exited at start-up
+  (`ModuleNotFoundError: No module named 'gpiod'`, needed by Adafruit's `board` on a Pi 5), and the venv also lacks
+  `adafruit_bno055`. The C++ IMU plugin then waited forever for the node's service (finding C-1's unbounded wait), so
+  `controller_manager` never answered; the cascade was never loaded and the motors were never driven in balance mode.
+  The robot was disabled, so the supervisor reported `fault` and killed the stack, as designed. Not fixed: the two
+  packages are not installed (owner's decision; README's dependency table now lists them).

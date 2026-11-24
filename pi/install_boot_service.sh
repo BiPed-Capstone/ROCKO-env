@@ -47,6 +47,14 @@ case "$action" in
     render ;;
   install)
     if [ "$1" = robot ]; then
+      # Seen 2026-11-23: installed after a `git pull` without a rebuild, the service restarted three times on
+      # "file 'rocko_robot.launch.py' was not found" and gave up. Catch that here, where the fix can be printed.
+      built="$repo/install/rocko_env/share/rocko_env/launch/rocko_robot.launch.py"
+      if [ -z "${ROCKO_SKIP_BUILD_CHECK:-}" ] && [ ! -e "$built" ]; then
+        echo "install_boot_service.sh: this checkout is not built with the supervisor yet ($built is missing)." >&2
+        echo "  Build first:  ./build_ros.sh   then run this again." >&2
+        exit 2
+      fi
       # rocko.service runs everything the other two start, so they conflict with it (two launches on the motors,
       # two dashboards on port 8080). Replace them, and say so.
       for old in rocko-tank.service rocko-dashboard.service; do

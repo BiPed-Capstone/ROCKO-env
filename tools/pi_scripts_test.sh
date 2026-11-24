@@ -216,7 +216,14 @@ mkdir -p "$work/units" "$work/sysctl"
 SYSTEMCTL_LOG="$work/systemctl.log"; : >"$SYSTEMCTL_LOG"
 printf '#!/bin/sh\necho "systemctl $*" >>"%s"\nexit 0\n' "$SYSTEMCTL_LOG" >"$work/sysctl/systemctl"; chmod +x "$work/sysctl/systemctl"
 touch "$work/units/rocko-tank.service" "$work/units/rocko-dashboard.service"
-out="$(PATH="$work/sysctl:$PATH" ROCKO_UNIT_DIR="$work/units" "$repo/pi/install_boot_service.sh" robot 2>&1)"; code=$?
+# A checkout that was pulled but not rebuilt (seen on the Pi, 2026-11-23): a copy of pi/ with no install/ beside it.
+mkdir -p "$work/unbuilt" && cp -R "$repo/pi" "$work/unbuilt/pi"
+out="$(PATH="$work/sysctl:$PATH" ROCKO_UNIT_DIR="$work/units" "$work/unbuilt/pi/install_boot_service.sh" robot 2>&1)"; code=$?
+r=0; [ "$code" -eq 2 ] || r=1; [ ! -e "$work/units/rocko.service" ] || r=1; [ -e "$work/units/rocko-tank.service" ] || r=1
+has "$out" "./build_ros.sh" || r=1
+check "install_boot_service.sh robot in an unbuilt checkout: refused (2), says to build, changes nothing" "$r" "code $code: $out"
+# The rest of this block tests the install itself; the laptop has no Pi build, so the build check is skipped.
+out="$(PATH="$work/sysctl:$PATH" ROCKO_UNIT_DIR="$work/units" ROCKO_SKIP_BUILD_CHECK=1 "$repo/pi/install_boot_service.sh" robot 2>&1)"; code=$?
 r=0; [ "$code" -eq 0 ] || r=1
 [ ! -e "$work/units/rocko-tank.service" ] || r=1; [ ! -e "$work/units/rocko-dashboard.service" ] || r=1
 [ -s "$work/units/rocko.service" ] || r=1
