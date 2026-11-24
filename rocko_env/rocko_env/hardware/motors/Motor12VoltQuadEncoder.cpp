@@ -39,6 +39,17 @@ namespace rocko_env
           PIN_NUMBER_DIRECTION_KEY.c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
+    // No default on purpose: QuadEncoders.py has one service per wheel, and a wheel that quietly asked
+    // for the other wheel's service would read the wrong encoder (finding U-2).
+    // An empty name is refused here too: create_client("") would throw out of on_init instead of failing cleanly.
+    else if (!(info.hardware_parameters.count(ENCODER_SERVICE_KEY) > 0) ||
+             info.hardware_parameters.at(ENCODER_SERVICE_KEY).empty())
+    {
+      RCLCPP_FATAL(
+          get_logger(), "Hardware '%s' does not have a non-empty '%s' parameter (e.g. left_encoder_data).", info.name.c_str(),
+          ENCODER_SERVICE_KEY.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
 
     // Check that we have a motor
     if (info.joints.size() != 1)
@@ -107,7 +118,8 @@ namespace rocko_env
 
     // Set up connection to client
     _node = rclcpp::Node::make_shared(_prefix + "_encoder_client");
-    std::string s = "encoder_data";
+    // This wheel's own service: left_encoder_data or right_encoder_data (set in the ros2_control xacro)
+    const std::string s = info.hardware_parameters.at(ENCODER_SERVICE_KEY);
     _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
 
     while (!_client->wait_for_service(std::chrono::seconds(1)))

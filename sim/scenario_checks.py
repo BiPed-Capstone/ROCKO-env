@@ -47,11 +47,12 @@ and writes samples.csv as well as metrics.json:
                    the mean measured wheel velocity reaches --rise-fraction of the step within
                    --rise-within-s, overshoots it by at most --max-overshoot-pct, |pitch| stays
                    under --max-pitch-deg, and never reaches --tipover-deg. The overshoot is the
-                   peak of the measured velocity recomputed with each control cycle's real length
-                   (velocity_from_true_periods), because a late cycle in the container makes the
-                   encoder replica read ~20 % high for a moment; the exported peak is recorded too.
+                   peak of the exported mean velocity. (Until 2026-11-23 it was recomputed with
+                   each cycle's real length, because the encoder replica divided by an assumed
+                   10 ms; the replica now divides by the real time, so there is nothing to undo.)
 "Measured wheel velocity" is the exported `velocity` state [m/s] the velocity loop itself reads (the
-mean of the two wheels). With model_encoder_node it is about HALF the true speed (finding U-2), and
+mean of the two wheels). With model_encoder_node it is the node's low-pass filtered speed over each cycle's real
+length (about 0.2 s of lag at 100 Hz; it no longer reads half the speed, finding U-2), and
 its sign is encoder_sign times the direction a positive command drives the robot (sim-plant.md §2.4).
 
 The thresholds are passed in by verify_sim.sh, which says why each one is what it is. These are
@@ -593,34 +594,19 @@ PUSH_WINDOW_S = (-0.05, 0.1)
 MAX_FIRST_SAMPLE_S = 0.5
 # The last sample may stop this far short of the record length (one 100 Hz period is 0.01 s).
 END_SLACK_S = 0.05
-# The encoder replica (finding U-2, SimPlantModel.hpp update_encoder_outputs, copied from
-# QuadEncoders.py): each cycle it divides the wheel travel by an ASSUMED period and low-passes it.
-# Copied from SimPlantModel.hpp (kEncoderAssumedPeriodS, kEncoderFilterAlpha); keep them equal.
-REPLICA_ASSUMED_PERIOD_S = 0.01
-REPLICA_FILTER_ALPHA = 0.05
 # One plant sample of the balance scenarios, from one /dynamic_joint_states message. pitch, its rate
 # and the wheel travel are left_wheel_joint's (one IMU and one encoder reply feed both joints).
 #   t_s                 [s after SimPlant's release] the message's header stamp minus the release stamp
 #   pitch_deg           exported pitch [deg], as the controllers read it
 #   pitch_rate_deg_s    exported pitch_rate [deg/s] (the gyro, not delayed)
 #   mean_velocity_m_s   the mean of the two wheels' exported `velocity` [m/s], what the velocity loop
-#                       reads (see the docstring above: about half the true speed, finding U-2)
-#   position_m          the exported `position` [m]: the wheel travel velocity_from_true_periods() needs
-#   right_velocity_m_s  the right wheel's exported `velocity` [m/s] (the replica's filter state)
+#                       reads (see the docstring above)
+#   position_m          the exported `position` [m]          (no check reads these two since 2026-11-23; kept so
+#   right_velocity_m_s  the right wheel's exported `velocity` [m/s]   samples.csv keeps its columns for plotting)
 Sample = namedtuple("Sample", "t_s pitch_deg pitch_rate_deg_s mean_velocity_m_s position_m right_velocity_m_s")
 # The column names of samples.csv, in Sample's order (the first says what t_s counts from).
 SAMPLES_CSV_HEADER = ["t_after_release_s", "pitch_deg", "pitch_rate_deg_s", "mean_velocity_m_s",
                       "position_m", "right_velocity_m_s"]
-
-# velocity_from_true_periods() replays one replica cycle from the previous sample; if that gives this
-# sample's exported velocity to within this [m/s], exactly one cycle lay between them. Doubles
-# arrive unchanged, so only float noise is allowed.
-REPLAY_TOLERANCE_M_S = 1e-6
-# If more than this fraction of sample pairs are not one replica cycle apart, the replica is not the
-# one written in velocity_from_true_periods() and V cannot judge. Dropped samples (this script's
-# subscription loses messages when it stalls) were 1 pair in ~880 in the runs of 2026-11-07; a
-# changed replica would miss on nearly every pair.
-MAX_NOT_ONE_CYCLE_FRACTION = 0.05
 
 
 def release_stamp(launch_log):
@@ -704,76 +690,6 @@ def fell_at(samples, tipover_deg):
 def nearest(samples, t_s):
     """The sample whose time is closest to t_s."""
     return min(samples, key=lambda s: abs(s.t_s - t_s))
-
-
-def velocity_from_true_periods(samples):
-    """The mean measured wheel velocity [m/s] the encoder replica WOULD export if it divided each
-    cycle's travel by that cycle's real length instead of an assumed 10 ms; one value per sample.
-    Returns (values, problem, gaps): problem is None, or why the values cannot be trusted; gaps is
-    the number of sample pairs with dropped samples between them.
-
-    Why V needs it: when controller_manager runs a cycle late in the container (26-30 ms instead
-    of 10 ms, seen in the kept V runs), the replica divides ~3 cycles of travel by 0.01 s, so its
-    output jumps ~20 % in one sample and then decays over its own low-pass (time constant
-    0.01 / 0.05 = 0.2 s). That jump is the replica's timing error, not the wheel going faster.
-    The real cycle length is taken as the gap between the two samples' stamps. That is only nearly
-    true: controller_manager stamps its messages with the system clock, but times its cycles (the
-    period SimPlant integrates over) on the steady clock. They agree unless the system clock is
-    stepped. A step BACK makes a gap zero or negative, and V refuses to judge (seen twice in the
-    sweep re-run: about -16 ms in the container). A step FORWARD would look like a late cycle and be
-    corrected as one, removing a jump that is not there; nothing here can tell them apart (only
-    sub-millisecond forward steps were seen, worth under 1 % of the step for 0.2 s).
-    A message stamped late is handled in the loop below (a gap shorter than the nominal period).
-
-    The replica, per cycle (sim-plant.md §3.7), with a = REPLICA_FILTER_ALPHA:
-        left  = (1 - a) * filter + a * travel / 0.01     (exported as the left wheel's velocity)
-        right = (1 - a) * left                           (the second call sees no travel)
-    and the exported mean is (left + right) / 2. Dividing by the cycle's real length instead
-    changes `left` by a * travel * (1/0.01 - 1/period), and that difference then decays through
-    the same filter. So this function carries `error` = how much the replica's filter reads above
-    the true-period filter, and subtracts it from the exported value.
-
-    If samples were dropped between two samples (this script's subscription loses messages when
-    it stalls), the cycles in between are unknown: the error is decayed as over that many nominal
-    cycles and nothing else is removed, so any artefact inside the gap stays in (it can only make
-    the overshoot look larger, never hide one)."""
-    a = REPLICA_FILTER_ALPHA
-    backwards = [(b.t_s, b.t_s - s.t_s) for s, b in zip(samples, samples[1:]) if b.t_s <= s.t_s]
-    if backwards:
-        t_s, gap_s = backwards[0]
-        return [], (f"two plant samples have the same or decreasing stamps, so a period is unknown "
-                    f"({len(backwards)} pair(s), the first at {t_s:.3f} s after release, "
-                    f"{1000 * gap_s:+.1f} ms; seen when the system clock that stamps them stepped "
-                    "back, see velocity_from_true_periods)"), 0
-    corrected = [samples[0].mean_velocity_m_s]
-    error = 0.0  # [m/s] the replica's filter (its right-wheel output) minus the true-period one
-    not_one_cycle = 0
-    for before, s in zip(samples, samples[1:]):
-        travel_m, period_s = s.position_m - before.position_m, s.t_s - before.t_s
-        # A gap SHORTER than the nominal period is not a short cycle: the 100 Hz loop does not run
-        # early. It is the previous message having been stamped late (seen 2026-11-16: gaps of 17.8
-        # then 1.4 ms, two on-time cycles). Dividing a normal cycle's travel by 1.4 ms read as a
-        # sevenfold speed and failed V at 70.7 % while the exported samples peaked at 17.2 %. So a
-        # short gap is taken as one nominal period (no correction from it).
-        period_s = max(period_s, REPLICA_ASSUMED_PERIOD_S)
-        # One replica cycle from the previous sample's state (its right velocity is the filter):
-        left = (1 - a) * before.right_velocity_m_s + a * travel_m / REPLICA_ASSUMED_PERIOD_S
-        if abs(0.5 * (left + (1 - a) * left) - s.mean_velocity_m_s) <= REPLAY_TOLERANCE_M_S:
-            error_left = (1 - a) * error + a * travel_m * (1 / REPLICA_ASSUMED_PERIOD_S - 1 / period_s)
-        else:  # samples dropped in between: about period_s / 0.01 cycles, at least two
-            not_one_cycle += 1
-            cycles = max(2, round(period_s / REPLICA_ASSUMED_PERIOD_S))
-            # Each cycle applies the filter twice (the left call, then the right), so `cycles`
-            # cycles decay the error by (1 - a) ** (2 * cycles). The last factor is the right call
-            # of the final cycle, applied by the line after this if/else, as for one cycle.
-            error_left = error * (1 - a) ** (2 * cycles - 1)
-        error = (1 - a) * error_left
-        corrected.append(s.mean_velocity_m_s - 0.5 * (error_left + error))
-    if not_one_cycle > MAX_NOT_ONE_CYCLE_FRACTION * (len(samples) - 1):
-        return corrected, (f"{not_one_cycle} of {len(samples) - 1} sample pairs are not one encoder-"
-                           f"replica cycle apart (allowed {MAX_NOT_ONE_CYCLE_FRACTION:.0%}): the "
-                           "replica is not the one in velocity_from_true_periods()"), not_one_cycle
-    return corrected, None, not_one_cycle
 
 
 def check_upright(args):
@@ -932,23 +848,15 @@ def check_velocity_step(args):
     target = args.rise_fraction * args.speed_m_s
     rise_at = next((s.t_s for s in after if s.mean_velocity_m_s >= target), None)
     rise_s = rise_at - step_t if rise_at is not None else None
-    # Overshoot is judged on the replica's velocity with each cycle's real length (see
-    # velocity_from_true_periods); the highest exported sample is kept for the record.
-    corrected, replay_problem, sample_gaps = (velocity_from_true_periods(samples) if samples
-                                              else ([], "no samples", 0))
-    peak_v = max((v for s, v in zip(samples, corrected) if s.t_s >= step_t), default=math.nan)
+    # Overshoot is judged on the highest exported sample after the step.
+    peak_v = max((s.mean_velocity_m_s for s in after), default=math.nan)
     overshoot_pct = 100.0 * (peak_v - args.speed_m_s) / args.speed_m_s
-    peak_exported_v = max((s.mean_velocity_m_s for s in after), default=math.nan)
-    exported_overshoot_pct = 100.0 * (peak_exported_v - args.speed_m_s) / args.speed_m_s
     peak_pitch = max((abs(s.pitch_deg) for s in samples), default=math.nan)
     fell = fell_at(samples, args.tipover_deg)
     metrics = {
         "samples": len(samples), "release_stamp_s": release, "gamepad_messages": state["published"],
         "timed_out_flags_seen": flags, "step_at_s": step_t, "rise_time_s": rise_s,
         "peak_mean_velocity_m_s": peak_v, "overshoot_pct": overshoot_pct,
-        "peak_exported_mean_velocity_m_s": peak_exported_v,
-        "exported_overshoot_pct": exported_overshoot_pct, "replay_problem": replay_problem,
-        "sample_pairs_with_dropped_samples": sample_gaps,
         "min_mean_velocity_after_step_m_s": min((s.mean_velocity_m_s for s in after), default=math.nan),
         "final_mean_velocity_m_s": samples[-1].mean_velocity_m_s if samples else None,
         "peak_abs_pitch_deg": peak_pitch, "fell_at_s": fell,
@@ -959,8 +867,7 @@ def check_velocity_step(args):
     }
     print(f"scenario_checks: step to {args.speed_m_s} m/s at {step_t:.3f} s after release; "
           f"{args.rise_fraction:.0%} reached after {rise_s if rise_s is None else round(rise_s, 3)} s; "
-          f"peak mean v {peak_v:.4f} m/s with true cycle lengths (overshoot {overshoot_pct:.1f} %; "
-          f"highest exported sample {peak_exported_v:.4f} m/s, {exported_overshoot_pct:.1f} %), lowest "
+          f"peak mean v {peak_v:.4f} m/s (overshoot {overshoot_pct:.1f} %), lowest "
           f"{metrics['min_mean_velocity_after_step_m_s']:.4f} m/s; peak |pitch| {peak_pitch:.3f} deg; "
           f"|pitch| >= {args.tipover_deg} deg at {fell if fell is None else round(fell, 3)} s")
     if False in flags and True in flags[flags.index(False) + 1:]:
@@ -978,7 +885,7 @@ def check_velocity_step(args):
         return finish(args.out, metrics, FAIL,
                       f"the pitch diverged: |pitch| reached {args.tipover_deg} deg {fell:.3f} s after "
                       f"release ({fell - step_t:.3f} s after the step; the robot fell)")
-    problem = coverage_problem(samples, args, record_s) or replay_problem
+    problem = coverage_problem(samples, args, record_s)
     if problem:
         return finish(args.out, metrics, COULD_NOT_JUDGE, problem)
     if rise_s is None or rise_s > args.rise_within_s:
@@ -987,15 +894,13 @@ def check_velocity_step(args):
                       f"{args.rise_within_s} s of the step (reached after {rise_s} s)")
     if overshoot_pct > args.max_overshoot_pct:
         return finish(args.out, metrics, FAIL,
-                      f"overshoot {overshoot_pct:.1f} % (limit {args.max_overshoot_pct} %; highest "
-                      f"exported sample {exported_overshoot_pct:.1f} %)")
+                      f"overshoot {overshoot_pct:.1f} % (limit {args.max_overshoot_pct} %)")
     if peak_pitch > args.max_pitch_deg:
         return finish(args.out, metrics, FAIL,
                       f"|pitch| reached {peak_pitch:.3f} deg (limit {args.max_pitch_deg} deg)")
     return finish(args.out, metrics, PASS,
                   f"followed the step: {args.rise_fraction:.0%} in {rise_s:.3f} s, overshoot "
-                  f"{overshoot_pct:.1f} % (highest exported sample {exported_overshoot_pct:.1f} %), "
-                  f"peak |pitch| {peak_pitch:.3f} deg")
+                  f"{overshoot_pct:.1f} %, peak |pitch| {peak_pitch:.3f} deg")
 
 
 def main():

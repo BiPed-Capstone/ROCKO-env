@@ -91,8 +91,8 @@ meaning, or it tests a different robot.
 | --- | --- | --- | --- | --- |
 | Pitch state | `left_wheel_joint/pitch`, `right_wheel_joint/pitch` (the same number on both) | **degrees** | Unknown from code (§2.4) | `ICM20948.py`'s `callback()` reads the BNO055 `euler` tuple once (heading, roll, pitch), in degrees per the Adafruit library, and stores `euler[2] + self.pitch_offset`; `pitch_offset = 7.6` is added to a degree value, so it is **+7.6°**. `ICM20948.hpp` (comment on `_pitch`) also says degrees. `ICM20948::export_state_interfaces()` exports the one `_pitch` under both joints |
 | Pitch "zero" | — | degrees | — | 0.0 is whatever raw BNO055 pitch reads −7.6°. Presumably the team found that to be upright; **unmeasured**. Nothing says 0.0 is "centre of mass over the axle" |
-| Wheel velocity state | `<wheel>_joint/velocity` (state) | **m/s**, not rad/s | Unknown from code (§2.4) | `Motor12VoltQuadEncoder::read()` stores the service reply in `_wheel.vel`. The reply is `QuadEncoders.py:102`: `np.average` of the two wheels' filtered velocities (`:80-90`), each `Δposition / 0.01` (`:71`, `:73`), with position in metres (`:70`: counts ÷ `meters_conversion`, `:35`, which uses radius 0.06 m and belt 1.355). **See finding U-2: the value is about half the true speed** |
-| Wheel position state | `<wheel>_joint/position` | **m** of **left** wheel travel, on both joints | Same as velocity | `QuadEncoders.py:101` returns `left_position` only; `Motor12VoltQuadEncoder::read()` stores it in `_wheel.pos` |
+| Wheel velocity state | `<wheel>_joint/velocity` (state) | **m/s**, not rad/s | Unknown from code (§2.4) | `Motor12VoltQuadEncoder::read()` stores the service reply in `_wheel.vel`. Each wheel calls its own service (`left_encoder_data` / `right_encoder_data`, the `encoder_service` hardware parameter). The reply is that wheel's position change since its previous call, divided by the **measured** time between the calls (`time.monotonic()`), then low-passed (`FILTER_ALPHA` 0.05); position in metres (counts ÷ `COUNTS_PER_METER`, radius 0.06 m and belt 1.355). Until 2026-11-23 this was finding U-2 (about half the true speed); fixed, see U-2 below |
+| Wheel position state | `<wheel>_joint/position` | **m** of that wheel's travel | Same as velocity | Each wheel's own encoder (`QuadEncoders.py`, `WheelChannel.update`); `Motor12VoltQuadEncoder::read()` stores it in `_wheel.pos`. Until 2026-11-23 both joints got the left wheel's position (U-2) |
 | Wheel command | `<wheel>_joint/velocity` (command) | **rad/s**, read as a fraction of the gearbox-output no-load speed | Positive = sim-forward, by definition | `Motor12VoltQuadEncoder::write()`: `radPerSec = _wheel.cmd`; non-finite or `abs(radPerSec) < 0.05` (`kDeadbandRadPerSec` in the `.hpp`) writes duty 0; else duty % = `clamp(abs(radPerSec) / MAX_RAD_PER_SEC * 100 + 2.0, 0, 100)` (`kStictionDutyPercent` in the `.hpp`), truncated to `int`. `MAX_RAD_PER_SEC` (the `.hpp`) is "1150 RPM" at the gearbox output (finding U-3) |
 | Direction pin | GPIO | — | `cmd >= 0` writes `!invert`, else `invert`; left unchanged for a non-finite or deadband command | `Motor12VoltQuadEncoder::write()`, the two `digitalWrite(_dirPin, ...)` calls. Left `invert=true` (`rocko.ros2_control.xacro`, `LeftDriveMotor` block), right `invert=false` (`RightDriveMotor` block) |
 | Velocity reference | `velocity_pid_controller/reference` (topic) | "m/s" by intent | Positive = stick forward, probably | `DiffDriveController.command_controller()` sends `linear_vel` (the `linear.x` it received) for both wheels; `Joystick.py` multiplies the stick by `linear_scale = -10.0` (set in `__init__`, applied where the `TwistStamped` is built), so the range is ±10 "m/s" |
@@ -145,19 +145,23 @@ are a different list; where one of these is also a finding there, the entry says
   H-1's fix) must convert. **What the sim does:** export the velocity state in m/s exactly as the real
   stack does, because the outer loop's reference is in m/s. Changing the unit is a separate fix that
   must change the reference with it.
-- **U-2 · Both wheels share one encoder reply, and it reads about half the real speed.** Both motor
-  plugins call the same service, `encoder_data` (`Motor12VoltQuadEncoder::on_init()`, which creates `_client`;
-  `QuadEncoders.py:58`), once each per 10 ms cycle, one after the other in the same `read()` pass. Each
-  call computes `(position − position at the previous call) / 0.01` and moves "previous call" forward
-  (`QuadEncoders.py:70-73`, `:98-99`). The first call of a cycle sees about 10 ms of motion, the second
-  almost none, but both divide by 0.01 s. The two time gaps add up to one period, so the low-pass
-  filter (`alpha = 0.05`, `:39`, `:80-87`) settles at **the average of the two samples, about 0.5 × the
-  true speed**. Steady state for a constant true speed `v`: left joint ≈ 0.513 v, right ≈ 0.487 v; time
-  constant ≈ 97 ms (the filter runs twice a cycle, so it is faster than the 195 ms a single call would
-  give). Derived from the code, **not measured**; it depends only on the two reads landing in the same
-  cycle, which they do. Consequence: the velocity loop sees half the speed, so in steady state it
-  drives the robot at about **twice** the commanded speed. **What the sim does:** reproduce it by
-  default (§3.7), behind a switch for when finding C-1's encoder fix lands.
+- **U-2 · Both wheels shared one encoder reply, and it read about half the real speed. FIXED 2026-11-23
+  (row 4.10 of [next-steps](../next-steps.md); the fix is untested on the robot).** What it was: both motor plugins
+  called the same service, `encoder_data`, once each per cycle, one after the other. Each call computed
+  `(position − position at the previous call) / 0.01` and moved "previous call" forward. The first call of a cycle saw
+  about 10 ms of motion, the second almost none, but both divided by 0.01 s, so the low-pass filter (`alpha = 0.05`)
+  settled at about 0.5 × the true speed (left ≈ 0.513 v, right ≈ 0.487 v, derived from the code, never measured), and both
+  joints got the **left** wheel's position. The same fixed 0.01 s was also wrong in tank mode (50 Hz). **What it is now:**
+  `QuadEncoders.py` offers `left_encoder_data` and `right_encoder_data`; each motor plugin names its own in the
+  `encoder_service` hardware parameter (the ros2_control xacro; the plugin refuses to start without it). Each wheel
+  returns its own position and the speed over the measured time since its own previous call (first call: velocity 0;
+  no time elapsed: the last value held), low-passed with `alpha = 0.05`. That filter's time constant now depends on the
+  call rate: about 0.2 s at 100 Hz, 0.4 s at 50 Hz. **Consequence for the gains:** the velocity loop now sees the true
+  speed, about twice what it saw, so the outer loop's gain is effectively doubled for the same numbers; the sim gains
+  in `rocko_sim_controllers.yaml` were tuned against the halved signal (the effect on the scenarios is in the
+  [2026-11-23 journal](../journal/2026-11-23-encoder-service-u2.md)); the hardware gains are untouched and gated.
+  **What the sim does:** `model_encoder_node` (default true) copies the new node (§3.7); `false` exports the true speed
+  unfiltered.
 - **U-3 (= L-7 in the findings doc) · `MAX_RAD_PER_SEC` is 119.38 rad/s, not 120.43.** `MAX_RAD_PER_SEC` in `Motor12VoltQuadEncoder.hpp` writes
   `1150 / 60 * M_PI * 2`. In C++ `1150 / 60` is integer division, = 19, so the constant is
   19 × 2π = 119.381 rad/s rather than 1150 RPM = 120.428 rad/s. A 0.9 % error, harmless by itself.
@@ -280,8 +284,7 @@ ways (as seen from their shafts) to drive the robot the same way, so opposite `i
 a correct build needs, given identical driver wiring on both sides. If a side were wrong, the pitch loop
 (identical commands to both wheels) would spin the robot in place. Tank mode drives straight, which
 suggests the two sides agree with each other; it says nothing about the signs above. Asymmetries that
-do exist: the position state is the **left** wheel only on both joints (`QuadEncoders.py:101`), and the
-two velocity states differ by about 5 % (U-2). Neither changes a sign. The planar sim drives its one
+do exist: the sim exports ONE position for both joints and the same velocity for both (both wheels are alike in the plant); the real robot now reads each wheel's own encoder (U-2, fixed 2026-11-23). Neither changes a sign. The planar sim drives its one
 wheel pair with the sum of the two wheels' torques, so left/right differences in the *commands* only
 matter through that sum.
 
@@ -547,19 +550,21 @@ in for the BNO055's fusion lag plus the service call. The sim does **not** add t
 sim produces that frame directly. `imu_pitch_bias_deg` models an upright reference that is wrong by a
 fixed amount (default 0.0: assumes the 7.6° calibration is exact, which nobody has checked).
 
-**Encoder velocity, `model_encoder_node = true` (default).** Reproduces finding U-2 exactly. Each
-`read()`, with `p = encoder_sign · r · (φ − ψ)`:
+**Encoder velocity, `model_encoder_node = true` (default).** Copies `QuadEncoders.py` as fixed for finding U-2
+(2026-11-23): each wheel is asked once per cycle, and the speed is the travel over the real time between the calls.
+Each `read()`, with `p = encoder_sign · r · (φ − ψ)` and `T` the physics time that `read()` advanced (the number of 1 ms
+sub-steps times 1 ms, the counterpart of the real time between two calls):
 
 ```
-s1      = (p − p_last) / 0.01            first service call this cycle: ~10 ms of motion over a fixed 0.01 s
-y       = 0.95 · y + 0.05 · s1           → exported as left_wheel_joint/velocity
-y       = 0.95 · y + 0.05 · 0            second call: no motion since the first → right_wheel_joint/velocity
-p_last  = p
+s       = (p − p_last) / T               travel since the previous call over the real time between the calls [m/s]
+y       = 0.95 · y + 0.05 · s            → exported as both joints' velocity (the wheels are alike in the sim)
+p_last  = p                              (T = 0: nothing is updated, y is held, as the node does for dt <= 0)
 ```
 
-`0.01` and `0.05` are copied from `QuadEncoders.py:71`, `:39`; they are code, not estimates. With
-`model_encoder_node = false` (for after finding C-1's encoder fix) both joints export
-`encoder_sign · r · (φ̇ − ψ̇)` with no filter. Encoder counts are not quantised in either mode (§6).
+`0.05` is `FILTER_ALPHA` in `QuadEncoders.py`; it is code, not an estimate. The filter runs once per call, so its time
+constant is about `T / 0.05`: 0.2 s at 100 Hz (balancing) and 0.4 s at 50 Hz (tank mode). In steady state it reads
+the true speed (host test `tools/sim_plant_model_test.cpp`, check #13, at 10 ms and 20 ms cycles). With
+`model_encoder_node = false` both joints export `encoder_sign · r · (φ̇ − ψ̇)` with no filter. Encoder counts are not quantised in either mode (§6).
 
 **Pitch rate (finding H-6, built).** Both joints export `pitch_rate` = `pitch_sign · degrees(ψ̇)` in deg/s
 (`SimPlantModel::imu_pitch_rate_deg_s()`), the **current** lean rate with **no** fusion delay (the gyro
@@ -623,7 +628,7 @@ assumed period `0.01` s (`QuadEncoders.py:39`, `:71`).
 | `pitch_sign` | −1 | Exported pitch = `pitch_sign × lean toward sim-forward`. Assumption, §2.4 |
 | `encoder_sign` | +1 | Exported position and velocity = `encoder_sign × motion toward sim-forward`. Assumption, §2.4 |
 | `model_write_quirks` | true | Replicate today's `write()` exactly (§3.3) |
-| `model_encoder_node` | true | Replicate today's `QuadEncoders.py` (U-2, §3.7) |
+| `model_encoder_node` | true | Replicate today's `QuadEncoders.py`: filtered speed over the real call period (§3.7); false: the unfiltered true speed |
 | `imu_delay_max_ms` | 100 | Ring-buffer size, allocated in `on_init` |
 | sub-step `h`, max sub-steps | 1 ms, 50 | Fixed in code (§3.5), not parameters |
 

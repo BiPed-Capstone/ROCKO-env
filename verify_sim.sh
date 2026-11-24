@@ -245,8 +245,10 @@ FF_LOG_GAP_S=1.0       # [s] kTimeoutLogMinCycles (100) at update_rate 100: afte
 # only with a reason written here and in the journal, never to make a run pass. Frames and signs:
 # pitch [deg] is the EXPORTED pitch the controllers read (0 = upright; the sign convention of
 # sim-plant.md §2.4; limits are on |pitch|, so either sign). "Measured wheel velocity" [m/s] is the
-# exported `velocity` state the velocity loop reads, averaged over both wheels: about HALF the true
-# speed (finding U-2) and signed by encoder_sign. Times [s] count from SimPlant's release (its
+# exported `velocity` state the velocity loop reads, averaged over both wheels: the encoder node's
+# low-pass filtered speed (about 0.2 s of lag at 100 Hz; it read half the true speed until finding
+# U-2's fix, 2026-11-23, and these thresholds were set against that) and signed by encoder_sign.
+# Times [s] count from SimPlant's release (its
 # "releasing the simulated robot" log line), the zero its own impulse time uses. Sizes were checked
 # against sim/cascade_linearisation.py's linear model at one stable point of its C3 map (pitch d 0.3,
 # velocity p 8; NOT a gain recommendation): they are reachable by a working loop, not tailored to one.
@@ -289,9 +291,9 @@ V_RISE_FRACTION=0.9    # 90 % of the step
 V_RISE_S=3.0           # [s after the step] to reach 90 %. A balancing robot must first lean the
                        #   other way, then accelerate; 3 s to reach a slow walk is the slowest that
                        #   still reads as "following"
-V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x the step. Since
-                       #   2026-11-07 the peak of the velocity recomputed with each control cycle's
-                       #   real length (scenario_checks.py velocity_from_true_periods); the limit
+V_OVERSHOOT_PCT=30     # [% of the step] peak measured velocity at most 1.3 x the step. The peak of the
+                       #   exported mean velocity (until 2026-11-23 it was recomputed with each
+                       #   cycle's real length, because the encoder replica assumed 10 ms); the limit
                        #   itself is unchanged since it was committed before tuning
 V_PITCH_DEG=10.0       # [deg] a 0.1 m/s step needs a lean of well under a degree in steady state; 10
                        #   deg is far below the 35 deg trip and equals the re-arm band (H-4)

@@ -113,6 +113,8 @@
         <param name="pinNumberSpeed">14</param>
         <param name="pinNumberDirection">10</param>
         <param name="invert">true</param>
+        <!-- which service of QuadEncoders.py answers for this wheel (finding U-2) -->
+        <param name="encoder_service">left_encoder_data</param>
       </hardware> 
       <joint name="left_wheel_joint">
         <command_interface name="velocity"/>
@@ -126,6 +128,8 @@
         <param name="pinNumberSpeed">13</param>
         <param name="pinNumberDirection">6</param>
         <param name="invert">false</param>
+        <!-- which service of QuadEncoders.py answers for this wheel (finding U-2) -->
+        <param name="encoder_service">right_encoder_data</param>
       </hardware>
       <joint name="right_wheel_joint">
         <command_interface name="velocity"/>

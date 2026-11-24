@@ -102,10 +102,10 @@ Nothing that runs on the robot changed.
   steady zero while the motor is driven is H-9's twin; detecting it needs a rule (counts expected when
   the command is large) with a **proposed** threshold.
 - **This changes the velocity signal the cascade sees, so it is not a drop-in.** Today one Python node
-  answers both motor plugins with the **left** position and the average of both wheels' filtered
-  velocities (low-pass `alpha = 0.05`), assuming a 10 ms period, and the two calls per cycle halve the
-  measured speed (finding U-2, [sim-plant.md](../architecture/sim-plant.md), `model_encoder_node`). The
-  velocity loop's gains were tuned against that signal. Before the C++ version runs on the robot: run
+  answers each motor plugin with that wheel's own position and its speed over the measured call period
+  (low-pass `alpha = 0.05`; since 2026-11-23, finding U-2 fixed, [sim-plant.md](../architecture/sim-plant.md),
+  `model_encoder_node`). Before that fix the two calls per cycle halved the measured speed, and the sim gains were
+  tuned against that halved signal. Before the C++ version runs on the robot: run
   the sim with `model_encoder_node:=false` (the plant already has the switch), re-tune or confirm the
   velocity loop there, and decide whether the filter stays (and where its constant lives). Gains are
   gated (proposal [0008](0008-candidate-gains-and-tethered-test.md) and the gains table in

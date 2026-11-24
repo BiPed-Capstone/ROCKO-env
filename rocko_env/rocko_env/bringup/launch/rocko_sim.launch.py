@@ -52,7 +52,7 @@ SIM_ARGUMENTS = {
     "body_mass_kg": ("2.0", "Body mass without the wheels [kg] (an estimate)."),
     "com_height_m": ("0.20", "Axle to body centre of mass [m] (an estimate)."),
     "motor_stall_torque_Nm": ("0.774725", "Each motor's stall torque at 12 V [N m] (an estimate; scales the motor gain)."),
-    "model_encoder_node": ("true", "true: copy QuadEncoders.py, including its halved speed (finding U-2)."),
+    "model_encoder_node": ("true", "true: copy QuadEncoders.py (speed over each cycle's real length, low-pass filtered, 0.05); false: the true speed."),
 }
 
 

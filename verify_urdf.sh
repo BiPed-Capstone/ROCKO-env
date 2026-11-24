@@ -72,6 +72,31 @@ for block in ET.parse(sys.argv[1]).getroot().iter("ros2_control"):
 PY
 }
 
+# encoder_services <urdf> -> exit 1 (and say why) unless every Motor12VoltQuadEncoder block has an
+# encoder_service param equal to "<side>_encoder_data" for the side of its joint (left_wheel_joint ->
+# left_encoder_data), and both sides appear exactly once.
+encoder_services() {
+  python3 - "$1" <<'PY'
+import sys, xml.etree.ElementTree as ET
+seen, problems = [], []
+for block in ET.parse(sys.argv[1]).getroot().iter("ros2_control"):
+    hw = block.find("hardware")
+    if hw is None or hw.findtext("plugin") != "rocko_env/Motor12VoltQuadEncoder":
+        continue
+    joint = block.find("joint").get("name")
+    side = joint.split("_")[0]
+    params = {p.get("name"): (p.text or "").strip() for p in hw.findall("param")}
+    got = params.get("encoder_service")
+    if got != side + "_encoder_data":
+        problems.append(f"{block.get('name')} (joint {joint}): encoder_service is {got!r}, expected '{side}_encoder_data'")
+    seen.append(side)
+if sorted(seen) != ["left", "right"]:
+    problems.append(f"expected one left and one right motor block, found {seen}")
+print("\n".join(problems))
+sys.exit(1 if problems else 0)
+PY
+}
+
 for model in rocko rocko_tank_mode; do
   broken=0
   for mock in false true; do
@@ -96,6 +121,12 @@ for model in rocko rocko_tank_mode; do
       expected_plugins=$((2 + expected_imus))
       if [ "$real_motors" -ne 2 ] || [ "$real_imus" -ne "$expected_imus" ] || [ "$mocks" -ne 0 ] || [ "$plugins" -ne "$expected_plugins" ]; then
         fail "$label: expected 2 real motors, $expected_imus IMU, no mock and $expected_plugins plugins in all (got motors=$real_motors imu=$real_imus mock=$mocks plugins=$plugins)"
+        broken=1; continue
+      fi
+      # Each real motor must name ITS OWN wheel's encoder service (finding U-2). Without the param the
+      # plugin refuses to start on the robot; the wrong wheel's name would read the other encoder.
+      if ! encoder_services "$urdf" >"$work/err" 2>&1; then
+        fail "$label: the motors' encoder_service params are wrong:"; show "$work/err"
         broken=1; continue
       fi
     else

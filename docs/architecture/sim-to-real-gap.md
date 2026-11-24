@@ -190,11 +190,11 @@ and [§3](sim-plant.md#3-the-model).
   differentiates that over 10 ms, about 1 m/s², so d 0.2 turns one count into about 0.2 deg of
   target pitch, and the inner loop then multiplies that by p 15 into about 3 rad/s of command.
   (Arithmetic from the code's constants, not a measurement.)
-- **A related change this page cannot price:** finding U-2 makes the node read about **half** the
-  true speed, and the sim reproduces that on purpose (`model_encoder_node`). If finding C-1's
-  encoder fix lands, the true speed is read and the outer loop's gain roughly **doubles** (about
-  +6 dB on that loop alone). The sweep did not vary this; the tuned outer p of 25 would need to be
-  re-derived.
+- **A related change this page cannot price:** until 2026-11-23 (finding U-2, fixed) the node read about **half** the
+  true speed and the sim reproduced that; the sim gains and the sweep below were tuned against the halved signal.
+  Now the node, and so the sim's default `model_encoder_node`, read the true speed (low-passed), which roughly
+  **doubles** the outer loop's gain (about +6 dB on that loop alone). The sweep was not re-run; see the
+  [2026-11-23 journal](../journal/2026-11-23-encoder-service-u2.md) for what the scenarios do now.
 - **Not covered by the sweep:** the encoder scale (counts per wheel turn) and its noise.
 
 ### 3.10 CPU jitter of the real 100 Hz loop (finding H-5)
@@ -235,7 +235,7 @@ axle" (sim-plant.md §2.1). `imu_pitch_bias_deg` is 0 in the sim.
 - **Direction (reasoning, from equation 1 with the estimated plant):** with outer i = 0 an error of
   `e` degrees in the upright reference leaves a steady measured speed of roughly
   `e / (Kpv × (1 + c/(k·Kpv)))`. With Kpv = 25 and the estimates' `c/(k·Kpv)` of 0.123, that is
-  about 0.036 m/s per degree **in the node's units, which read half the true speed** (U-2). The
+  about 0.036 m/s per degree **in the node's units as they were until 2026-11-23, which read half the true speed** (U-2, fixed; the figure is now about twice as large, unrecomputed). The
   hardware's velocity i of 5 would slowly cancel it; the candidate's i of 0 does not. Scenario U's
   limit on late speed is 0.05 m/s: one degree of reference error would use most of it.
   Order-of-magnitude reasoning on an estimated plant, not a prediction.

@@ -209,8 +209,8 @@ hardware_interface::CallbackReturn SimPlant::on_init(const hardware_interface::H
 
 std::vector<hardware_interface::StateInterface> SimPlant::export_state_interfaces()
 {
-  // Order and names as in the xacro. One position and one pitch value feed both joints, as on the
-  // robot (the encoder node reports the left wheel to both; there is one IMU).
+  // Order and names as in the xacro. One position and one pitch value feed both joints: both wheels
+  // are alike in the sim (the real robot reads each wheel's own encoder), and there is one IMU.
   std::vector<hardware_interface::StateInterface> states;
   double * velocity[] = {&left_velocity_m_s_, &right_velocity_m_s_};
   for (std::size_t j = 0; j < std::size(kJointNames); ++j) {
@@ -265,6 +265,7 @@ hardware_interface::return_type SimPlant::read(
   // whole number of sub-steps leaves a remainder, carried to the next read() so no time is lost.
   // More than kMaxSubStepsPerRead means the container stalled; that much is skipped (and counted)
   // rather than integrated in one burst.
+  double advanced_s = 0.0;  // [s] physics time integrated this cycle: the encoder node's elapsed time
   if (released_) {
     // A negative period (a clock step backwards) would become time the physics owes later and
     // freeze the plant while the controllers keep running, so it counts as zero.
@@ -284,11 +285,12 @@ hardware_interface::return_type SimPlant::read(
     for (long i = 0; i < steps; ++i) {
       model_->step();
     }
+    advanced_s = static_cast<double>(steps) * sim::kSubStepS;
   } else {
     unintegrated_s_ = 0.0;
   }
 
-  model_->update_encoder_outputs();
+  model_->update_encoder_outputs(advanced_s);
   position_m_ = model_->position_m();
   left_velocity_m_s_ = model_->left_velocity_m_s();
   right_velocity_m_s_ = model_->right_velocity_m_s();

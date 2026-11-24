@@ -50,9 +50,8 @@ static_assert(
 constexpr double kWriteDeadbandRadPerSec = 0.05;  // [rad/s]
 // Motor12VoltQuadEncoder.hpp kStictionDutyPercent: added to every non-zero duty.
 constexpr double kWriteStictionDutyPercent = 2.0;  // [% of full duty]
-// QuadEncoders.py: velocity = (position - position at the previous call) / 0.01, whatever the real
-// time between calls was (:71), then a low-pass filter with alpha = 0.05 (:39).
-constexpr double kEncoderAssumedPeriodS = 0.01;  // [s]
+// QuadEncoders.py FILTER_ALPHA: velocity = (position change since this wheel's previous call) / (the
+// real time between the two calls), then a low-pass filter with this weight on the new sample.
 constexpr double kEncoderFilterAlpha = 0.05;     // [-]
 
 // ---- Fixed in this code (spec §3.5), not parameters. --------------------------------------------
@@ -106,7 +105,7 @@ struct SimPlantParams
                                //   positive wheel command makes the exported pitch go UP
   double encoder_sign = +1.0;  // exported position/velocity = encoder_sign * motion toward sim-forward
   bool model_write_quirks = true;  // true: copy Motor12VoltQuadEncoder::write() exactly (§3.3)
-  bool model_encoder_node = true;  // true: copy QuadEncoders.py, including finding U-2 (§3.7)
+  bool model_encoder_node = true;  // true: copy QuadEncoders.py (filtered velocity over the real period, §3.7)
   int imu_delay_max_ms = 100;      // [ms] size of the delay buffer, allocated once
 
   // ---- Scenario and fault injection (spec §5). All off by default. Times count from release. ----
@@ -322,25 +321,27 @@ public:
     lean_history_[history_head_] = state_.psi;
   }
 
-  // Call once per read(), after the sub-steps: the encoder node copy (spec §3.7).
-  void update_encoder_outputs()
+  // Call once per read(), after the sub-steps: the encoder node copy (spec §3.7). period_s [s] is the
+  // physics time those sub-steps advanced, the sim's counterpart of the real time between two
+  // service calls. Both wheels are identical in the sim, so one filter serves both.
+  void update_encoder_outputs(double period_s)
   {
     if (!p_.model_encoder_node) {
       left_velocity_m_s_ = p_.encoder_sign * p_.wheel_radius_m * (state_.phi_dot - state_.psi_dot);
       right_velocity_m_s_ = left_velocity_m_s_;
       return;
     }
-    // Finding U-2: both motor plugins call ONE service, one after the other, in the same cycle.
-    // The first call sees ~10 ms of motion; the second sees none. Both divide by 0.01 s, and both
-    // feed the SAME low-pass filter. So the two joints read about 0.51 and 0.49 of the true speed.
-    const double position_now_m = position_m();
-    const double first_call = (position_now_m - encoder_last_position_m_) / kEncoderAssumedPeriodS;
-    encoder_filter_ = (1 - kEncoderFilterAlpha) * encoder_filter_ + kEncoderFilterAlpha * first_call;
+    // QuadEncoders.py WheelChannel.update(): velocity from the travel since the previous call over
+    // the real time between the calls, then the low-pass filter. No time passed (period_s <= 0,
+    // e.g. before the release): hold the filter and keep the OLD reference position, as the node does.
+    if (period_s > 0.0) {
+      const double position_now_m = position_m();
+      const double sample_m_s = (position_now_m - encoder_last_position_m_) / period_s;
+      encoder_filter_ = (1 - kEncoderFilterAlpha) * encoder_filter_ + kEncoderFilterAlpha * sample_m_s;
+      encoder_last_position_m_ = position_now_m;
+    }
     left_velocity_m_s_ = encoder_filter_;
-    const double second_call = 0.0;  // no motion since the first call
-    encoder_filter_ = (1 - kEncoderFilterAlpha) * encoder_filter_ + kEncoderFilterAlpha * second_call;
     right_velocity_m_s_ = encoder_filter_;
-    encoder_last_position_m_ = position_now_m;
   }
 
   // ---- Outputs, in the units the real hardware exports (spec §3.7) ----
@@ -443,7 +444,7 @@ private:
   // Lean [rad] at each of the last imu_delay_max_ms + 1 sub-steps, a ring; history_head_ = newest.
   std::vector<double> lean_history_;
   std::size_t history_head_;
-  double encoder_filter_;           // [m/s] the one filter both encoder calls share (U-2)
+  double encoder_filter_;           // [m/s] the encoder node's low-pass filter state (one wheel's; both are alike)
   double encoder_last_position_m_;  // [m] position at the previous service call
   double left_velocity_m_s_;        // [m/s] exported velocity states
   double right_velocity_m_s_;

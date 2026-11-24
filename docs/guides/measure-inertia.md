@@ -289,15 +289,15 @@ factor, and so is the velocity loop's gain (gap page, section 3.9).
    pi/launch.sh tank
    ```
 
-3. In a second terminal (`pi/rocko_shell.sh`) read the encoder position (metres, **left wheel**), before and after
+3. In a second terminal (`pi/rocko_shell.sh`) read the encoder position (metres, **left wheel**; use `/right_encoder_data` for the right), before and after
    turning the **left wheel by hand** exactly `N` full turns (mark the tyre; `N = 10`):
 
    ```bash
-   ros2 service call /encoder_data rocko_interfaces/srv/QuadEncoderData
+   ros2 service call /left_encoder_data rocko_interfaces/srv/QuadEncoderData
    ```
 
-   (`ros2 service list -t` shows the type if it differs. Each call also moves the node's "previous
-   position", which only disturbs its velocity reading, not the position you want.) Repeat 3 times.
+   (`ros2 service list -t` shows the type if it differs. Each call also moves that wheel's "previous
+   position" and time, which only disturbs its velocity reading, not the position you want.) Repeat 3 times.
 4. `reported_m_per_turn = (position_after − position_before) / N`. Compare with the circumference
    from step 5, `2π × r_rolling`.
 5. `counts_per_wheel_turn = reported_m_per_turn × 521.2` (the code's counts per metre; this is the

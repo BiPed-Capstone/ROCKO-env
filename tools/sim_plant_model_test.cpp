@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include "rocko_env/SimPlantModel.hpp"
 
@@ -264,31 +265,46 @@ int main()
       motor_output_torque(nominal, 1.0, nominal.motor_no_load_speed_rad_s), 0.0, 1e-12);
   }
 
-  // #13 Encoder replica (finding U-2) at a constant chassis-relative speed. To get a constant
-  // speed out of the model: torque off, no friction, let the body fall until it is "on the floor"
-  // (lean frozen); after that nothing acts on the wheels and they coast at a constant rate.
-  // Then compare the exported velocities with the true speed.
+  // #13 Encoder replica (QuadEncoders.py after finding U-2's fix) at a constant chassis-relative
+  // speed. To get a constant speed out of the model: torque off, no friction, let the body fall
+  // until it is "on the floor" (lean frozen); after that nothing acts on the wheels and they coast
+  // at a constant rate. Then compare the exported velocities with the true speed: the node divides
+  // by the REAL time between calls, so they must agree at ANY cycle length (10 ms and 20 ms here),
+  // not read half the speed as the old shared service did.
   {
     SimPlantParams q = torque_off(no_friction(nominal));
     q.initial_pitch_deg = 2.0;
-    SimPlantModel m(q);
-    // Fall to 60 deg (then the lean is frozen). Bounded at 5 s so a model that never falls fails.
-    for (int i = 0; i < 5000 && !m.fallen(); ++i) {m.step();}
-    check("#13 setup: the body fell within 5 s", m.fallen());
-    m.update_encoder_outputs();      // first read after the fall: discard
-    for (int cycle = 0; cycle < 300; ++cycle) {  // 3 s, about 30 time constants
-      for (int i = 0; i < 10; ++i) {m.step();}
-      m.update_encoder_outputs();
+    for (int substeps_per_cycle : {10, 20}) {
+      const std::string tag = "#13 (" + std::to_string(substeps_per_cycle) + " ms cycles) ";
+      SimPlantModel m(q);
+      // Fall to 60 deg (then the lean is frozen). Bounded at 5 s so a model that never falls fails.
+      for (int i = 0; i < 5000 && !m.fallen(); ++i) {m.step();}
+      check("#13 setup: the body fell within 5 s", m.fallen());
+      const double period_s = substeps_per_cycle * kSubStepS;
+      for (int cycle = 0; cycle < 600; ++cycle) {  // 6 s or more: 30 time constants at 10 ms
+        for (int i = 0; i < substeps_per_cycle; ++i) {m.step();}
+        m.update_encoder_outputs(period_s);
+      }
+      const double v = q.encoder_sign * q.wheel_radius_m * (m.state().phi_dot - m.state().psi_dot);
+      check((tag + "model: wheels coasting at a non-zero speed").c_str(), std::abs(v) > 0.01);
+      near((tag + "model: left joint velocity / true speed").c_str(), m.left_velocity_m_s() / v, 1.0, 1e-3);
+      near((tag + "model: right joint velocity / true speed").c_str(), m.right_velocity_m_s() / v, 1.0, 1e-3);
     }
-    const double v = q.encoder_sign * q.wheel_radius_m * (m.state().phi_dot - m.state().psi_dot);
-    check("#13 model: wheels coasting at a non-zero speed", std::abs(v) > 0.01);
-    near("#13 model: left joint velocity / true speed", m.left_velocity_m_s() / v, 0.5128, 1e-3);
-    near("#13 model: right joint velocity / true speed", m.right_velocity_m_s() / v, 0.4872, 1e-3);
+
+    // No time passed (period 0, as before the release): the filter holds and nothing divides by 0.
+    SimPlantModel held(q);
+    for (int i = 0; i < 5000 && !held.fallen(); ++i) {held.step();}
+    for (int i = 0; i < 10; ++i) {held.step();}
+    held.update_encoder_outputs(0.01);
+    const double before = held.left_velocity_m_s();
+    held.update_encoder_outputs(0.0);
+    check("#13 period 0: velocity held and finite",
+      held.left_velocity_m_s() == before && std::isfinite(held.left_velocity_m_s()));
 
     q.model_encoder_node = false;
     SimPlantModel ideal(q);
     for (int i = 0; i < 5000 && !ideal.fallen(); ++i) {ideal.step();}
-    ideal.update_encoder_outputs();
+    ideal.update_encoder_outputs(0.01);
     const double vi = q.wheel_radius_m * (ideal.state().phi_dot - ideal.state().psi_dot);
     near("#13 model_encoder_node=false: velocity = true speed [m/s]", ideal.left_velocity_m_s(), vi,
       1e-12);
