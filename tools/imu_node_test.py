@@ -9,7 +9,7 @@ type, gives it a fake BNO055, and checks:
   * by default (read_pitch_rate false, finding M-7) the gyro is NEVER read: one euler read per
     reply, pitch_rate_deg_s is NaN, the angles and success are unaffected, nothing is warned;
 With read_pitch_rate true:
-  * good angles + good gyro: success, pitch includes pitch_offset, rate = sign * degrees(gyro[axis]);
+  * good angles + good gyro: success, pitch includes pitch_offset, rate = sign * degrees(gyro[axis]) (default axis 0, sign -1, measured 2026-11-23);
   * a bad gyro (None, an exception, NaN) makes ONLY pitch_rate_deg_s NaN: the good angles and
     success=True are kept;
   * so does a rate beyond +/-2000 deg/s (the gyro's range), and it is logged by the node;
@@ -143,7 +143,7 @@ def test_good_angles_and_gyro():
     r, node = reply((10.0, 1.0, 2.0), (0.5, 0.1, -0.2))
     check(r.success, "a good read must succeed")
     check(r.pitch == 2.0 + node.pitch_offset, "pitch must include pitch_offset")
-    check(math.isclose(r.pitch_rate_deg_s, math.degrees(0.5)), "rate = degrees(gyro[0]) by default")
+    check(math.isclose(r.pitch_rate_deg_s, -math.degrees(0.5)), "rate = -degrees(gyro[0]) by default (axis 0, sign -1, measured 2026-11-23)")
 
 
 def test_gyro_is_read_before_euler():
@@ -177,7 +177,7 @@ def test_out_of_range_rate_is_nan_and_logged():
         check(any("Pitch rate unavailable" in text for _, text in node.logger.lines),
               f"gyro {gyro_x_rad_s} rad/s: the out-of-range rate must be logged")
     r, _ = reply((10.0, 1.0, 2.0), (34.0, 0.0, 0.0))  # about 1948 deg/s: inside the range
-    check(math.isclose(r.pitch_rate_deg_s, math.degrees(34.0)), "a rate inside the range must pass")
+    check(math.isclose(r.pitch_rate_deg_s, -math.degrees(34.0)), "a rate inside the range must pass (default sign -1)")
 
 
 def test_still_gyro_is_a_real_reading():

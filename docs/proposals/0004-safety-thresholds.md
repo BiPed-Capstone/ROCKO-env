@@ -24,7 +24,7 @@ the place named).
 | `kMaxConsecutiveWriteFailures` | same | 5 cycles | failed `set_value()` cycles before ERROR (M-5) |
 | `kDeadbandRadPerSec` / `kStictionDutyPercent` | `Motor12VoltQuadEncoder.hpp` | 0.05 rad/s / 2 % | below the deadband the motor gets duty 0; above it the old +2 % offset is kept as an explicit stiction term (H-2) |
 | `read_pitch_rate` | `ICM20948.py` node parameter | false | whether the node reads the gyro at all (finding M-7); false because no real controller uses the rate. Turn it on together with the gated YAML change (H-6): both are needed |
-| `pitch_rate_axis` / `pitch_rate_sign` | `ICM20948.py` node parameters | 0 / +1 | **guesses**: which gyro axis is robot pitch and its sign (H-6); establish on the robot |
+| `pitch_rate_axis` / `pitch_rate_sign` | `ICM20948.py` node parameters | 0 / -1 | **measured** on the robot 2026-11-23 ([journal](../journal/2026-11-23-gyro-check.md)); not a threshold to confirm |
 
 **Checked 2026-11-04 against `77664f4`:** every safety constant in `AddFeedforwardController.hpp`,
 `ICM20948.hpp`, `ImuFaultTracker.hpp` and `Motor12VoltQuadEncoder.hpp` is in the table above. Left out

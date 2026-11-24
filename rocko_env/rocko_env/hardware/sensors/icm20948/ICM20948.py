@@ -50,10 +50,12 @@ class ICM20948(Node):
         # 90 deg in about 1 s: expect tens of deg/s, not thousands).
         # We export one axis of it as pitch_rate_deg_s:
         #     pitch_rate_deg_s = pitch_rate_sign * degrees(gyro[pitch_rate_axis])
-        # UNVERIFIED: establish both on the robot by tilting it; an inverted D term is worse than
-        # none. The defaults are a GUESS: axis 0 (gyro X) because the BNO055 datasheet describes its
-        # Euler pitch as the rotation about the sensor's X axis, and sign +1 because nothing here says
-        # otherwise. Procedure: docs/claude-analysis/bno055-improvements.md, section 1.
+        # MEASURED on the robot 2026-11-23 (journal 2026-11-23-gyro-check.md, raw data and tools/imu_tilt_log.py):
+        # tilted by hand to -55 and +42 deg, gyro X integrated tracks the Euler pitch change with factor -0.966
+        # (rms error 0.9 deg over 40 s); gyro Y and Z do not track it (rms error 19 deg). So axis 0 and sign -1:
+        # gyro X reads POSITIVE while pitch DECREASES. Unit checked too: the factor is ~1, not 57, after degrees(), so
+        # the driver (5.4.22) returns rad/s. Resting noise about 0.1 deg/s. An inverted D term is worse than none: re-measure after the
+        # IMU is moved or remounted.
         #
         # read_pitch_rate (default False, finding M-7): whether to read the gyro at all.
         # rocko_controllers.yaml does not use pitch_rate today, and the gyro read is a second I2C
@@ -63,14 +65,14 @@ class ICM20948(Node):
         # YAML change that makes pitch_pid_controller use pitch_rate (finding H-6).
         self.read_pitch_rate = self.declare_parameter('read_pitch_rate', False).value
         self.pitch_rate_axis = self.declare_parameter('pitch_rate_axis', 0).value  # 0, 1 or 2
-        self.pitch_rate_sign = self.declare_parameter('pitch_rate_sign', 1).value  # +1 or -1
+        self.pitch_rate_sign = self.declare_parameter('pitch_rate_sign', -1).value  # +1 or -1; -1 measured 2026-11-23
         if self.pitch_rate_axis not in (0, 1, 2):
             raise ValueError("pitch_rate_axis must be 0, 1 or 2, got " + str(self.pitch_rate_axis))
         if self.pitch_rate_sign not in (1, -1):
             raise ValueError("pitch_rate_sign must be 1 or -1, got " + str(self.pitch_rate_sign))
         if self.read_pitch_rate:
             self.get_logger().warn(
-                "pitch_rate = %+d * gyro[%d]: axis and sign are UNVERIFIED on the robot (finding H-6)"
+                "pitch_rate = %+d * gyro[%d] (axis 0, sign -1 measured on the robot 2026-11-23; finding H-6)"
                 % (self.pitch_rate_sign, self.pitch_rate_axis))
         else:
             self.get_logger().info(

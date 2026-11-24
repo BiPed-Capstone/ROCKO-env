@@ -598,8 +598,8 @@ because they show what each tier is for.
   - *H6 (pitch rate).* The sim's rate has no delay and an assumed sign (`pitch_sign`), so the check shows
     the wiring (the D term reads the exported rate) and not that the benefit exists. The real YAML
     still says `["pitch"]`; the gyro axis and sign (`pitch_rate_axis`, `pitch_rate_sign` in
-    `ICM20948.py`) are unverified guesses, and so is the gyro's unit across driver versions (older than
-    5.0 returns deg/s, a rate 57 times too large). The sim ties the rate to the pitch in its fault policy;
+    `ICM20948.py`) were measured on the robot on 2026-11-23 (axis 0, sign -1, unit correct with driver 5.4.22:
+    [journal](../journal/2026-11-23-gyro-check.md)); an older driver (before 5.0) would return deg/s, 57 times too large. The sim ties the rate to the pitch in its fault policy;
     the plugin judges the rate on its own and never returns `ERROR` for it, and no sim check exercises that. Upstream
     `pid_controller` sets the rate **reference** once, at activation (finding L-8), which the sim hides
     because its robot is still then (rate 0.0). The sim file's allowed wiring difference was not made

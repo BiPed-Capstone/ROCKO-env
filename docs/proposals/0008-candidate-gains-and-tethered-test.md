@@ -68,6 +68,8 @@ last" item (next-steps row 3.3), prepared.
 3. **H-6 is verified on the robot:** the gyro axis (`pitch_rate_axis`, guessed 0), its sign
    (`pitch_rate_sign`, guessed +1) and its unit (the Adafruit driver returns rad/s; versions before
    5.0 returned deg/s, a factor of 57), by the steps in "Gyro check" below.
+   **Done 2026-11-23** ([journal](../journal/2026-11-23-gyro-check.md)): axis 0, sign **-1** (the guess +1 was
+   wrong), unit correct (driver 5.4.22, rad/s). `ICM20948.py`'s default is now -1.
 4. **The `read_pitch_rate` launch change and the pitch-rate YAML wiring** (above) are in place and
    built on the Pi.
 5. **[Proposal 0004](0004-safety-thresholds.md) thresholds are confirmed** by a human, in
