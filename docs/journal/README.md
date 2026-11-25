@@ -97,3 +97,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-24 | [Count the wheel encoders inside the C++ motor plugin (C-1, encoder half)](2026-11-24-c1-encoders-in-cpp.md) |
 | 2026-11-24 | [Measure the control loop's timing on the Pi, and decide what may run during tuning](2026-11-24-loop-timing-on-the-pi.md) |
 | 2026-11-24 | [Prepare the gyro D term for the robot: handle finding L-8 and propose the YAML change](2026-11-24-pitch-d-term-from-the-gyro.md) |
+| 2026-11-25 | [Make level read 0 (pitch offset), and propose a clamp on the target lean after the first floor test](2026-11-25-level-pitch-offset-and-lean-clamp.md) |

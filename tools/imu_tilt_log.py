@@ -3,7 +3,7 @@ On the Pi, as your user, from the repo root (needs ~/.venv with gpiod and adafru
     cd ~/ROCKO-env && ~/.venv/bin/python3 tools/imu_tilt_log.py 40 /tmp/tilt.csv
 The IMU must be free (tank mode, or the robot service stopped). The CSV keeps the first rows, which read all
 zeros while the sensor starts: drop rows where roll_deg and pitch_deg are both 0 before analysing.
-Columns: t_s, yaw_deg, roll_deg, pitch_deg (raw sensor, no 7.6 offset), gx/gy/gz_deg_s."""
+Columns: t_s, yaw_deg, roll_deg, pitch_deg (raw sensor, without the xacro's pitch_offset_deg), gx/gy/gz_deg_s."""
 import math, sys, time
 import board, adafruit_bno055
 

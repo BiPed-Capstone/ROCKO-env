@@ -83,6 +83,10 @@ established under the model (finding H-12, proposal 0006).
 > 8. **The tuning rig and records**: a tether, a way to read battery voltage, `record:=true` for every balance run
 >    ([guide](guides/record-a-run.md)), the Foxglove layout (row 4.4), and the fields of
 >    [reproducing-results.md](guides/reproducing-results.md).
+> **2026-11-25, first floor test (owner):** balance enabled on a flat floor; the wheels spun one way whatever the lean,
+> until the tipover cutoff tripped (both directions). Likely cause (reasoned; nothing was recorded): the velocity loop's
+> integral winding the target lean up (proposal [0017](proposals/0017-clamp-the-target-lean.md), open), with the pitch zero 10 deg off; the offset now makes
+> level read 0 ([journal](journal/2026-11-25-level-pitch-offset-and-lean-clamp.md); not yet pulled on the robot).
 > **Then:** re-derive proposal 0008's candidate gains from the sim with whatever was measured (estimates stand in for the rest); the first tethered test
 > (0008's procedure); tuning ([tune-gains](../.claude/skills/tune-gains/SKILL.md) skill, row 3.3).
 > **Smaller open items:** the supervisor does not pass `max_speed:=`/`max_turn:=` through to the mode stacks; the dashboard's

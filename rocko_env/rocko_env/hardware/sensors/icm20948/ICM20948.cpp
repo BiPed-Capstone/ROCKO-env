@@ -90,8 +90,9 @@ hardware_interface::CallbackReturn ICM20948::on_init(
 {
   // Parameters are read from `info` directly, as SimPlant does. (Calling the base on_init(info) is
   // deprecated in this Jazzy ros2_control, and the framework stores the info itself.)
-  // Hardware parameters from the xacro. Missing ones keep the defaults in ICM20948.hpp; a value that
-  // does not parse, or a mounting that check_imu_snapshot() would reject, refuses to start.
+  // Hardware parameters from the xacro. Missing ones keep the defaults in ICM20948.hpp, except
+  // pitch_offset_deg, which has none (NaN) and so must be given; a value that does not parse, or a mounting
+  // that check_imu_snapshot() would reject, refuses to start.
   try {
     const auto device = info.hardware_parameters.find("i2c_device");
     if (device != info.hardware_parameters.end()) {
@@ -111,7 +112,8 @@ hardware_interface::CallbackReturn ICM20948::on_init(
   {
     RCLCPP_ERROR(
       _logger, "pitch_rate_axis must be 0, 1 or 2 and pitch_rate_sign 1 or -1 (got %d, %d), "
-      "pitch_offset_deg finite", _mounting.pitch_rate_axis, _mounting.pitch_rate_sign);
+      "and pitch_offset_deg must be given in the xacro, finite (got %.2f)", _mounting.pitch_rate_axis,
+      _mounting.pitch_rate_sign, _mounting.pitch_offset_deg);
     return hardware_interface::CallbackReturn::ERROR;
   }
   RCLCPP_INFO(

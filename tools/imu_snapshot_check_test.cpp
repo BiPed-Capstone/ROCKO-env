@@ -25,7 +25,8 @@ namespace uart = rocko_env::bno055_uart;
 
 namespace
 {
-// The robot's measured mounting (rocko.ros2_control.xacro): offset 7.6 deg, gyro X, sign -1.
+// A mounting like the robot's (gyro X, sign -1); the offset 7.6 deg is the old xacro value (now -2.5), kept here
+// because the range cases below are written around it.
 const ImuMounting kRobot{7.6, 0, -1};
 
 // Put a value [units] into the 12 burst bytes at `register_lsb`, 16 LSB per unit, little-endian.

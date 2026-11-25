@@ -580,7 +580,7 @@ because they show what each tier is for.
   - *H4 (tipover cutoff).* It watches the commands `controller_manager` publishes on its introspection
     topic (best-effort QoS, so a dropped message is possible; 801 commands were seen in the latest
     run), not the PWM. The 35 deg limit is a proposal and applies to the **reported** pitch, which
-    includes the IMU node's unexplained `pitch_offset = 7.6` deg. A latched cutoff does not deactivate
+    includes the xacro's `pitch_offset_deg` (since 2026-11-25 it makes the robot flat and level read 0). A latched cutoff does not deactivate
     anything, so the upstream PID integrators keep winding while it is disarmed; the first command after a
     re-arm could be large (finding H-10), and the sim does not test a re-arm that is accepted, nor the
     10 to 35 deg re-arm band (the host latch test does). Activating a controller re-arms it without the

@@ -72,7 +72,9 @@ private:
   // ---- Hardware parameters (the <param> tags of the Gyro block in rocko.ros2_control.xacro) ----
   std::string _i2c_device = "/dev/i2c-1";  // the Pi's I2C bus on the 40-pin header (pins 3 and 5)
   int _i2c_address = 0x28;                 // the BNO055's default address (Adafruit's default too)
-  ImuMounting _mounting{7.6, 0, -1};       // overwritten from the xacro in on_init
+  // Overwritten from the xacro in on_init. The pitch offset has NO default (NaN): it is a measurement of this robot
+  // (pitch_offset_deg in the xacro), and on_init refuses to start without a finite one rather than guess.
+  ImuMounting _mounting{std::numeric_limits<double>::quiet_NaN(), 0, -1};
 
   int _i2c_fd = -1;  // the open bus, or -1
 

@@ -18,8 +18,8 @@ add_feedforward_controller:
   # Tipover cutoff (finding H-4, docs/claude-analysis/balance-loop-findings.md).
   # SAFETY PARAMETER: 35.0 is a PROPOSED value taken from the H-4 write-up, not measured on this
   # robot; a human replaces it with the angle measured in a tethered test.
-  # Measured on the pitch the IMU plugin reports, which already has the +7.6 deg pitch_offset_deg of
-  # rocko.ros2_control.xacro added; whether that reported 0.0 is truly upright is unmeasured.
+  # Measured on the pitch the IMU plugin reports, which already has the pitch_offset_deg of
+  # rocko.ros2_control.xacro added; since 2026-11-25 that makes flat and level read 0.0 (the balance point is unmeasured).
   # read_only: the controller reads it once, at configure; changing it on a running controller
   # would do nothing, so ROS refuses the change instead of pretending.
   # lt_eq 90: past 90 deg the robot is lying on its side, so a larger limit is a typo (and one of

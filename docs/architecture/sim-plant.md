@@ -93,7 +93,7 @@ meaning, or it tests a different robot.
 | Signal | Interface or topic | Unit on the real robot | Sign | Where it comes from |
 | --- | --- | --- | --- | --- |
 | Pitch state | `left_wheel_joint/pitch`, `right_wheel_joint/pitch` (the same number on both) | **degrees** | Unknown from code (§2.4) | Since 2026-11-24 `ICM20948.cpp` reads the BNO055's Euler registers itself (one I²C burst, [how](imu-i2c-read.md)), 16 counts per degree, and `ImuSnapshotCheck.hpp` adds the `pitch_offset_deg` xacro parameter, 7.6, to a degree value: **+7.6°** (before that, `ICM20948.py` did the same). `ICM20948.hpp` (comment on `_pitch`) also says degrees. `ICM20948::export_state_interfaces()` exports the one `_pitch` under both joints |
-| Pitch "zero" | — | degrees | — | 0.0 is whatever raw BNO055 pitch reads −7.6°. Presumably the team found that to be upright; **unmeasured**. Nothing says 0.0 is "centre of mass over the axle" |
+| Pitch "zero" | — | degrees | — | Since 2026-11-25, 0.0 is the robot standing flat and level (the owner measured it; `pitch_offset_deg` in the xacro, [journal](../journal/2026-11-25-level-pitch-offset-and-lean-clamp.md)). Until then it was raw −7.6°, never checked. Level is not necessarily "centre of mass over the axle": the balance point is **unmeasured** |
 | Wheel velocity state | `<wheel>_joint/velocity` (state) | **m/s**, not rad/s | Unknown from code (§2.4) | `Motor12VoltQuadEncoder::read()` (since 2026-11-24 it counts its own encoder's edges, [how](encoders-in-cpp.md); before, it asked `QuadEncoders.py` over a service with the same arithmetic): the wheel's position change since the previous cycle, divided by the **real** time since the previous read (measured with `steady_clock` in `read()`), then low-passed (0.05, `WheelEncoder.hpp`); position in metres (counts ÷ counts per metre, from the xacro's `encoder_counts_per_wheel_rev` 145 × 1.355 and `wheel_radius_m` 0.06). Until 2026-11-23 this was finding U-2 (about half the true speed); fixed, see U-2 below |
 | Wheel position state | `<wheel>_joint/position` | **m** of that wheel's travel | Same as velocity | Each wheel's own encoder, counted in its motor plugin (`Motor12VoltQuadEncoder::read()` stores it in `_wheel.pos`; until 2026-11-24 `QuadEncoders.py` counted it). Until 2026-11-23 both joints got the left wheel's position (U-2) |
 | Wheel command | `<wheel>_joint/velocity` (command) | **rad/s**, read as a fraction of the gearbox-output no-load speed | Positive = sim-forward, by definition | `Motor12VoltQuadEncoder::write()`: `radPerSec = _wheel.cmd`; non-finite or `abs(radPerSec) < 0.05` (`kDeadbandRadPerSec` in the `.hpp`) writes duty 0; else duty % = `clamp(abs(radPerSec) / MAX_RAD_PER_SEC * 100 + 2.0, 0, 100)` (`kStictionDutyPercent` in the `.hpp`), truncated to `int`. `MAX_RAD_PER_SEC` (the `.hpp`) is "1150 RPM" at the gearbox output (finding U-3) |
@@ -556,10 +556,11 @@ the ring buffer is sized in `on_init` from `imu_delay_max_ms`.
 
 **Pitch.** The ring buffer holds one `ψ` per 1 ms sub-step; the exported value is the one
 `imu_delay_ms` sub-steps old (an integer number of milliseconds). It is the plain delay of §4, standing
-in for the BNO055's fusion lag plus the service call. The sim does **not** add the +7.6° of
-`pitch_offset_deg` (a xacro parameter since 2026-11-24; before, `pitch_offset` in `ICM20948.py`): that offset turns the raw sensor angle into the robot's "upright = 0" frame, and the
+in for the BNO055's fusion lag plus the service call. The sim does **not** add
+`pitch_offset_deg` (-2.5° since 2026-11-25, which makes the robot flat and level read 0) (a xacro parameter since 2026-11-24; before, `pitch_offset` in `ICM20948.py`): that offset turns the raw sensor angle into the robot's "upright = 0" frame, and the
 sim produces that frame directly. `imu_pitch_bias_deg` models an upright reference that is wrong by a
-fixed amount (default 0.0: assumes the 7.6° calibration is exact, which nobody has checked).
+fixed amount (default 0.0: assumes the robot's offset makes 0 the balance point; the offset makes the body's level
+read 0, and whether that is the balance point is not measured).
 
 **Encoder velocity, `model_encoder_node = true` (default).** Copies `QuadEncoders.py` as fixed for finding U-2
 (2026-11-23), whose arithmetic the motor plugin kept when it took over the counting (2026-11-24, `WheelEncoder.hpp`):
@@ -621,7 +622,7 @@ that the gyro's real rate is as clean as this one, which is exact and undelayed.
 | `battery_voltage_V` | `V_bat` | V | 12.0 | Nominal 12 V pack (the motor class is `Motor12Volt…`). Constant: no sag (§6) |
 | `motor_rated_voltage_V` | `V_rated` | V | 12.0 | The voltage `τ_stall` and `ω_noload` are quoted at |
 | `imu_delay_ms` | – | ms | 20 | Finding H-6: the BNO055 fusion output lags by "tens of milliseconds"; plus the blocking service call (C-1). Integer, ≤ `imu_delay_max_ms` |
-| `imu_pitch_bias_deg` | – | ° | 0.0 | Assumes the 7.6° offset makes 0.0 exactly upright (§3.7) |
+| `imu_pitch_bias_deg` | – | ° | 0.0 | Assumes the robot's offset makes 0.0 the balance point (§3.7); it makes level read 0 |
 | `fallen_pitch_deg` | – | ° | 60 | Invented; only stops meaningless physics (§3.6) |
 
 Derived with these numbers: `a11 = 0.01044`, `a12 = 0.024`, `a22 = 0.10833` kg·m²;

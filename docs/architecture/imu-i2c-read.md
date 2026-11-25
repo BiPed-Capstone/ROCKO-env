@@ -64,7 +64,7 @@ logged, and never counted as a fault. That gap had to be closed before any contr
 
 | Number | Value | Home |
 | --- | --- | --- |
-| Pitch offset | 7.6 deg (added); where it came from is not recorded | `rocko.ros2_control.xacro`, `pitch_offset_deg` |
+| Pitch offset | added to the sensor's pitch so that the robot flat and level reads 0, measured by the owner 2026-11-25 ([journal](../journal/2026-11-25-level-pitch-offset-and-lean-clamp.md)); it was 7.6, origin unrecorded | `rocko.ros2_control.xacro`, `pitch_offset_deg` |
 | Pitch-rate axis and sign | gyro X, sign -1, measured 2026-11-23 ([journal](../journal/2026-11-23-gyro-check.md)) | `rocko.ros2_control.xacro` |
 | I2C bus and address | `/dev/i2c-1`, `0x28` | `rocko.ros2_control.xacro` |
 | Pitch-jump slack; rate-step limit | 5 deg; 20 000 deg/s² + 50 deg/s (PROPOSED) | `kMaxPitchJumpSlackDeg`, `kMaxPitchAccelDegS2`, `kMaxRateStepSlackDegS` in `ImuSnapshotCheck.hpp` |

@@ -128,9 +128,9 @@ controller_interface::CallbackReturn AddFeedforwardController::configure_tipover
   // The limit is a hardware decision, so it is a parameter (tipover_pitch_deg, proposed 35 deg from
   // the H-4 write-up in docs/claude-analysis/balance-loop-findings.md, not from this robot's
   // physics; a tethered measurement replaces it). It is compared with the pitch the IMU plugin
-  // reports, which has the IMU plugin's +7.6 deg pitch_offset_deg (rocko.ros2_control.xacro) already added. Whether reported 0.0 is
-  // truly upright is unmeasured, so in true lean the cutoff may sit nearer 35 - 7.6 on one side and
-  // 35 + 7.6 on the other.
+  // reports, which has the IMU plugin's pitch_offset_deg (rocko.ros2_control.xacro) already added. Since 2026-11-25
+  // that offset makes the robot standing flat and level read 0.0 (measured by the owner), so the cutoff sits about
+  // equally far either side of level; the balance point itself (centre of mass over the axle) is not measured.
   tipover_pitch_deg_ = params_.tipover_pitch_deg;
   rearm_max_pitch_deg_ = params_.rearm_max_pitch_deg;
   tipover_enabled_ = TipoverLatch::is_enabled(tipover_pitch_deg_);

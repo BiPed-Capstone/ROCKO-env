@@ -106,10 +106,9 @@ enum class ReplyStatus
 };
 
 // One sample of the sensor, all six values from the same 12-byte read, in the SENSOR's own axes.
-// UNVERIFIED on this robot: which of these is the robot's pitch and pitch rate, and with which sign.
-// Today's node exports EUL_Pitch (+7.6 deg offset) as pitch, and gyro axis 0 (X) with sign +1 as the
-// pitch rate, both guesses (ICM20948.py, pitch_rate_axis / pitch_rate_sign). Choosing the field, the
-// sign and the offset is the plugin's job, not this header's.
+// On this robot the IMU plugin exports EUL_Pitch plus pitch_offset_deg as pitch, and gyro axis 0 (X) with
+// sign -1 as the pitch rate (measured; the values are xacro parameters). Choosing the field, the sign and
+// the offset is the plugin's job, not this header's.
 // On any failure ALL SIX are NaN and valid is false: never 0.0, which would read as "upright and
 // still" (findings C-2, M-5).
 struct GyroEulerSnapshot

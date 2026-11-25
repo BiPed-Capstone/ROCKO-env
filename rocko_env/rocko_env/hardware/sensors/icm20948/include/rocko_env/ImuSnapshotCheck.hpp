@@ -21,8 +21,8 @@ namespace rocko_env
 // How the sensor sits on ROCKO. Measured values live in the xacro (hardware parameters), not here.
 struct ImuMounting
 {
-  // [deg] ADDED to the sensor's pitch. The xacro sets 7.6, the value in the old Python IMU node
-  // (removed 2026-11-24); its origin is not recorded.
+  // [deg] ADDED to the sensor's pitch. The value lives in the xacro (pitch_offset_deg): since 2026-11-25 it
+  // makes the robot standing flat and level read 0 (measured by the owner; it was 7.6, origin unrecorded).
   double pitch_offset_deg = 0.0;
   // Which gyro axis is the pitch rate (0 = X, 1 = Y, 2 = Z) and its sign (+1 or -1), so that
   // pitch_rate = sign * gyro[axis]. Measured 2026-11-23: axis 0 (X), sign -1

@@ -96,8 +96,8 @@ struct SimPlantParams
   double battery_voltage_V = 12.0;         // [V] constant: no sag
   double motor_rated_voltage_V = 12.0;     // [V] the voltage the two motor figures are quoted at
   int imu_delay_ms = 20;                   // [ms] BNO055 fusion lag + service call (finding H-6)
-  double imu_pitch_bias_deg = 0.0;         // [deg] error in "upright = 0"; 0 assumes 7.6 deg is
-                                           //   exact
+  double imu_pitch_bias_deg = 0.0;         // [deg] error in "upright = 0"; 0 assumes the robot's
+                                           //   pitch_offset_deg makes 0 the balance point
   double fallen_pitch_deg = 60.0;          // [deg] past this the body is "on the floor"; freeze lean
   // ================================================================================================
 

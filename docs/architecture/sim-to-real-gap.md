@@ -229,6 +229,10 @@ and [§3](sim-plant.md#3-the-model).
 
 ### 3.12 An upright reference that is wrong (the +7.6 degree offset)
 
+**Update 2026-11-25:** the owner measured the robot flat and level at 10.1 deg with the 7.6 offset, so it was 10 deg
+off; the offset is now -2.5 and level reads 0 ([journal](../journal/2026-11-25-level-pitch-offset-and-lean-clamp.md)). What is still unmeasured is the balance point (centre of
+mass over the axle), which need not be the body's level. The text below is as written on 2026-11-04.
+
 Not on the task's list, but it changes the meaning of a zero integral: the IMU plugin adds a fixed
 +7.6 deg to the raw pitch (`pitch_offset_deg` in `rocko.ros2_control.xacro`; `ICM20948.py` did until 2026-11-24), and nobody has checked that the reported 0.0 is "centre of mass over the
 axle" (sim-plant.md §2.1). `imu_pitch_bias_deg` is 0 in the sim.
@@ -267,7 +271,7 @@ axle" (sim-plant.md §2.1). `imu_pitch_bias_deg` is 0 in the sim.
 | `coulomb_friction_Nm` | 0.0 (off) | N·m | Unknown |
 | `battery_voltage_V`, `motor_rated_voltage_V` | 12.0, 12.0 | V | Nominal; no sag |
 | `imu_delay_ms` | 20 | ms | A guess from "tens of milliseconds" (H-6) |
-| `imu_pitch_bias_deg` | 0.0 | deg | Assumes the 7.6 deg offset makes 0.0 upright |
+| `imu_pitch_bias_deg` | 0.0 | deg | Assumes the robot's offset makes 0.0 the balance point (it makes level read 0 since 2026-11-25) |
 | `fallen_pitch_deg` | 60 | deg | Invented; only stops meaningless physics |
 
 Conventions that are **assumptions**, not physics: `pitch_sign` −1 (a positive wheel command makes
