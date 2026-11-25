@@ -232,8 +232,9 @@ What exists, so you know what a press does:
 
 - Switch to it with **LT + RT + RB** (or the dashboard's **Balance**) while the robot is disabled. The supervisor
   stops tank mode's stack and starts balancing's. This takes several seconds, with no motor stack in between.
-- **Enabling in balance mode needs the robot near upright** (`|pitch|` within the tipover cutoff's re-arm band, read from
-  the controller); otherwise the enable is refused and the message says so.
+- **Enabling in balance mode needs the robot near upright and held still** (`|pitch|` within the tipover cutoff's re-arm
+  band, read from the controller, and the pitch rate within `ENABLE_MAX_PITCH_RATE_DEG_S` in
+  `supervisor/state_machine.py`); otherwise the enable is refused and the message says which ("hold the robot still").
 - `BalanceTeleop.py` reads the same pad: **left stick Y** is forward speed and **right stick X** is turn, with the
   same deadzone, expo, enable and centre rules. Its defaults are `max_speed` 0.05 (0.5 m/s) and `max_turn` 0.2, **untested
   starting points**, not tuned values. They are launch arguments of `rocko.launch.py` (`max_speed:=`, `max_turn:=`,

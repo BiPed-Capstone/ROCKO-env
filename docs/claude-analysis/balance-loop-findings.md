@@ -557,10 +557,10 @@ interfaces now); `SimPlant` exports `pitch_sign * degrees(psi_dot)` with no IMU 
 YAML (only) sets `pitch_pid_controller`'s `reference_and_state_interfaces` to `["pitch", "pitch_rate"]`. That
 is the one wiring difference `sim/check_sim_config.py` allows. *Not done:* the real `rocko_controllers.yaml`
 still says `["pitch"]`, so the robot's D term still differentiates the angle; changing it is a gated
-decision ([proposal 0008](../proposals/0008-candidate-gains-and-tethered-test.md), Open) and has to cover [L-8](#l-8--pid_controller-sets-the-rate-reference-once-at-activation).
-It must also cover a **persistent** rate failure: today a bad rate is only held and logged, so once the real
-YAML consumes the rate the plugin needs its own consecutive-failure tracker that makes `read()` return `ERROR`,
-switched by a hardware parameter such as `pitch_rate_required` (see the comment in `ICM20948.hpp`).
+decision, now [proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md) (Open), which covers [L-8](#l-8--pid_controller-sets-the-rate-reference-once-at-activation).
+*(2026-11-24: the earlier worry about a **persistent** rate failure is settled: since C-1 the angle and the rate come
+from one burst and a bad rate is a failed read in the IMU's fault tracker, so a lasting failure makes `read()` return
+`ERROR`; the `pitch_rate_required` idea is gone.)*
 
 How `pid_controller` 4.42.1 uses a second interface (read from its source at that tag by the integrator,
 2026-11-02): it is the measured derivative of the first; the D term is `d * (rate reference - measured
@@ -1268,8 +1268,13 @@ confirms, so it is a proposal and not an agent edit. Queue: [next-steps row 1.11
 
 ### L-8 — `pid_controller` sets the rate reference once, at activation
 
+**Status on `ai-forward` (2026-11-24): handled in a proposal, not yet on the robot.** The NaN case cannot happen since
+C-1 (the IMU plugin never reports NaN after configure); the offset is bounded by a new supervisor rule (balance enables
+only while `|pitch_rate|` is within `ENABLE_MAX_PITCH_RATE_DEG_S`); the YAML wiring itself is
+[proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md).
+
 **Found** 2026-11-02, reading `pid_controller` 4.42.1 (upstream source at that tag, read by the integrator) for
-the H-6 change. **Not fixed.** It is invisible in the sim and unobserved on a robot.
+the H-6 change. **Not fixed** (as of 2026-11-02). It is invisible in the sim and unobserved on a robot.
 
 **Where** `pitch_pid_controller` in `rocko_sim_controllers.yaml` (and in `rocko_controllers.yaml`, once H-6 is
 wired there).

@@ -32,7 +32,10 @@ expected **nodes** and **controllers** with whether each is up.
 1. **Boot:** mode `tank`, disabled. The supervisor starts tank's stack straight away.
 2. **Enable** only when `phase` is `ready` and disabled. In balance mode, also only when the robot is near
    upright: `|pitch| <= rearm_max_pitch_deg`, the tipover cutoff's own re-arm band, read from the controller so the
-   number has one home (`add_feedforward_controller_parameters.yaml`).
+   number has one home (`add_feedforward_controller_parameters.yaml`); and only when the robot is nearly still:
+   `|pitch_rate|` known and within `ENABLE_MAX_PITCH_RATE_DEG_S` (`state_machine.py`, PROPOSED), because once the
+   pitch loop takes its D term from the gyro, the rate at enable stays in it as a constant offset (finding L-8,
+   [proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md)).
 3. **Change mode** only when **disabled** and `phase` is `ready` or `fault`. A change stops the old stack, then
    starts the new one: `stopping` → `starting` → `ready`.
 4. **Disable** is always allowed, in any phase. Disabling never needs anything to go right first.

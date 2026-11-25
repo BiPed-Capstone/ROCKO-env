@@ -42,6 +42,16 @@ CM_UNANSWERED_KILL_S = 5.0    # [s] still unanswered this long AFTER the fault -
 # [s] Longer than controller_manager's own 5 s limit for one switch (SWITCH_REQUEST_TIMEOUT_S in Supervisor.py), so a
 # slow but healthy deactivate is not mistaken for a stuck one.
 DEACTIVATE_CONFIRM_S = 6.0
+# [deg/s] Balance mode enables only while |pitch rate| is at most this (finding L-8). Pitch rate is the IMU's
+# pitch_rate, + while pitch increases (pitch goes DOWN when the robot leans forward); the sign does not matter here.
+# Why: proposal 0016 makes the pitch loop's D term come from the gyro (reference_and_state_interfaces:
+# ["pitch", "pitch_rate"]; today only rocko_sim_controllers.yaml has it). pid_controller then sets its rate
+# reference ONCE, to the gyro's reading when the controller activates (at enable), and never again, so the rate at
+# enable stays in the D term as a constant offset of d x rate for the whole run: with today's d = 0.1, 3 deg/s gives
+# at most 0.3 in the loop's output. The rule is active now, whatever the real YAML uses, so it is in place before that
+# change. PROPOSED, a safeguard, not measured: a hand holding the robot upright moves it a few deg/s; if that is too
+# tight, raise it (the refusal says the rate it saw).
+ENABLE_MAX_PITCH_RATE_DEG_S = 3.0
 
 
 class StateMachine:
@@ -75,9 +85,9 @@ class StateMachine:
         return actions
 
     # --- requests from a person (gamepad or dashboard) ------------------------------------------
-    def request_enable(self, enabled, source, pitch_deg=None, rearm_max_pitch_deg=None):
-        """Enable or disable. pitch_deg [deg] and rearm_max_pitch_deg [deg] matter only for enabling
-        balance mode; None means "unknown". Returns (ok, message)."""
+    def request_enable(self, enabled, source, pitch_deg=None, rearm_max_pitch_deg=None, pitch_rate_deg_s=None):
+        """Enable or disable. pitch_deg [deg], rearm_max_pitch_deg [deg] and pitch_rate_deg_s [deg/s, + while
+        pitch increases] matter only for enabling balance mode; None means "unknown". Returns (ok, message)."""
         if not enabled:
             # Rule 4: disabling is always allowed, in any phase.
             if self.enabled:
@@ -99,6 +109,11 @@ class StateMachine:
             if abs(pitch_deg) > rearm_max_pitch_deg:
                 return self._refuse(f"cannot enable balance: pitch {pitch_deg:.1f} deg is outside "
                                     f"+-{rearm_max_pitch_deg:.1f} deg; stand the robot up")
+            if pitch_rate_deg_s is None or not math.isfinite(pitch_rate_deg_s):
+                return self._refuse("cannot enable balance: pitch rate is unknown")
+            if abs(pitch_rate_deg_s) > ENABLE_MAX_PITCH_RATE_DEG_S:
+                return self._refuse(f"cannot enable balance: pitch rate {pitch_rate_deg_s:.1f} deg/s; hold the "
+                                    f"robot still (within +-{ENABLE_MAX_PITCH_RATE_DEG_S:.1f} deg/s)")
         self.enabled = True
         self.motion_epoch += 1
         self._disable_unconfirmed = False   # an enable right after a disable replaces the wait for its proof
@@ -251,14 +266,15 @@ class StateMachine:
         self._disable_unconfirmed = False
 
     # --- the game controller --------------------------------------------------------------------
-    def joy_message(self, held, now_s, pitch_deg=None, rearm_max_pitch_deg=None):
+    def joy_message(self, held, now_s, pitch_deg=None, rearm_max_pitch_deg=None, pitch_rate_deg_s=None):
         """One /joy message. `held` is gamepad.pressed_inputs(). Returns (ok, message) if it
         completed a combo, else None."""
         self._last_joy_s = now_s
         combo = self._combos.update(True, held)
         result = None
         if combo == "toggle_enable":
-            result = self.request_enable(not self.enabled, SOURCE_GAMEPAD, pitch_deg, rearm_max_pitch_deg)
+            result = self.request_enable(not self.enabled, SOURCE_GAMEPAD, pitch_deg, rearm_max_pitch_deg,
+                                         pitch_rate_deg_s)
         elif combo == "toggle_mode":
             names = modes.mode_names()
             other = names[(names.index(self.mode) + 1) % len(names)]

@@ -60,12 +60,31 @@ def test_rule2_balance_pitch():
     for pitch, band, why in [(None, 5.0, "unknown pitch"), (1.0, None, "unknown band"),
                              (float("nan"), 5.0, "nan pitch"), (6.0, 5.0, "outside band"),
                              (-6.0, 5.0, "outside band, negative")]:
-        ok, msg = m.request_enable(True, "gamepad", pitch, band)
+        ok, msg = m.request_enable(True, "gamepad", pitch, band, 0.0)
         check(not ok and not m.enabled and msg, f"refused: {why}")
     check(m.take_actions() == [], "refusals queue nothing")
-    ok, _ = m.request_enable(True, "gamepad", -4.9, 5.0)
+    ok, _ = m.request_enable(True, "gamepad", -4.9, 5.0, 0.0)
     check(ok and m.enabled, "enabled inside the band")
     check(m.take_actions() == [("ACTIVATE",), ("PUBLISH_REARM",)], "balance enable activates then re-arms")
+
+
+def test_rule2_balance_needs_the_robot_still():
+    # Finding L-8: the pitch loop's rate reference is the gyro's reading at enable, kept for the whole run.
+    m = ready_machine("balance")
+    limit = state_machine.ENABLE_MAX_PITCH_RATE_DEG_S
+    for rate, why in [(None, "unknown rate"), (float("nan"), "nan rate"), (float("inf"), "infinite rate"),
+                      (limit + 0.1, "pitching forward too fast"), (-(limit + 0.1), "pitching back too fast")]:
+        ok, msg = m.request_enable(True, "gamepad", 0.0, 5.0, rate)
+        check(not ok and not m.enabled and msg, f"refused: {why}")
+    check(m.take_actions() == [], "refusals queue nothing")
+    ok, _ = m.request_enable(True, "gamepad", 0.0, 5.0, -limit)
+    check(ok and m.enabled, "enabled at exactly the limit")
+
+
+def test_tank_enable_ignores_pitch_rate():
+    m = ready_machine("tank")
+    ok, _ = m.request_enable(True, "dashboard", None, None, None)
+    check(ok and m.enabled, "tank mode does not look at pitch or its rate")
 
 
 def test_rule3_mode_change():
@@ -213,6 +232,12 @@ def test_balance_enable_via_combo_uses_pitch():
     m.joy_message(set(), 0.0)
     r = m.joy_message(LB_RB, 0.05, pitch_deg=None, rearm_max_pitch_deg=5.0)
     check(r is not None and not r[0] and not m.enabled, "unknown pitch refuses the combo")
+    m.joy_message(set(), 0.10)
+    r = m.joy_message(LB_RB, 0.15, pitch_deg=0.0, rearm_max_pitch_deg=5.0, pitch_rate_deg_s=50.0)
+    check(r is not None and not r[0] and not m.enabled, "a moving robot refuses the combo")
+    m.joy_message(set(), 0.20)
+    r = m.joy_message(LB_RB, 0.25, pitch_deg=0.0, rearm_max_pitch_deg=5.0, pitch_rate_deg_s=0.5)
+    check(r == (True, "enabled") and m.enabled, "still and upright: the combo enables")
 
 
 def test_modes_table():
@@ -230,7 +255,7 @@ def test_modes_table():
 
 def enabled_balance():
     m = ready_machine("balance")
-    ok, _ = m.request_enable(True, "dashboard", 0.0, 10.0)
+    ok, _ = m.request_enable(True, "dashboard", 0.0, 10.0, 0.0)
     check(ok, "balance enabled inside the band")
     m.take_actions()
     return m

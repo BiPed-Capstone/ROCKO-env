@@ -43,6 +43,9 @@ WHEEL_WITH_PITCH = "left_wheel_joint"           # the IMU plugin exports pitch [
 REARM_CONTROLLER = "left_add_feedforward_controller"
 REARM_PARAMETER = "rearm_max_pitch_deg"          # [deg] the tipover cutoff's own re-arm band
 PITCH_MAX_AGE_S = 1.0                            # [s] older than this, pitch counts as unknown
+# [s] older than this, the pitch rate counts as unknown. Short, because the hold-still check (L-8) is about the rate
+# right at enable; joint_state_broadcaster publishes it every control cycle (10 ms), so 0.2 s is 20 missed messages.
+PITCH_RATE_MAX_AGE_S = 0.2
 IGNORE_POLL_AFTER_START_S = 2.0                  # [s] the graph may still list the old stack's nodes
 SWITCH_GRACE_S = 5.0                             # [s] after enable/disable, a controller mid-change is not a fault
 CALL_GIVE_UP_S = 3.0                             # [s] an unanswered list/get call is dropped and re-asked
@@ -84,6 +87,8 @@ class Supervisor(Node):
         self.alive_nodes = set()
         self.pitch_deg = None
         self.pitch_time_s = 0.0
+        self.pitch_rate_deg_s = None   # [deg/s] + while pitch increases; for request_enable's hold-still check (L-8)
+        self.pitch_rate_time_s = 0.0
         self.rearm_max_pitch_deg = None
         # In-flight async calls (one at a time each, so a slow service cannot pile up requests)
         self.list_future = None
@@ -142,11 +147,18 @@ class Supervisor(Node):
                 if name == "pitch":
                     self.pitch_deg = value
                     self.pitch_time_s = time.monotonic()
+                elif name == "pitch_rate":
+                    self.pitch_rate_deg_s = value
+                    self.pitch_rate_time_s = time.monotonic()
 
     def balance_inputs(self):
-        """(pitch [deg], re-arm band [deg]) for the state machine; None for anything not known right now."""
-        fresh = self.pitch_deg is not None and time.monotonic() - self.pitch_time_s < PITCH_MAX_AGE_S
-        return (self.pitch_deg if fresh else None), self.rearm_max_pitch_deg
+        """(pitch [deg], re-arm band [deg], pitch rate [deg/s]) for the state machine; None for anything not
+        known right now."""
+        now = time.monotonic()
+        fresh = self.pitch_deg is not None and now - self.pitch_time_s < PITCH_MAX_AGE_S
+        rate_fresh = self.pitch_rate_deg_s is not None and now - self.pitch_rate_time_s < PITCH_RATE_MAX_AGE_S
+        return ((self.pitch_deg if fresh else None), self.rearm_max_pitch_deg,
+                (self.pitch_rate_deg_s if rate_fresh else None))
 
     # ------------------------------------------------------------------ doing what the rules ask
     def after_change(self):

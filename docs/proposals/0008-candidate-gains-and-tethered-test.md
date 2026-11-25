@@ -46,7 +46,8 @@ controller reads the gyro rate. That needs three more changes together:
    with `pitch_rate_axis` and `pitch_rate_sign` once established) that the agent can write after
    this proposal is accepted. It was not written, because writing it changes what a plain launch
    does on the robot.
-3. **The rate reference caveat** ([L-8](../claude-analysis/balance-loop-findings.md#l-8--pid_controller-sets-the-rate-reference-once-at-activation)):
+3. **Handled 2026-11-24 in [proposal 0016](0016-pitch-d-term-from-the-gyro.md)**, which proposes item 1 on its own,
+   with today's gains. *The original text:* **The rate reference caveat** ([L-8](../claude-analysis/balance-loop-findings.md#l-8--pid_controller-sets-the-rate-reference-once-at-activation)):
    `pid_controller` sets the rate reference once, to the gyro's value at activation, and never
    again; a robot activated while moving carries a constant `d × rate` bias, and activation with no
    good IMU read leaves the reference NaN for good.
