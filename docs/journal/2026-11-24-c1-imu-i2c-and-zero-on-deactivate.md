@@ -126,6 +126,25 @@ session. **Balance mode stays disabled throughout** (the handoff rule). Wheels o
    still hang it (row 1.3); say which.
 7. Record the commit SHA, battery voltage and the log location ([reproducing results](../guides/reproducing-results.md)).
 
+## On the robot, 2026-11-24 (owner at the robot, agent over SSH with the owner's permission)
+
+Commit `f720081`, built on the Pi with `./build_ros.sh` (2 packages, no warnings, motor plugin included).
+Raspberry Pi 5 Model B Rev 1.0, kernel `CONFIG_HZ=1000`. Supervisor switched to balance with
+`ros2 service call /rocko/set_mode ... "{mode: balance}"`, **never enabled**; robot held by the owner.
+Battery voltage and surface not recorded (no motion; the robot was held). The raw CSV stayed on the Pi
+(`/tmp/imu_check.csv`, not kept).
+
+| Step | Result |
+| --- | --- |
+| 3. Start-up | `BNO055 on /dev/i2c-1 address 0x28; pitch offset +7.60 deg; pitch rate = -1 * gyro[0]`, then `BNO055 ready: pitch +9.41 deg, roll -4.56 deg, pitch rate +0.19 deg/s` about 0.9 s later. Supervisor `phase=ready` in balance |
+| 4. Signs (30 s of `/dynamic_joint_states`, 2755 samples, 100 Hz, largest gap 25.5 ms) | Tilted forward: pitch went **down**, +9.4 to -21.7 deg, as with the Python node. `pitch_rate` against the numerical derivative of pitch: correlation **0.990**, gain **1.02**, so the rate is negative while tilting forward: axis X and sign -1 still hold, unit right. Peak rate 85.9 deg/s. Still: rate within +/-0.4 deg/s. No pitch-jump reject during the tilts |
+| 5. Failures and timing (about 5 minutes, 10 timing lines) | **0** `IMU read failed`. Slowest I2C read per 3000 reads: **3564 to 3586 us**, steady. Well inside the 10 ms timeout, but it is about **36 % of the 10 ms cycle**, every cycle, and the median is not logged. Item 4 of the handoff (loop timing) must count it |
+| 6. Shutdown | **Not fixed.** Leaving balance mode: `ros2_control_node` **and** `robot_state_publisher` ignored SIGINT and SIGTERM and were SIGKILLed after 15 s; the same for `ros2_control_node` in tank mode on `systemctl restart`. `robot_state_publisher` makes no service call, so the hang is not only the IMU or encoder calls (C-1); the cause is open. The supervisor's kill path worked, and the robot came back in tank mode, disabled |
+
+What this does and does not show: the C++ IMU read works on this robot and gives the same signs as
+before, with no failures in about 5 minutes held by hand. It does not show anything about balancing,
+behaviour under motor vibration, or the H-9 cases.
+
 ## Reproduce
 
 From the repo root on the laptop:
