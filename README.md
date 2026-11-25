@@ -121,10 +121,9 @@ Heads up: **none of these are pinned**. There's no `requirements.txt` yet, so `p
 | `numpy` | encoders, IMU, calibration | no |
 | `pygame` | the laptop gamepad script | no |
 | `tqdm`, `ahrs` | IMU calibration scripts | no |
-| `Adafruit-Blinka` (imported as `board`) | IMU | **yes**, needs real I²C |
-| `gpiod` (`gpiod>=2.2.2,<3`) | needed by `board` on a Raspberry Pi 5; without it `ICM20948.py` exits at start-up and balance mode cannot start (seen 2026-11-23) | **yes** |
-| `adafruit-circuitpython-bno055` | the IMU node `ICM20948.py` (the part fitted is a BNO055); missing on the Pi on 2026-11-23 | **yes** |
-| `adafruit-circuitpython-icm20x` | imported by `ICM20948.py` but not used for the fitted part | **yes** |
+| `Adafruit-Blinka` (imported as `board`) | only `tools/imu_tilt_log.py` now: the robot code reads the IMU from C++ since 2026-11-24 ([how](docs/architecture/imu-i2c-read.md)) | **yes**, needs real I²C |
+| `gpiod` (`gpiod>=2.2.2,<3`) | needed by `board` on a Raspberry Pi 5, so by `tools/imu_tilt_log.py` | **yes** |
+| `adafruit-circuitpython-bno055` | `tools/imu_tilt_log.py` only (the IMU node `ICM20948.py` that used it was removed 2026-11-24) | **yes** |
 | `Encoder` | wheel encoders | **yes**, needs real GPIO |
 
 ---
@@ -181,7 +180,7 @@ ROCKO-env
 │       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
 │       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
 ├── rocko_interfaces/                   Custom messages and services, including the supervisor's RobotState and SetEnabled/SetMode
-└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), balancing mode's (balance_teleop_test.py), the supervisor's rules (supervisor_state_machine_test.py, supervisor_flow_check.py), the IMU node's reply (imu_node_test.py), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1, which no plugin uses yet (bno055_uart_protocol_test.cpp). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
+└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), balancing mode's (balance_teleop_test.py), the supervisor's rules (supervisor_state_machine_test.py, supervisor_flow_check.py), the IMU plugin's sample check (imu_snapshot_check_test.cpp), the feedforward controller's zero-on-deactivate (zero_commands_test.cpp), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1 (bno055_uart_protocol_test.cpp; the IMU plugin uses only its register decoding, since it reads over I²C). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
 ```
 
 A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
@@ -259,7 +258,6 @@ You can also run individual nodes, which is handy when debugging one piece:
 ```bash
 pi/rocko_run.sh ros2 run rocko_env DiffDriveController.py
 pi/rocko_run.sh ros2 run rocko_env QuadEncoders.py
-pi/rocko_run.sh ros2 run rocko_env ICM20948.py
 pi/rocko_run.sh ros2 run rocko_env BalanceTeleop.py # balancing mode's (needs joy's game_controller_node and a supervisor)
 pi/rocko_run.sh ros2 run rocko_env TankTeleop.py    # tank mode's (needs joy's game_controller_node and a supervisor)
 ```

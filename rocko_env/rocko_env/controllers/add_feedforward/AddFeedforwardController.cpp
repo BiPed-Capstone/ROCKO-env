@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "rocko_env/AddFeedforwardController.hpp"
+#include "rocko_env/ZeroCommands.hpp"
 #include "controller_interface/helpers.hpp"
 #include "pluginlib/class_list_macros.hpp"
 
@@ -127,7 +128,7 @@ controller_interface::CallbackReturn AddFeedforwardController::configure_tipover
   // The limit is a hardware decision, so it is a parameter (tipover_pitch_deg, proposed 35 deg from
   // the H-4 write-up in docs/claude-analysis/balance-loop-findings.md, not from this robot's
   // physics; a tethered measurement replaces it). It is compared with the pitch the IMU plugin
-  // reports, which has ICM20948.py's +7.6 deg pitch_offset already added. Whether reported 0.0 is
+  // reports, which has the IMU plugin's +7.6 deg pitch_offset_deg (rocko.ros2_control.xacro) already added. Whether reported 0.0 is
   // truly upright is unmeasured, so in true lean the cutoff may sit nearer 35 - 7.6 on one side and
   // 35 + 7.6 on the other.
   tipover_pitch_deg_ = params_.tipover_pitch_deg;
@@ -263,18 +264,23 @@ controller_interface::CallbackReturn AddFeedforwardController::on_deactivate(
 
   // Command zero velocity on the way out (finding H-7). The motor plugin keeps writing whatever is
   // in its command slot, so if this controller just stops, the wheel keeps its last command.
-  // Never waits on a lock: set_value() tries to store a number and gives up (returns false) if it cannot. A failure is counted and logged (throttled)
-  // but does not stop the other interfaces from being zeroed.
-  for (size_t i = 0; i < command_interfaces_.size(); ++i)
+  // Never waits on a lock: set_value() tries to store a number and gives up (returns false) if it cannot. A failure
+  // does not stop the other interfaces from being zeroed (write_zero_to_all tries them all).
+  last_command_.assign(last_command_.size(), 0.0);
+  const std::size_t failed = write_zero_to_all(command_interfaces_);
+  if (failed > 0)
   {
-    last_command_[i] = 0.0;
-    if (!command_interfaces_[i].set_value(0.0))
-    {
-      ++failed_command_writes_;
-      RCLCPP_ERROR_THROTTLE(
-        get_node()->get_logger(), *(get_node()->get_clock()), kLogThrottleMs,
-        "set_value(0.0) failed on deactivate; %lu failed writes since start", failed_command_writes_);
-    }
+    // Row 4.14 of docs/next-steps.md: a failed zero must not look like a clean stop. Returning ERROR
+    // leaves this controller in a state other than "inactive" (controller_manager logs it), which the
+    // supervisor treats as a failed disable: it kills the stack at once (supervisor/state_machine.py).
+    // Until 2026-11-24 the failure was only counted and logged, and on_deactivate returned SUCCESS.
+    failed_command_writes_ += failed;
+    RCLCPP_ERROR(
+      get_node()->get_logger(),
+      "set_value(0.0) failed on %zu of %zu command interfaces on deactivate: the wheel may keep its last "
+      "command. Returning ERROR; %lu failed writes since start",
+      failed, command_interfaces_.size(), failed_command_writes_);
+    return controller_interface::CallbackReturn::ERROR;
   }
   return controller_interface::CallbackReturn::SUCCESS;
 }

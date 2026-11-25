@@ -211,36 +211,24 @@ section 3.3).
 measurement needs the robot's IMU, so it is an **on-robot step**, but it needs no controllers and
 no motor power: the IMU node runs alone, the robot sits on a stand, and nothing can drive a wheel.
 
-**Why tank mode will not do:** tank mode (`rocko_tank_mode.launch.py`) has no balance loop, and
-`rocko.launch.py` is the launch that starts the IMU node (`rocko.launch.py:110`, only when
-`use_mock_hardware` is false). So this procedure runs the node by itself, as
-[proposal 0008, section A](../proposals/0008-candidate-gains-and-tethered-test.md) does.
-
-**What the data is, honestly:** the node answers a service, `/icm20948_data`. The reply
-(`rocko_interfaces/srv/Icm20948Data`) holds yaw, pitch, roll and `success`, and **has no timestamp**.
-So there is no sensor clock to compare against: the only time a reading can have is the moment a
-client receives it. This procedure therefore measures *physical motion to a reply reaching a
-command-line client* on the Pi, which includes the sensor's own lag, the service round trip and the
-client's printing. It does not include the 100 Hz control cycle or the C++ plugin that the real loop
-adds on top, so it is a **lower bound** on the delay the controllers see, not the delay itself.
+**Changed 2026-11-24:** the Python IMU node and its `/icm20948_data` service are gone; the IMU plugin
+reads the sensor inside `controller_manager` ([how](../architecture/imu-i2c-read.md)). The pitch now
+reaches software through `/dynamic_joint_states`, which `joint_state_broadcaster` publishes in
+supervised balance mode. So this procedure needs the balance stack running but **disabled** (the
+supervisor in balance mode, never enabled; the motors get no command while disabled). It measures
+*physical motion to a message printed by a command-line client*, which includes the sensor's own lag,
+one 100 Hz control cycle and the client's printing: close to the delay the controllers see, plus the
+printing. **Not run by the author of this change.**
 
 **Tools:** the Pi with a display (or a screen showing an SSH terminal), a phone that films at 60
 frames per second if it can (30 if not).
 
-1. On the Pi, in one `pi/rocko_shell.sh` terminal:
+1. Robot on a stand. Switch the supervisor to balance (LT+RT+RB, or the dashboard's Balance button).
+   **Do not enable.**
+2. On the Pi, in a `pi/rocko_shell.sh` terminal, print the IMU's pitch as it arrives:
 
    ```bash
-   ros2 run rocko_env ICM20948.py
-   ```
-
-2. In a second Pi terminal (also `pi/rocko_shell.sh`), call the service repeatedly and print each reply as it arrives.
-   `ros2 service call` has a `-r` (repeat rate, Hz) option in recent ROS 2 releases; check that
-   `ros2 service call --help` lists it on your Pi first. If it does not, wrap the call in a shell
-   `while true` loop (slower, because each call starts a new process). **Not run by the author of
-   this guide: the command is a composition of standard tools, not a tested script.**
-
-   ```bash
-   ros2 service call -r 20 /icm20948_data rocko_interfaces/srv/Icm20948Data
+   ros2 topic echo /dynamic_joint_states --field interface_values
    ```
 
 3. Put the robot's body and that terminal in **one** camera frame. Film at 60 fps (30 if that is all
@@ -254,14 +242,11 @@ frames per second if it can (30 if not).
 **Its uncertainty:** each of the two events is read to within one video frame, and the terminal
 adds its own redraw time (one display refresh, about 17 ms, plus whatever the terminal program
 adds). A sample is good to about **±20 ms at 60 fps and ±35 ms at 30 fps**, and averaging 10 tilts
-does not remove the part that is the same every time (the display and the client). The `-r` rate
-also limits it: the sensor is only read when a call arrives, so at 20 Hz a tilt waits up to 50 ms
-for the next call and a sample can read up to 50 ms long. Use a higher rate (`-r 50`) if the Pi
-keeps up. Say all of this when you record the value. If you cannot
+does not remove the part that is the same every time (the display and the client). The topic's
+rate also limits it: a tilt waits up to one publish period for the next message. Say all of this when you record the value. If you cannot
 do this, write `not measured`; do not substitute a datasheet number.
 
-Also useful, since the loop's timing matters (finding H-5): with a full launch running (the balancing launch, or the tank-mode one of step 8; not the lone IMU
-node above, which publishes no state), in another `pi/rocko_shell.sh` terminal:
+Also useful, since the loop's timing matters (finding H-5): with a full launch running (the balancing launch, or the tank-mode one of step 8), in another `pi/rocko_shell.sh` terminal:
 
 ```bash
 ros2 topic hz /dynamic_joint_states

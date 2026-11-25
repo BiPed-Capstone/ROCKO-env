@@ -90,7 +90,7 @@ meaning, or it tests a different robot.
 
 | Signal | Interface or topic | Unit on the real robot | Sign | Where it comes from |
 | --- | --- | --- | --- | --- |
-| Pitch state | `left_wheel_joint/pitch`, `right_wheel_joint/pitch` (the same number on both) | **degrees** | Unknown from code (§2.4) | `ICM20948.py`'s `callback()` reads the BNO055 `euler` tuple once (heading, roll, pitch), in degrees per the Adafruit library, and stores `euler[2] + self.pitch_offset`; `pitch_offset = 7.6` is added to a degree value, so it is **+7.6°**. `ICM20948.hpp` (comment on `_pitch`) also says degrees. `ICM20948::export_state_interfaces()` exports the one `_pitch` under both joints |
+| Pitch state | `left_wheel_joint/pitch`, `right_wheel_joint/pitch` (the same number on both) | **degrees** | Unknown from code (§2.4) | Since 2026-11-24 `ICM20948.cpp` reads the BNO055's Euler registers itself (one I²C burst, [how](imu-i2c-read.md)), 16 counts per degree, and `ImuSnapshotCheck.hpp` adds the `pitch_offset_deg` xacro parameter, 7.6, to a degree value: **+7.6°** (before that, `ICM20948.py` did the same). `ICM20948.hpp` (comment on `_pitch`) also says degrees. `ICM20948::export_state_interfaces()` exports the one `_pitch` under both joints |
 | Pitch "zero" | — | degrees | — | 0.0 is whatever raw BNO055 pitch reads −7.6°. Presumably the team found that to be upright; **unmeasured**. Nothing says 0.0 is "centre of mass over the axle" |
 | Wheel velocity state | `<wheel>_joint/velocity` (state) | **m/s**, not rad/s | Unknown from code (§2.4) | `Motor12VoltQuadEncoder::read()` stores the service reply in `_wheel.vel`. Each wheel calls its own service (`left_encoder_data` / `right_encoder_data`, the `encoder_service` hardware parameter). The reply is that wheel's position change since its previous call, divided by the **measured** time between the calls (`time.monotonic()`), then low-passed (`FILTER_ALPHA` 0.05); position in metres (counts ÷ `COUNTS_PER_METER`, radius 0.06 m and belt 1.355). Until 2026-11-23 this was finding U-2 (about half the true speed); fixed, see U-2 below |
 | Wheel position state | `<wheel>_joint/position` | **m** of that wheel's travel | Same as velocity | Each wheel's own encoder (`QuadEncoders.py`, `WheelChannel.update`); `Motor12VoltQuadEncoder::read()` stores it in `_wheel.pos`. Until 2026-11-23 both joints got the left wheel's position (U-2) |
@@ -98,7 +98,7 @@ meaning, or it tests a different robot.
 | Direction pin | GPIO | — | `cmd >= 0` writes `!invert`, else `invert`; left unchanged for a non-finite or deadband command | `Motor12VoltQuadEncoder::write()`, the two `digitalWrite(_dirPin, ...)` calls. Left `invert=true` (`rocko.ros2_control.xacro`, `LeftDriveMotor` block), right `invert=false` (`RightDriveMotor` block) |
 | Velocity reference | `velocity_pid_controller/reference` (topic) | "m/s" by intent | Positive = stick forward, probably | `DiffDriveController.command_controller()` sends `linear_vel` (the `linear.x` it received) for both wheels; `Joystick.py` multiplies the stick by `linear_scale = -10.0` (set in `__init__`, applied where the `TwistStamped` is built), so the range is ±10 "m/s" |
 | Feedforward | `left_feedforward`, `right_feedforward` (topics) | **rad/s of the wheel** | Same sign as `linear.x` (± turning) | `DiffDriveController.command_controller()`: `left_vel = linear_vel - angular_vel`, `right_vel = linear_vel + angular_vel`, each divided by `wheel_radius_meters` (0.06). `AddFeedforwardController::update_and_write_commands()` adds it to the pitch loop's output: `u = pitch_pid output + feedforward`, **while the feedforward's last message is at most 200 ms old** (`kMaxFeedforwardAgeNs`, proposed, finding H-11); after that it adds 0.0. The sim's publisher is `DiffDriveController.py` or a script, as on the robot |
-| Pitch rate state | `<wheel>_joint/pitch_rate` (the same number on both) | **deg/s**, meant to be positive while pitch increases | Depends on `pitch_rate_axis` and `pitch_rate_sign` in `ICM20948.py`, both **unverified guesses** (finding H-6) | `ICM20948.py`'s `callback()` reads `.gyro` once, **only if its `read_pitch_rate` parameter is true (default false, finding M-7; then `pitch_rate_deg_s` is NaN and no gyro read happens)**, and answers `pitch_rate_sign * degrees(gyro[pitch_rate_axis])` as `pitch_rate_deg_s`; `ICM20948::read()` stores it in `_pitch_rate`, which `export_state_interfaces()` exports under both joints. The comment in `ICM20948.py` says the Adafruit driver returns rad/s and that versions before 5.0 returned deg/s; which one is installed was not checked, so the unit conversion is also unverified. **No controller in `rocko_controllers.yaml` reads it**; the sim's `rocko_sim_controllers.yaml` does (§2.2) |
+| Pitch rate state | `<wheel>_joint/pitch_rate` (the same number on both) | **deg/s**, meant to be positive while pitch increases | Depends on `pitch_rate_axis` and `pitch_rate_sign`, xacro parameters since 2026-11-24, **measured** 2026-11-23 (axis 0, sign -1) | Since 2026-11-24 `ICM20948::read()` reads the gyro every cycle in the same burst as the angles (16 counts per deg/s) and stores `pitch_rate_sign * gyro[pitch_rate_axis]` in `_pitch_rate`, exported under both joints; a rate beyond 2000 deg/s is a failed read. (Before, `ICM20948.py` read it only with `read_pitch_rate` true.) **No controller in `rocko_controllers.yaml` reads it**; the sim's `rocko_sim_controllers.yaml` does (§2.2) |
 | Yaw, roll states | `<wheel>_joint/yaw`, `/roll` | degrees | — | Exported (`ICM20948::export_state_interfaces()`); **no controller reads them** (`rocko_controllers.yaml` uses only `pitch` and `velocity`) |
 
 ### 2.2 What each PID consumes and produces
@@ -327,8 +327,9 @@ record it as in [reproducing-results.md](../guides/reproducing-results.md).
    `s_v = −1`. Stop with Ctrl-C in the third shell; abort with Ctrl-C in the launch shell if a wheel runs
    away. (Tank mode runs at 50 Hz, where the U-2 halving happens to cancel out; only the sign matters
    here.)
-2. **`s_θ`.** Motors off or the launch stopped. On the Pi, in a `pi/rocko_shell.sh` terminal: `ros2 run rocko_env ICM20948.py`, and in a
-   second one `ros2 service call /icm20948_data rocko_interfaces/srv/Icm20948Data`. Call it with the
+2. **`s_θ`.** Motors off or the launch stopped. On the Pi: the supervisor in balance mode, **not enabled** (the Python IMU node used here
+   before was removed on 2026-11-24), and in a `pi/rocko_shell.sh` terminal
+   `ros2 topic echo /dynamic_joint_states --field interface_values`. Read the pitch with the
    robot held upright, then tilted about 10° toward the taped sim-forward direction. Pitch going **down**
    means `s_θ = −1` (the sim's default), **up** means `s_θ = +1`.
 
@@ -554,7 +555,7 @@ the ring buffer is sized in `on_init` from `imu_delay_max_ms`.
 **Pitch.** The ring buffer holds one `ψ` per 1 ms sub-step; the exported value is the one
 `imu_delay_ms` sub-steps old (an integer number of milliseconds). It is the plain delay of §4, standing
 in for the BNO055's fusion lag plus the service call. The sim does **not** add the +7.6° of
-`pitch_offset` in `ICM20948.py`: that offset turns the raw sensor angle into the robot's "upright = 0" frame, and the
+`pitch_offset_deg` (a xacro parameter since 2026-11-24; before, `pitch_offset` in `ICM20948.py`): that offset turns the raw sensor angle into the robot's "upright = 0" frame, and the
 sim produces that frame directly. `imu_pitch_bias_deg` models an upright reference that is wrong by a
 fixed amount (default 0.0: assumes the 7.6° calibration is exact, which nobody has checked).
 

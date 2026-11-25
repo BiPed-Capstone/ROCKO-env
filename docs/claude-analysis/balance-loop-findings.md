@@ -119,6 +119,8 @@ the timeout branch must also remove the pending request. A client keeps each req
 until a reply arrives, so abandoning a request without removing it makes that list grow every time
 the timeout fires.
 
+**Status on `ai-forward` (2026-11-24): IMU half fixed in code, awaiting robot; encoder half open.** The IMU plugin reads the BNO055 itself over I²C (the owner chose I²C over the UART plan: no rewiring), one burst per cycle bounded by a 10 ms kernel timeout; `ICM20948.py` is removed ([how](../architecture/imu-i2c-read.md), [journal](../journal/2026-11-24-c1-imu-i2c-and-zero-on-deactivate.md), next-steps row 1.1). The encoders still use the blocking service (row 1.3). The older status below is kept for the history.
+
 **Status on `ai-forward` (2026-11-07): still open; one piece landed, unwired.** The BNO055 UART
 framing for the IMU half of the fix is a header-only helper,
 `rocko_env/rocko_env/hardware/sensors/icm20948/include/rocko_env/Bno055UartProtocol.hpp` (build a read
@@ -408,6 +410,8 @@ delayed.
 
 Read the Euler register block (0x1A–0x1F) once as a single burst and decode all three axes from
 that one sample. This falls out naturally when C-1 moves the read into C++.
+
+**Status on `ai-forward` (2026-11-24): fixed in code, awaiting robot.** Gyro and Euler angles come from one 12-byte burst (registers 0x14 to 0x1F) in `ICM20948.cpp` ([how](../architecture/imu-i2c-read.md)). Older status below.
 
 **Status on `ai-forward` (2026-10-31):** partly done. `ICM20948.py` now reads `self.icm.euler` once
 and decodes all three axes from that tuple, so the three angles come from one access (next-steps row

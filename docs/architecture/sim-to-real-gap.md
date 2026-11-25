@@ -226,8 +226,8 @@ and [§3](sim-plant.md#3-the-model).
 
 ### 3.12 An upright reference that is wrong (the +7.6 degree offset)
 
-Not on the task's list, but it changes the meaning of a zero integral: `ICM20948.py` adds a fixed
-+7.6 deg to the raw pitch, and nobody has checked that the reported 0.0 is "centre of mass over the
+Not on the task's list, but it changes the meaning of a zero integral: the IMU plugin adds a fixed
++7.6 deg to the raw pitch (`pitch_offset_deg` in `rocko.ros2_control.xacro`; `ICM20948.py` did until 2026-11-24), and nobody has checked that the reported 0.0 is "centre of mass over the
 axle" (sim-plant.md §2.1). `imu_pitch_bias_deg` is 0 in the sim.
 
 - **Hits:** both loops' steady state.

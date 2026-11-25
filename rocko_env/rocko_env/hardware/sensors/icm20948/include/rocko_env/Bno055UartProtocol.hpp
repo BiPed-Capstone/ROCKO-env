@@ -6,9 +6,12 @@
 // balance-loop-findings.md) moves the IMU read out of a Python node and into the C++ plugin, over
 // UART; this header is the part of that work that can be checked without a robot.
 //
-// STATUS: NOT USED BY ANY PLUGIN. Nothing in the 100 Hz loop includes this file. Only the host test
-// tools/bno055_uart_protocol_test.cpp compiles it. Wiring it into ICM20948.cpp needs a Pi, a BNO055
-// in UART mode and a wiring change: docs/proposals/0010-c1-imu-uart-and-encoders-in-cpp.md.
+// STATUS (2026-11-24): the IMU plugin reads over I2C, not UART (the owner's choice; no rewiring).
+// ICM20948.cpp uses only the BUS-INDEPENDENT part of this file: the register constants
+// (kBurstFirstRegister, kBurstLength) and decode_gyro_euler(), because the 12 register bytes are the
+// same whichever bus carries them. The "uart" in the file and namespace name is historical. The UART
+// framing (requests, replies, status codes) is still unused and waits on
+// docs/proposals/0010-c1-imu-uart-and-encoders-in-cpp.md, in case I2C proves unreliable.
 //
 // What it is: pure functions on byte buffers the caller owns. No I/O, no termios, no blocking, no
 // logging, no allocation, standard library only, so it is safe to call from read() once the plugin

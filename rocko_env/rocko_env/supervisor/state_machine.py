@@ -197,11 +197,26 @@ class StateMachine:
     def controller_states_reply(self, states, epoch):
         """list_controllers answered: `states` is {controller name: state}; `epoch` is motion_epoch when
         the question was SENT. While disabled, any motion controller still active means a deactivate did
-        not take (or was never sent): ask again, and keep asking on every reply until none is active."""
-        if self.enabled or self.phase == PHASE_STOPPING or epoch != self.motion_epoch:
+        not take (or was never sent): ask again, and keep asking on every reply until none is active.
+
+        Row 4.14 of docs/next-steps.md: a motion controller in any OTHER state ("unconfigured", "finalized")
+        is where a controller lands when its on_deactivate returned an error, which AddFeedforwardController
+        does when it could not write the zero that stops its wheel. Its interfaces are released with the
+        last command still in the motor's slot, and asking again cannot help, so the stack is killed AT
+        ONCE rather than after DEACTIVATE_CONFIRM_S. Not while the stack is starting: the --inactive
+        spawner leaves each controller "unconfigured" between load and configure, which is normal there."""
+        if self.enabled or self.phase in (PHASE_STOPPING, PHASE_STARTING) or epoch != self.motion_epoch:
             return
-        still_active = [n for n in modes.motion_controllers(self.mode) if states.get(n) == "active"]
-        if still_active:
+        motion = [n for n in modes.motion_controllers(self.mode) if n in states]
+        failed = [n for n in motion if states[n] not in ("active", "inactive")]
+        if failed:
+            reason = ", ".join(f"{n} is {states[n]}" for n in failed)
+            self.stack_failed(f"a motion controller failed to deactivate ({reason})")
+            self._queue_kill(f"a motion controller failed to deactivate ({reason}): its stop command may not "
+                             "have been written, so the stack was killed; check the motors: the motor plugin "
+                             "may have left a wheel's PWM pin switched on")
+            return
+        if any(states[n] == "active" for n in motion):
             if not self._disable_unconfirmed:
                 self._disable_unconfirmed = True
                 self._disable_since_s = None   # the clock starts at the next tick()

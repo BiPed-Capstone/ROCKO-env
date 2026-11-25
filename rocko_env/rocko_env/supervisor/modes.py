@@ -46,7 +46,6 @@ MODES = {
         "nodes": [
             _node("controller_manager"),
             _node("robot_state_publisher"),
-            _node("icm20948_node", real_only=True),  # ICM20948.py (the BNO055 IMU)
             _node("node", real_only=True),           # QuadEncoders.py (real encoders), which names itself "node"
             _node("diff_drive_controller"),          # DiffDriveController.py
             _node("balance_teleop"),                 # the name BalanceTeleop.py gives itself

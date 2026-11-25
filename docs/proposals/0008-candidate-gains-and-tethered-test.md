@@ -36,7 +36,10 @@ controller reads the gyro rate. That needs three more changes together:
 1. **YAML wiring** (also gated, line 29): `reference_and_state_interfaces: ["pitch"]` becomes
    `["pitch", "pitch_rate"]` for `pitch_pid_controller`, as in `rocko_sim_controllers.yaml` line 56
    (finding H-6; `sim/check_sim_config.py` allows exactly this difference in the sim file).
-2. **The IMU node must read the gyro:** `read_pitch_rate` is a parameter of `ICM20948.py`, false by
+2. **Done 2026-11-24, no longer a precondition:** the IMU plugin now reads the gyro every cycle in the same I²C burst as
+   the angles, with the measured axis and sign as xacro parameters, and a bad rate counts as a failed read
+   ([how](../architecture/imu-i2c-read.md)). `ICM20948.py` and its `read_pitch_rate` parameter are gone. *The original text:*
+   **The IMU node must read the gyro:** `read_pitch_rate` is a parameter of `ICM20948.py`, false by
    default (finding M-7). `rocko.launch.py` declares only `gui` and `use_mock_hardware` and starts
    the node with no parameters, so there is **no launch argument for it today.** Setting it needs a
    launch-file edit (`parameters=[{"read_pitch_rate": True, ...}]` on the `ICM20948.py` node, along
@@ -69,9 +72,9 @@ last" item (next-steps row 3.3), prepared.
    (`pitch_rate_sign`, guessed +1) and its unit (the Adafruit driver returns rad/s; versions before
    5.0 returned deg/s, a factor of 57), by the steps in "Gyro check" below.
    **Done 2026-11-23** ([journal](../journal/2026-11-23-gyro-check.md)): axis 0, sign **-1** (the guess +1 was
-   wrong), unit correct (driver 5.4.22, rad/s). `ICM20948.py`'s default is now -1.
-4. **The `read_pitch_rate` launch change and the pitch-rate YAML wiring** (above) are in place and
-   built on the Pi.
+   wrong), unit correct (driver 5.4.22, rad/s). Since 2026-11-24 the value lives in `rocko.ros2_control.xacro` (`pitch_rate_sign` -1).
+4. **The pitch-rate YAML wiring** (above) is in place and built on the Pi (the gyro read itself is always on since
+   2026-11-24).
 5. **[Proposal 0004](0004-safety-thresholds.md) thresholds are confirmed** by a human, in
    particular the tipover cutoff (35 deg of reported pitch, including the unexplained +7.6 deg
    offset), its 10 deg re-arm band, and the teleop watchdog (0.2 s). They have never run on a robot.
@@ -131,11 +134,13 @@ pi/rocko_shell.sh
 
 ### A. Gyro check (precondition 3), wheels off the ground, motors unpowered if you can
 
-1. Run the IMU node with the gyro on (the parameter exists on the node; this runs it alone, no
+1. *(Superseded 2026-11-24: the node is gone; watch `pitch_rate` in `/dynamic_joint_states` with the balance stack
+   running but disabled instead.)* Run the IMU node with the gyro on (the parameter exists on the node; this runs it alone, no
    controllers):
 
    ```bash
-   ros2 run rocko_env ICM20948.py --ros-args -p read_pitch_rate:=true
+   # Since 2026-11-24 (supervisor in balance mode, NOT enabled):
+   ros2 topic echo /dynamic_joint_states --field interface_values
    ```
 
 2. In a second terminal, call it while tilting by hand about the axle:
@@ -192,7 +197,7 @@ pi/rocko_shell.sh
 
 For every run, the block from [reproducing-results.md](../guides/reproducing-results.md): result,
 date, `git rev-parse --short HEAD` (and whether dirty), the launch line and every argument, hardware
-real, the YAML and every gain that differs from the committed file, the `read_pitch_rate`,
+real, the YAML and every gain that differs from the committed file, the
 `pitch_rate_axis` and `pitch_rate_sign` values, battery volts at the start and end, surface, which
 robot, payload, where the log lives. Record a bag:
 

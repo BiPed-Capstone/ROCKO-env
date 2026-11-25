@@ -221,8 +221,9 @@ def test_modes_table():
     check(modes.launch_file("balance") == "rocko.launch.py", "balance launch")
     check(modes.motion_controllers("tank") == ["diffbot_base_controller"], "tank motion")
     check(len(modes.motion_controllers("balance")) == 4, "balance has four cascade controllers")
-    check("icm20948_node" in modes.expected_nodes("balance", False), "real: IMU node expected")
-    check("icm20948_node" not in modes.expected_nodes("balance", True), "mock: IMU node not expected")
+    # No IMU node since the C-1 fix (2026-11-24): the IMU plugin reads the sensor inside controller_manager.
+    check("icm20948_node" not in modes.expected_nodes("balance", False), "real: no IMU node any more")
+    check("node" in modes.expected_nodes("balance", False), "real: encoder node expected")
     check("node" not in modes.expected_nodes("tank", True), "mock: encoder node not expected")
 
 
@@ -355,6 +356,23 @@ def test_verified_disable_retries_confirms_and_times_out():
     m.tick(0.0)
     m.tick(DEACTIVATE_CONFIRM_S + 0.1)
     check(m.take_actions() == [("KILL_STACK",)], "and it is killed if that never works")
+    # row 4.14: a controller whose on_deactivate returned an error (the zero that stops its wheel was not
+    # written) lands in "unconfigured", not "inactive". That is not a confirmed disable: kill after the timer.
+    m = enabled_balance()
+    m.request_enable(False, "dashboard")
+    m.take_actions()
+    m.tick(20.0)
+    failed = {n: "inactive" for n in modes.motion_controllers("balance")}
+    failed["left_add_feedforward_controller"] = "unconfigured"
+    m.controller_states_reply({"joint_state_broadcaster": "active", **failed}, m.motion_epoch)
+    check(m.take_actions() == [("KILL_STACK",)] and m.phase == "fault",
+          "a controller left unconfigured by a failed deactivate: killed at once")
+    # but NOT while the stack starts: the --inactive spawner leaves controllers unconfigured for a while
+    m = StateMachine()
+    m.take_actions()   # drain the boot START_STACK
+    check(m.phase == "starting", "a new machine is starting")
+    m.controller_states_reply({n: "unconfigured" for n in modes.motion_controllers(m.mode)}, m.motion_epoch)
+    check(m.take_actions() == [], "starting: unconfigured controllers are normal, no action")
     # disable, then enable again before any answer: the wait for proof must not kill the enabled robot
     m = enabled_tank()
     m.request_enable(False, "dashboard")

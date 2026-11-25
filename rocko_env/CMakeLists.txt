@@ -152,7 +152,6 @@ ament_python_install_package(${PROJECT_NAME})
 # With --symlink-install these are run in place, not copied, so each source file must be
 # executable (git mode 100755) and start with a shebang. RateLimiter.py is only imported, not run.
 install(PROGRAMS
-  rocko_env/hardware/sensors/icm20948/ICM20948.py
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
   rocko_env/hardware/sensors/quadEncoder/QuadEncoders.py
   rocko_env/controllers/diffdrive/DiffDriveController.py

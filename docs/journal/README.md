@@ -93,3 +93,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-22 | [First USB-controller drive on the robot, and why tank mode reverses slowly](2026-11-22-tank-reversal-lag.md) |
 | 2026-11-22 | [Start the web dashboard at boot with a systemd service](2026-11-22-dashboard-boot-service.md) |
 | 2026-11-22 | [Tank mode starts at boot; the 160 m/s² result; handoff to balance mode](2026-11-22-tank-boot-service-and-handoff.md) |
+| 2026-11-24 | [Read the IMU from C++ over I2C (C-1, IMU half) and make a failed zero-on-deactivate visible (row 4.14)](2026-11-24-c1-imu-i2c-and-zero-on-deactivate.md) |

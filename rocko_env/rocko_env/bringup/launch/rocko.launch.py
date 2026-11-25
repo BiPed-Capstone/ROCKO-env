@@ -167,13 +167,9 @@ def generate_launch_description():
         condition=IfCondition(supervised),
     )
 
-    # These two nodes talk to the real IMU and encoders (I2C, GPIO), so they only start on the robot.
-    gyro = Node(
-        package="rocko_env",
-        executable="ICM20948.py",
-        condition=UnlessCondition(use_mock_hardware),
-    )
-    
+    # The encoder node reads the real encoders (GPIO), so it only starts on the robot. There is no IMU
+    # node any more: the ICM20948 hardware plugin reads the BNO055 over I2C itself (finding C-1,
+    # docs/architecture/imu-i2c-read.md).
     encoders = Node(
         package="rocko_env",
         executable="QuadEncoders.py",
@@ -246,7 +242,6 @@ def generate_launch_description():
         mock_banner,
         control_node,
         robot_state_pub_node,
-        gyro,
         game_controller,
         balance_teleop,
         encoders,

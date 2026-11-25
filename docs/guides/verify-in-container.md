@@ -371,12 +371,13 @@ from the repo root; not tiers; `tools/run_ladder.sh` runs them all):
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/tipover_latch_test.cpp -o /tmp/tipover_latch_test && /tmp/tipover_latch_test
 python3 -I tools/teleop_watchdog_test.py
 python3 -I tools/tank_teleop_test.py
-python3 -I tools/imu_node_test.py
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include tools/imu_snapshot_check_test.cpp -o /tmp/imu_snapshot_check_test && /tmp/imu_snapshot_check_test
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/zero_commands_test.cpp -o /tmp/zero_commands_test && /tmp/zero_commands_test
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/feedforward_timeout_test.cpp -o /tmp/feedforward_timeout_test && /tmp/feedforward_timeout_test
 ```
 
-Success: `all TipoverLatch tests passed` and `all FeedforwardTimeout tests passed` (exit 0 each); the three
-Python tests print `PASS <name>` per check and then a line such as `15/15 passed` (the counts are in
+Success: `all TipoverLatch tests passed`, `all ImuSnapshotCheck tests passed`, `all ZeroCommands tests passed` and
+`all FeedforwardTimeout tests passed` (exit 0 each); the two Python tests print `PASS <name>` per check and then a line such as `15/15 passed` (the counts are in
 [the ladder](../architecture/verification-ladder.md#the-host-tests-of-the-stage-4-safeguards-not-tiers)), exit 0
 (on 2026-11-03 they were 22/22, 5/5 and 6/6; the imu node test was 4/4 on 2026-11-02 and the watchdog test 16/16). What they do and do not prove is in the
 [verification ladder](../architecture/verification-ladder.md#the-host-tests-of-the-stage-4-safeguards-not-tiers).

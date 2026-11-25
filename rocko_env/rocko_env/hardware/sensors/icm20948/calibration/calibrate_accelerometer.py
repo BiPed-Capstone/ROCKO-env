@@ -63,6 +63,6 @@ class AccCalibrator:
                 prev_q = current_q
                 sleep(0.02)
         
-        print("Below is your calibrated 0. Please paste it in ICM20948.py")
+        print("Below is your calibrated 0. Put it in pitch_offset_deg in description/ros2_control/rocko.ros2_control.xacro")
         print(str(current_q))
                 

@@ -140,6 +140,15 @@
     <ros2_control name="Gyro" type="sensor">
       <hardware>
         <plugin>rocko_env/ICM20948</plugin>
+        <!-- The plugin reads the BNO055 itself over I2C (finding C-1; docs/architecture/imu-i2c-read.md). -->
+        <param name="i2c_device">/dev/i2c-1</param>
+        <param name="i2c_address">0x28</param>
+        <!-- [deg] added to the sensor's pitch; the 7.6 ICM20948.py used, origin unrecorded -->
+        <param name="pitch_offset_deg">7.6</param>
+        <!-- pitch_rate = sign * gyro[axis]: gyro X, sign -1, measured 2026-11-23 (docs/journal/2026-11-23-gyro-check.md).
+             Re-measure if the IMU is moved: an inverted rate makes a D term push the wrong way. -->
+        <param name="pitch_rate_axis">0</param>
+        <param name="pitch_rate_sign">-1</param>
       </hardware>
       <!-- <sensor name="icm20948">
         <state_interface name="yaw"/>

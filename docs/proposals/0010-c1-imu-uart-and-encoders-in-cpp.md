@@ -1,6 +1,9 @@
 # Proposal 0010 — Read the IMU over UART and the encoders in C++, inside the plugins (finding C-1)
 
-- **Status:** Open
+- **Status:** Open, partly superseded (2026-11-24): the owner chose to read the IMU over **I²C** from C++ instead of
+  rewiring it for UART. That is written ([how](../architecture/imu-i2c-read.md),
+  [journal](../journal/2026-11-24-c1-imu-i2c-and-zero-on-deactivate.md)), so sections A, B and D apply only if I²C proves
+  unreliable on the robot. Section C (the encoders in C++) is still open.
 - **Gate:** on-robot step (a wiring change, a Pi build, a bench test and a tethered bring-up). The code
   itself is not gated, but none of it can be checked without the hardware, so the person asked for it
   to wait here ("land only what the compile-only check / the ladder can cover; anything else becomes
