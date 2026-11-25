@@ -43,7 +43,7 @@ counts.
 and `read_snapshot()` then also rejects it, through `pitch_step_plausible()`, if:
 
 - **pitch jumped further than the gyro allows** since the last good sample: more than
-  |last good rate| x elapsed time + 5 deg (5 deg PROPOSED). I2C has no checksum, and a flipped high
+  (|last good rate| + ½ x 20 000 deg/s² x elapsed time) x elapsed time + 5 deg (5 deg PROPOSED): the furthest pitch can move if the rate grew at the acceleration limit below. I2C has no checksum, and a flipped high
   byte moves pitch by 16, 32 or 64 deg while staying inside the limits above;
 - **the rate itself jumped** more than 20 000 deg/s² x elapsed time + 50 deg/s (PROPOSED, generous):
   the same corruption in a rate byte. A flip of 256 deg/s or more in one cycle is caught, smaller ones

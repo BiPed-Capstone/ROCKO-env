@@ -128,13 +128,15 @@ void test_pitch_jump()
   // still robot, one cycle: a 32 deg step (a flipped high byte) is rejected, 1 deg is fine
   assert(!pitch_step_plausible(3.0, 0.0, 35.0, 0.0, 0.01));
   assert(pitch_step_plausible(3.0, 0.0, 4.0, 0.0, 0.01));
-  // the slack: 5 deg passes, 5.1 does not
-  assert(pitch_step_plausible(0.0, 0.0, 5.0, 0.0, 0.01));
-  assert(!pitch_step_plausible(0.0, 0.0, 5.1, 0.0, 0.01));
+  // the allowance at 10 ms from rest: 5 deg slack + 0.5 x 20000 x 0.01^2 = 1 deg -> 6 deg passes, 6.1 does not
+  assert(pitch_step_plausible(0.0, 0.0, 6.0, 0.0, 0.01));
+  assert(!pitch_step_plausible(0.0, 0.0, 6.1, 0.0, 0.01));
+  // review round 3: a real 300 deg/s step seen after one rejected cycle (20 ms, stale rate 0) passes
+  assert(pitch_step_plausible(0.0, 0.0, 6.0, 300.0, 0.02));
   // a real fast fall: 300 deg/s for 20 ms = 6 deg + slack, rate steady
   assert(pitch_step_plausible(10.0, 300.0, 18.0, 300.0, 0.02));
   // the allowance comes from the LAST rate only: a wild new rate cannot widen it
-  // (240 deg/s is a legal rate step, so only the pitch allowance decides: 7 deg > 5 deg slack)
+  // (240 deg/s is a legal rate step, so only the pitch allowance decides: 7 deg > 6 deg allowed)
   assert(!pitch_step_plausible(10.0, 0.0, 17.0, 240.0, 0.01));
   // rate steps: 200 deg/s in 10 ms passes (allowance 250), a flipped bit 8 (+256) does not
   assert(pitch_step_plausible(0.0, 10.0, 0.0, 210.0, 0.01));

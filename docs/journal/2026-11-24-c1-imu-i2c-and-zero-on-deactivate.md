@@ -79,7 +79,8 @@ Highest tier reached for the IMU read itself: **Tier 1 (it compiles) plus host t
 | 1 | Tier 1 | A new deprecation warning: the base `on_init(info)` call | Fixed: parameters read from `info`, as `SimPlant` does. Round 2 ladder: 0 warnings |
 | 2 | `realtime-auditor` | Medium: the gyro rate unchecked for corruption, and a bad new rate widened the pitch allowance. Low: the sample ending configure was never compared | Fixed: rate-step limit, allowance from the last rate only; configure needs two agreeing samples |
 | 2 | `docs-reviewer` | Medium: journal criterion 4 and row 1.2 contradicted the code; a count copied into row 1.1. Low: wording | Fixed |
-| 3 | `realtime-auditor` | **Medium, NOT fixed (round 3 dirty):** after one rejected sample the pitch allowance still uses the stale rate, so a real step of 250 deg/s or more in 10 ms is rejected every cycle until the tracker returns ERROR (a stop, so a fall when balancing). Proposed fix: `allowed_deg = (|last_rate| + 0.5 * kMaxPitchAccelDegS2 * dt) * dt + kMaxPitchJumpSlackDeg`, with the test `assert(pitch_step_plausible(0.0, 0.0, 6.0, 300.0, 0.02))` | **Handed to the owner** (CLAUDE.md §2 step 6). Whether such a step ever happens on the robot is unknown (the fused gyro is filtered). Nothing has been pushed |
+| 3 | `realtime-auditor` | **Medium, NOT fixed (round 3 dirty):** after one rejected sample the pitch allowance still uses the stale rate, so a real step of 250 deg/s or more in 10 ms is rejected every cycle until the tracker returns ERROR (a stop, so a fall when balancing). Proposed fix: `allowed_deg = (|last_rate| + 0.5 * kMaxPitchAccelDegS2 * dt) * dt + kMaxPitchJumpSlackDeg`, with the test `assert(pitch_step_plausible(0.0, 0.0, 6.0, 300.0, 0.02))` | Handed to the owner, who asked (2026-11-24) for the fix and a shortened fourth round. Fixed as proposed; test added, red with the term removed |
+| 4 (short, owner-authorised) | `realtime-auditor` on the one-function change | Clean on the formula, the 16 deg flip at 10 ms, and real-time safety. **Low:** the allowance grows with dt², so after 3 or more rejected reads in a row (about 21 deg allowed when still) a 16 deg flipped byte would be accepted; 20 000 deg/s² is well above what this pendulum does alone (about 2800) | **Declined for now, open:** a lower acceleration constant or a cap brings back the round-3 escalation (a real fast change rejected every cycle). It needs 3 failures in a row first, and the tracker stops at 5. The right constant needs robot data (the logged reject counts); listed in next-steps row 1.1 |
 
 ## Not verified — needs a human
 
@@ -136,7 +137,9 @@ tools/run_ladder.sh
 
 Host tests alone: `tools/run_ladder.sh --host`, or the `g++` lines at the top of each `tools/*_test.cpp`.
 
-## Why the run stopped
+## After round 3
 
-Review round 3 was still dirty (one Medium, in the review table). Under CLAUDE.md §2 step 6 the agent
-stopped, handed the finding to the owner, committed the verified work locally, and **did not push**.
+Round 3 was dirty; the owner authorised the fix and a shortened fourth round (`realtime-auditor` only,
+on the one changed function). After it: Tier 1 build (0 warnings) and the host tests (`tools/run_ladder.sh --host`)
+pass; Tiers 2 and 3 were **not rerun** for this one-function change (the mock and the sim do not run the
+IMU plugin, so they cannot see it).

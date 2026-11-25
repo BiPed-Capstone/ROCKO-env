@@ -127,8 +127,11 @@ constexpr double kMaxPitchAccelDegS2 = 20000.0;
 constexpr double kMaxRateStepSlackDegS = 50.0;  // [deg/s] slack on top of accel x dt
 
 // True if the new sample is believable after the last good one, `elapsed_s` seconds earlier:
-//  - pitch moved at most |last rate| x dt + kMaxPitchJumpSlackDeg (only the LAST, already trusted,
-//    rate sets the allowance, so a corrupted new rate cannot widen it);
+//  - pitch moved at most (|last rate| + 0.5 x kMaxPitchAccelDegS2 x dt) x dt + kMaxPitchJumpSlackDeg:
+//    the furthest it can go if the rate grew at the acceleration limit since the last good sample.
+//    Only the LAST, already trusted, rate is used, so a corrupted new rate cannot widen it; the
+//    acceleration term keeps a real fast change from being rejected every cycle once the last rate is
+//    stale (review round 3: it added 1 deg at 10 ms, so a 16 deg flip is still caught);
 //  - the rate changed at most kMaxPitchAccelDegS2 x dt + kMaxRateStepSlackDegS.
 inline bool pitch_step_plausible(
   double last_pitch_deg, double last_rate_deg_s, double new_pitch_deg, double new_rate_deg_s,
@@ -138,7 +141,8 @@ inline bool pitch_step_plausible(
     return true;  // nothing trustworthy to compare with
   }
   const double dt_s = std::fmax(elapsed_s, 0.0);
-  const double allowed_deg = std::fabs(last_rate_deg_s) * dt_s + kMaxPitchJumpSlackDeg;
+  const double allowed_deg =
+    (std::fabs(last_rate_deg_s) + 0.5 * kMaxPitchAccelDegS2 * dt_s) * dt_s + kMaxPitchJumpSlackDeg;
   const double allowed_rate_step_deg_s = kMaxPitchAccelDegS2 * dt_s + kMaxRateStepSlackDegS;
   return std::fabs(new_pitch_deg - last_pitch_deg) <= allowed_deg &&
     std::fabs(new_rate_deg_s - last_rate_deg_s) <= allowed_rate_step_deg_s;
