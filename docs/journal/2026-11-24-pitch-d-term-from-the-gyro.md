@@ -81,3 +81,8 @@ The owner accepted proposal 0016 ("Accept, apply it"). The agent then made the e
 | review | realtime-auditor (mandatory: a `bringup/config` file) | clean: no gain, rate or launch change, one IMU snapshot per cycle, no NaN reference at activation; Low (already stated in the YAML comment): a standalone launch takes the reference at spawn |
 
 Robot: proposal 0016's stand test is the owner's; not run in this commit.
+
+On the Pi (2026-11-25, after the push): pulled `154c1f2`, built (no warnings), restarted `rocko.service`; the installed
+`rocko_controllers.yaml` has `["pitch", "pitch_rate"]`. Switched to balance through the dashboard (disabled, so the cascade
+stayed inactive): `pitch_pid_controller` configured successfully, balance `ready`; switched back to tank, `ready`. Nothing
+was enabled; proposal 0016's stand test is still the owner's.
