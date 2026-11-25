@@ -72,13 +72,16 @@ for block in ET.parse(sys.argv[1]).getroot().iter("ros2_control"):
 PY
 }
 
-# encoder_services <urdf> -> exit 1 (and say why) unless every Motor12VoltQuadEncoder block has an
-# encoder_service param equal to "<side>_encoder_data" for the side of its joint (left_wheel_joint ->
-# left_encoder_data), and both sides appear exactly once.
-encoder_services() {
+# encoder_params <urdf> -> exit 1 (and say why) unless each Motor12VoltQuadEncoder block counts ITS OWN
+# wheel's encoder (finding C-1; the pin mix-up is finding U-2's twin): left_wheel_joint on WiringPi pins
+# A=25, B=28 and right_wheel_joint on A=27, B=24 (the right's A and B swapped so forward counts up), and
+# both blocks give the same positive wheel_radius_m and encoder_counts_per_wheel_rev. The pins are the
+# robot's wiring (BCM 26/20 and 16/19): change them here and in the xacros together.
+encoder_params() {
   python3 - "$1" <<'PY'
 import sys, xml.etree.ElementTree as ET
-seen, problems = [], []
+expected_pins = {"left": ("25", "28"), "right": ("27", "24")}
+seen, scales, problems = [], set(), []
 for block in ET.parse(sys.argv[1]).getroot().iter("ros2_control"):
     hw = block.find("hardware")
     if hw is None or hw.findtext("plugin") != "rocko_env/Motor12VoltQuadEncoder":
@@ -86,12 +89,24 @@ for block in ET.parse(sys.argv[1]).getroot().iter("ros2_control"):
     joint = block.find("joint").get("name")
     side = joint.split("_")[0]
     params = {p.get("name"): (p.text or "").strip() for p in hw.findall("param")}
-    got = params.get("encoder_service")
-    if got != side + "_encoder_data":
-        problems.append(f"{block.get('name')} (joint {joint}): encoder_service is {got!r}, expected '{side}_encoder_data'")
+    if "encoder_service" in params:
+        problems.append(f"{block.get('name')}: has the old encoder_service param (the Python encoder node is gone)")
+    got = (params.get("encoder_pin_a"), params.get("encoder_pin_b"))
+    if got != expected_pins.get(side):
+        problems.append(f"{block.get('name')} (joint {joint}): encoder pins (A, B) are {got}, expected {expected_pins.get(side)}")
+    try:
+        scale = (float(params.get("wheel_radius_m")), float(params.get("encoder_counts_per_wheel_rev")))
+        if min(scale) <= 0:
+            raise ValueError
+        scales.add(scale)
+    except (TypeError, ValueError):
+        problems.append(f"{block.get('name')}: wheel_radius_m and encoder_counts_per_wheel_rev must be positive numbers, got "
+                        f"{params.get('wheel_radius_m')!r} and {params.get('encoder_counts_per_wheel_rev')!r}")
     seen.append(side)
 if sorted(seen) != ["left", "right"]:
     problems.append(f"expected one left and one right motor block, found {seen}")
+if len(scales) > 1:
+    problems.append(f"the two wheels have different radius / counts per turn: {sorted(scales)}")
 print("\n".join(problems))
 sys.exit(1 if problems else 0)
 PY
@@ -123,10 +138,10 @@ for model in rocko rocko_tank_mode; do
         fail "$label: expected 2 real motors, $expected_imus IMU, no mock and $expected_plugins plugins in all (got motors=$real_motors imu=$real_imus mock=$mocks plugins=$plugins)"
         broken=1; continue
       fi
-      # Each real motor must name ITS OWN wheel's encoder service (finding U-2). Without the param the
-      # plugin refuses to start on the robot; the wrong wheel's name would read the other encoder.
-      if ! encoder_services "$urdf" >"$work/err" 2>&1; then
-        fail "$label: the motors' encoder_service params are wrong:"; show "$work/err"
+      # Each real motor must count ITS OWN wheel's encoder (finding C-1). Without the params the plugin
+      # refuses to start on the robot; the other wheel's pins would read the other encoder.
+      if ! encoder_params "$urdf" >"$work/err" 2>&1; then
+        fail "$label: the motors' encoder params are wrong:"; show "$work/err"
         broken=1; continue
       fi
     else

@@ -153,7 +153,6 @@ ament_python_install_package(${PROJECT_NAME})
 # executable (git mode 100755) and start with a shebang. RateLimiter.py is only imported, not run.
 install(PROGRAMS
   rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
-  rocko_env/hardware/sensors/quadEncoder/QuadEncoders.py
   rocko_env/controllers/diffdrive/DiffDriveController.py
   rocko_env/controllers/utils/RateLimiter.py
   rocko_env/controllers/joystick/Joystick.py

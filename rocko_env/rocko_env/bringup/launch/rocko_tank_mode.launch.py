@@ -192,16 +192,6 @@ def generate_launch_description():
         for spawner in (diffdrive_spawner, diffdrive_spawner_inactive)
     ]
 
-    encoders = Node(
-        package="rocko_env",
-        executable="QuadEncoders.py",
-        parameters=[
-            {"left_a_pin": 26, "left_b_pin": 20, "right_a_pin": 19, "right_b_pin": 16}
-        ],
-        # Reads the real encoders over GPIO, so it only starts on the robot.
-        condition=UnlessCondition(use_mock_hardware),
-    )
-
     # TELEOP: a game controller plugged into the Pi's USB (tank mode only; balancing mode does not
     # start these). joy's game_controller_node reads it through SDL and publishes /joy;
     # TankTeleop.py turns /joy into cmd_vel (split arcade, hold LB to drive). deadzone 0.0 here
@@ -239,7 +229,6 @@ def generate_launch_description():
         diffdrive_spawner,
         diffdrive_spawner_inactive,
         *delay_joint_state_broadcaster_after_robot_controller_spawner,
-        encoders,
         game_controller,
         tank_teleop,
     ]

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <exception>
 #include <iomanip>
 #include <limits>
 #include <memory>
@@ -39,16 +40,49 @@ namespace rocko_env
           PIN_NUMBER_DIRECTION_KEY.c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
-    // No default on purpose: QuadEncoders.py has one service per wheel, and a wheel that quietly asked
-    // for the other wheel's service would read the wrong encoder (finding U-2).
-    // An empty name is refused here too: create_client("") would throw out of on_init instead of failing cleanly.
-    else if (!(info.hardware_parameters.count(ENCODER_SERVICE_KEY) > 0) ||
-             info.hardware_parameters.at(ENCODER_SERVICE_KEY).empty())
+    // The encoder parameters have no defaults on purpose: a wheel that quietly read the other wheel's
+    // pins, or used a guessed radius, would report a wrong speed without any error (finding U-2 was
+    // exactly that). Each must be present, a number with nothing after it, and believable.
     {
-      RCLCPP_FATAL(
-          get_logger(), "Hardware '%s' does not have a non-empty '%s' parameter (e.g. left_encoder_data).", info.name.c_str(),
-          ENCODER_SERVICE_KEY.c_str());
-      return hardware_interface::CallbackReturn::ERROR;
+      // Reads parameter `key` into `out`; false if it is missing or is not entirely a number.
+      const auto read_number = [&info](const std::string & key, double & out) {
+        const auto it = info.hardware_parameters.find(key);
+        if (it == info.hardware_parameters.end()) {
+          return false;
+        }
+        try {
+          std::size_t used = 0;
+          out = std::stod(it->second, &used);
+          return used == it->second.size() && std::isfinite(out);
+        } catch (const std::exception &) {
+          return false;
+        }
+      };
+      double pin_a = -1.0, pin_b = -1.0, wheel_radius_m = 0.0, counts_per_wheel_rev = 0.0;
+      // Pins are WiringPi numbers (not BCM or physical pin numbers): 0..31 covers the 40-pin header,
+      // see `gpio readall` on the Pi.
+      const auto is_pin = [](double pin) {return pin >= 0.0 && pin <= 31.0 && pin == std::floor(pin);};
+      const char * bad_key = nullptr;
+      if (!read_number(ENCODER_PIN_A_KEY, pin_a) || !is_pin(pin_a)) {
+        bad_key = ENCODER_PIN_A_KEY.c_str();
+      } else if (!read_number(ENCODER_PIN_B_KEY, pin_b) || !is_pin(pin_b) || pin_b == pin_a) {
+        bad_key = ENCODER_PIN_B_KEY.c_str();
+      } else if (!read_number(WHEEL_RADIUS_KEY, wheel_radius_m) || wheel_radius_m <= 0.0) {
+        bad_key = WHEEL_RADIUS_KEY.c_str();
+      } else if (!read_number(COUNTS_PER_REV_KEY, counts_per_wheel_rev) || counts_per_wheel_rev <= 0.0) {
+        bad_key = COUNTS_PER_REV_KEY.c_str();
+      }
+      if (bad_key != nullptr)
+      {
+        RCLCPP_FATAL(
+            get_logger(),
+            "Hardware '%s': parameter '%s' is missing or wrong (pins: two different whole WiringPi numbers 0..31; "
+            "radius and counts per turn: positive numbers).", info.name.c_str(), bad_key);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      _encoderPinA = static_cast<int>(pin_a);
+      _encoderPinB = static_cast<int>(pin_b);
+      _countsPerMetre = counts_per_metre(counts_per_wheel_rev, wheel_radius_m);
     }
 
     // Check that we have a motor
@@ -113,26 +147,41 @@ namespace rocko_env
     // Set up pins to have WiringPi numberings
     wiringPiSetup();
 
-    // Set up client to get encoder data
-    _prefix = info.joints[0].name;
-
-    // Set up connection to client
-    _node = rclcpp::Node::make_shared(_prefix + "_encoder_client");
-    // This wheel's own service: left_encoder_data or right_encoder_data (set in the ros2_control xacro)
-    const std::string s = info.hardware_parameters.at(ENCODER_SERVICE_KEY);
-    _client = _node->create_client<rocko_interfaces::srv::QuadEncoderData>(s);
-
-    while (!_client->wait_for_service(std::chrono::seconds(1)))
-    {
-      if (!rclcpp::ok())
-      {
-        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the %s service. Exiting.", s.c_str());
-        return hardware_interface::CallbackReturn::ERROR;
-      }
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "%s service not available, waiting again...", s.c_str());
-    }
-
     return hardware_interface::CallbackReturn::SUCCESS;
+  }
+
+  // The encoder count moves on WiringPi's interrupt threads (one per pin, which WiringPi runs at
+  // real-time priority 55 when the process is root) while read() loads it on the control thread.
+  // It must never need a lock to read.
+  static_assert(std::atomic<std::int64_t>::is_always_lock_free,
+                "read() must load the encoder count without a lock");
+
+  void Motor12VoltQuadEncoder::on_encoder_edge(struct WPIWfiStatus /*status*/, void * userdata)
+  {
+    // Runs on WiringPi's interrupt thread, NOT the control thread. Reads both pins NOW, like the
+    // Python Encoder library did, and steps the decoder from the last state. The mutex is shared only
+    // with the other pin's interrupt thread; read() never takes it, so it cannot delay the loop.
+    auto * self = static_cast<Motor12VoltQuadEncoder *>(userdata);
+    std::lock_guard<std::mutex> lock(self->_encoderMutex);
+    const int state = quadrature_state(
+      digitalRead(self->_encoderPinA) == HIGH, digitalRead(self->_encoderPinB) == HIGH);
+    const int step = quadrature_step(self->_encoderState, state);
+    self->_encoderState = state;
+    self->_encoderCount.fetch_add(step, std::memory_order_relaxed);
+  }
+
+  void Motor12VoltQuadEncoder::stop_encoder_interrupts()
+  {
+    if (_encoderInterruptsOn)
+    {
+      // wiringPiISRStop cancels the pin's interrupt thread and joins it (pthread_cancel then
+      // pthread_join, wiringPi.c in WiringPi 3.20), so after this no callback can be running or start.
+      // The thread can only be cancelled while it waits for an edge, never inside our callback. The
+      // count is kept.
+      wiringPiISRStop(_encoderPinA);
+      wiringPiISRStop(_encoderPinB);
+      _encoderInterruptsOn = false;
+    }
   }
 
   hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_configure(
@@ -142,7 +191,83 @@ namespace rocko_env
     pinMode(_speedPin, SOFT_PWM_OUTPUT);
     pinMode(_dirPin, OUTPUT);
 
+    // Encoder: inputs, the starting state, then one interrupt per pin on both edges. Edges are counted
+    // from here on, active or not, so the position stays continuous across activate/deactivate.
+    // No pull-up or pull-down is set (the encoder drives its lines; the Python code set none either).
+    // The interrupts stay on from the first configure until cleanup or shutdown, so skip this if they
+    // are already running.
+    if (!_encoderInterruptsOn)
+    {
+      pinMode(_encoderPinA, INPUT);
+      pinMode(_encoderPinB, INPUT);
+      {
+        std::lock_guard<std::mutex> lock(_encoderMutex);
+        _encoderState = quadrature_state(
+          digitalRead(_encoderPinA) == HIGH, digitalRead(_encoderPinB) == HIGH);
+      }
+      if (wiringPiISR2(_encoderPinA, INT_EDGE_BOTH, &Motor12VoltQuadEncoder::on_encoder_edge, 0, this) != 0)
+      {
+        RCLCPP_FATAL(get_logger(), "Could not start the interrupt on encoder pin %d (WiringPi number).", _encoderPinA);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      if (wiringPiISR2(_encoderPinB, INT_EDGE_BOTH, &Motor12VoltQuadEncoder::on_encoder_edge, 0, this) != 0)
+      {
+        RCLCPP_FATAL(get_logger(), "Could not start the interrupt on encoder pin %d (WiringPi number).", _encoderPinB);
+        wiringPiISRStop(_encoderPinA);
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      _encoderInterruptsOn = true;
+    }
+    // The velocity starts from no history: the first read() reports 0.0, because there is no earlier
+    // position to compare with.
+    _velocityFilter.reset();
+    _haveLastReadTime = false;
+
     return hardware_interface::CallbackReturn::SUCCESS;
+  }
+
+  hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_cleanup(
+      const rclcpp_lifecycle::State & /* previous_state */)
+  {
+    stop_encoder_interrupts();
+    return hardware_interface::CallbackReturn::SUCCESS;
+  }
+
+  hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_shutdown(
+      const rclcpp_lifecycle::State & /* previous_state */)
+  {
+    // Safeguard: ros2_control can shut a component down straight from active
+    // without calling on_deactivate, and software PWM would keep driving the wheel at its last duty.
+    stop_motor();
+    stop_encoder_interrupts();
+    return hardware_interface::CallbackReturn::SUCCESS;
+  }
+
+  void Motor12VoltQuadEncoder::stop_motor()
+  {
+    if (_pwmRunning)
+    {
+      softPwmWrite(_speedPin, 0);  // 0 % duty first, then end the PWM thread
+      softPwmStop(_speedPin);
+      _pwmRunning = false;
+    }
+  }
+
+  hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_error(
+      const rclcpp_lifecycle::State & /* previous_state */)
+  {
+    // Safeguard: a component that fails while active must not leave the wheel at its last duty.
+    stop_motor();
+    stop_encoder_interrupts();
+    return hardware_interface::CallbackReturn::SUCCESS;
+  }
+
+  Motor12VoltQuadEncoder::~Motor12VoltQuadEncoder()
+  {
+    // Safeguard: destroyed while still active (no shutdown transition) must not leave PWM running.
+    stop_motor();
+    // The interrupt callbacks were handed `this`; they must be gone before the object is.
+    stop_encoder_interrupts();
   }
 
   std::vector<hardware_interface::StateInterface> Motor12VoltQuadEncoder::export_state_interfaces()
@@ -172,7 +297,14 @@ namespace rocko_env
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
     // Set up PWM
-    softPwmCreate(_speedPin, 0, 100);
+    // A PWM thread that failed to start would leave a wheel that is never driven while the plugin
+    // says active: refuse to activate instead (finding M-5: never ignore a return value).
+    if (softPwmCreate(_speedPin, 0, 100) != 0)
+    {
+      RCLCPP_FATAL(get_logger(), "Could not start software PWM on speed pin %d (WiringPi number).", _speedPin);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    _pwmRunning = true;
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -180,9 +312,7 @@ namespace rocko_env
   hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_deactivate(
       const rclcpp_lifecycle::State & /*previous_state*/)
   {
-    // Stop PWM here
-    softPwmWrite(_speedPin, 0);
-    softPwmStop(_speedPin);
+    stop_motor();
 
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -190,24 +320,26 @@ namespace rocko_env
   hardware_interface::return_type Motor12VoltQuadEncoder::read(
       const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
   {
-    // Read the encoders to find speed and pos, and update the wheel object, which gets read when states are exported
-    auto request = std::make_shared<rocko_interfaces::srv::QuadEncoderData::Request>();
+    // No service call and no waiting: the interrupt threads keep the count, so this only loads it
+    // (lock-free) and does arithmetic, and read() always returns within microseconds.
+    // Units: position in metres of wheel travel, velocity in m/s, forward positive (the controllers
+    // and their gains expect exactly this).
+    const std::int64_t count = _encoderCount.load(std::memory_order_relaxed);
+    // The time step is measured HERE, when the count is taken, not the controller's nominal `period`:
+    // another component read earlier in the same cycle (the IMU's I2C burst, up to ~3.6 ms on the Pi)
+    // moves the moment this count is taken without changing `period`.
+    // steady_clock::now() is a cheap, non-blocking clock read on Linux.
+    const auto now = std::chrono::steady_clock::now();
+    const double dt_s = _haveLastReadTime ?
+      std::chrono::duration<double>(now - _lastReadTime).count() : 0.0;
+    _lastReadTime = now;
+    _haveLastReadTime = true;
+    _wheel.pos = static_cast<double>(count) / _countsPerMetre;
+    _wheel.vel = _velocityFilter.update(_wheel.pos, dt_s);
 
-    auto result = _client->async_send_request(request);
-    // Wait for the result.
-    if ((rclcpp::spin_until_future_complete(_node, result) ==
-      rclcpp::FutureReturnCode::SUCCESS) && result.valid())
-    {
-      auto res = result.get();
-      // TODO: Grab the response data and put into variables for you to use
-      _wheel.pos = res->position;
-      _wheel.vel = res->velocity;
-      // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Pos: %6.2f Vel: %5.2f", _wheel.pos, _wheel.vel);
-      
-    } else {
-      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service QuadEncoder");
-    }
-
+    // Nothing here can fail the way the service call could. What is NOT detected: a dead or unplugged
+    // encoder just stops counting, so the wheel looks stationary. Nothing detects that yet
+    // (docs/next-steps.md row 1.10).
     return hardware_interface::return_type::OK;
   }
 

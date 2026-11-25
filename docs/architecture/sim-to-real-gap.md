@@ -20,7 +20,10 @@ if the robot were tested, which loop it hits, and why.
 
 Last written 2026-11-04, on top of `77664f4`; sweep and V-metric figures updated 2026-11-07. The six places this page can go stale: the gains in
 `rocko_sim_controllers.yaml`, the model's parameters (sim-plant.md §4), the write path in
-`Motor12VoltQuadEncoder.cpp`, the encoder node, the IMU node, and the sweep results.
+`Motor12VoltQuadEncoder.cpp`, the encoder node, the IMU node, and the sweep results. **Since 2026-11-24 the encoder
+node and the IMU node are gone** (finding C-1, fixed in code: the plugins read the devices themselves,
+[encoders](encoders-in-cpp.md), [IMU](imu-i2c-read.md)); the encoder's speed arithmetic is unchanged, and the sections
+below that mention the nodes describe the code as it was when they were written.
 
 ---
 
@@ -180,7 +183,7 @@ and [§3](sim-plant.md#3-the-model).
 ### 3.9 Encoder quantisation and the encoder node's quirks
 
 - **What is missing:** the sim's velocity is a smooth number. The real one comes from counts
-  (1.92 mm per count by the code's own constants, `QuadEncoders.py`: 145 × 1.355 counts per wheel
+  (1.92 mm per count by the code's own constants, now the xacro's `encoder_counts_per_wheel_rev` and `wheel_radius_m`, until 2026-11-24 `QuadEncoders.py`: 145 × 1.355 counts per wheel
   turn of 2π × 0.06 m, assuming those comments are right). Over one 10 ms cycle a single count is
   about 0.19 m/s before the filter.
 - **Hits:** the outer loop, and its D term (0.2 deg·s²/m) most.
@@ -213,8 +216,8 @@ and [§3](sim-plant.md#3-the-model).
 ### 3.11 DDS and service-call delays
 
 - **What is missing:** every topic and service crossing between processes. Three matter. The IMU
-  and encoder service calls are on the **sensor** path of both loops (C-1: blocking, with no
-  deadline). The velocity reference and the feedforward travel from `DiffDriveController.py` by
+  and encoder service calls were on the **sensor** path of both loops (C-1: blocking, with no
+  deadline; both replaced on 2026-11-24 by reads inside the plugins, not yet measured on the Pi). The velocity reference and the feedforward travel from `DiffDriveController.py` by
   topic. The gamepad travels over TCP and then a topic.
 - **Hits:** the sensor path adds delay to the measurement of both loops (reduces margins, as in
   3.4). The reference path sits **outside** the loops: delay there does not change stability, it

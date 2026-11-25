@@ -113,8 +113,17 @@
         <param name="pinNumberSpeed">14</param>
         <param name="pinNumberDirection">10</param>
         <param name="invert">true</param>
-        <!-- which service of QuadEncoders.py answers for this wheel (finding U-2) -->
-        <param name="encoder_service">left_encoder_data</param>
+        <!-- This wheel's encoder, counted in the plugin (finding C-1). Pins are WiringPi numbers
+             (`gpio readall` on the Pi); the BCM numbers are the ones QuadEncoders.py was given. -->
+        <param name="encoder_pin_a">25</param> <!-- BCM 26, physical pin 37 -->
+        <param name="encoder_pin_b">28</param> <!-- BCM 20, physical pin 38 -->
+        <!-- Metres per count = 2 pi r / counts per turn. 196.475 = 145 counts per turn of the encoder
+             shaft x the 1.355 belt reduction (the original author's figures). Measured 2026-11-23:
+             0.360 m per wheel turn, 4.4 % under this 0.06 m radius; the wheel's diameter decides
+             which number is wrong (next-steps handoff item 1). DiffDriveController.py has its own
+             copy of the radius: change both together. -->
+        <param name="wheel_radius_m">0.06</param>
+        <param name="encoder_counts_per_wheel_rev">196.475</param>
       </hardware> 
       <joint name="left_wheel_joint">
         <command_interface name="velocity"/>
@@ -128,8 +137,18 @@
         <param name="pinNumberSpeed">13</param>
         <param name="pinNumberDirection">6</param>
         <param name="invert">false</param>
-        <!-- which service of QuadEncoders.py answers for this wheel (finding U-2) -->
-        <param name="encoder_service">right_encoder_data</param>
+        <!-- This wheel's encoder, counted in the plugin (finding C-1). Pins are WiringPi numbers
+             (`gpio readall` on the Pi); the BCM numbers are the ones QuadEncoders.py was given. -->
+        <!-- A and B swapped against the wiring, so forward counts up (QuadEncoders.py swapped them too) -->
+        <param name="encoder_pin_a">27</param> <!-- BCM 16, physical pin 36 -->
+        <param name="encoder_pin_b">24</param> <!-- BCM 19, physical pin 35 -->
+        <!-- Metres per count = 2 pi r / counts per turn. 196.475 = 145 counts per turn of the encoder
+             shaft x the 1.355 belt reduction (the original author's figures). Measured 2026-11-23:
+             0.360 m per wheel turn, 4.4 % under this 0.06 m radius; the wheel's diameter decides
+             which number is wrong (next-steps handoff item 1). DiffDriveController.py has its own
+             copy of the radius: change both together. -->
+        <param name="wheel_radius_m">0.06</param>
+        <param name="encoder_counts_per_wheel_rev">196.475</param>
       </hardware>
       <joint name="right_wheel_joint">
         <command_interface name="velocity"/>

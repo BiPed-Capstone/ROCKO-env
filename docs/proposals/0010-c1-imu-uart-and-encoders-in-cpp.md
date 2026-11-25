@@ -3,7 +3,11 @@
 - **Status:** Open, partly superseded (2026-11-24): the owner chose to read the IMU over **I²C** from C++ instead of
   rewiring it for UART. That is written ([how](../architecture/imu-i2c-read.md),
   [journal](../journal/2026-11-24-c1-imu-i2c-and-zero-on-deactivate.md)), so sections A, B and D apply only if I²C proves
-  unreliable on the robot. Section C (the encoders in C++) is still open.
+  unreliable on the robot. Section C (the encoders in C++) is written too (2026-11-24, later the same day:
+  [how](../architecture/encoders-in-cpp.md), [journal](../journal/2026-11-24-c1-encoders-in-cpp.md)). It keeps the
+  Python node's speed filter and scale exactly, so the velocity signal the gains were tuned against does not change;
+  the "not a drop-in" warning in section C applied to a version that would have dropped the filter. Not done from
+  section C: the implausible-speed check and the broken-encoder rule (both need thresholds nobody has measured).
 - **Gate:** on-robot step (a wiring change, a Pi build, a bench test and a tethered bring-up). The code
   itself is not gated, but none of it can be checked without the hardware, so the person asked for it
   to wait here ("land only what the compile-only check / the ladder can cover; anything else becomes

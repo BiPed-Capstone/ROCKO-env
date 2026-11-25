@@ -166,7 +166,7 @@ holds four values (0.06, an effective 0.0813, 0.127 and 0.015 m;
 **Record:** `r_unloaded`, `r_rolling` [m], both pulley tooth counts, `belt_ratio`. Say which one
 you think the model should use; the agent does not pick. **Where it goes:** `wheel_radius_m` and
 `belt_ratio`; also the row for issue #16 / next-steps row 0.7. Several places in the code hold
-their own copy of the radius (`DiffDriveController.py`, `QuadEncoders.py`, the tank-mode YAML,
+their own copy of the radius (`DiffDriveController.py`, the motor plugins' `wheel_radius_m` in the ros2_control xacros, the tank-mode YAML,
 the URDF): replacing them is a separate, human-approved change.
 
 ## 6. Motor constants: stall torque, no-load speed
@@ -260,9 +260,10 @@ histogram of the loop; the findings ask for a histogram).
 
 ## 8. Encoder scale: metres per wheel turn, counts per turn
 
-The encoder node reports metres by dividing counts by a constant built from three comments in
-`QuadEncoders.py` (145 pulses per revolution at the gearbox output, belt 1.355, radius 0.06 m, which
-is 521.2 counts per metre). If those are wrong the velocity the loops see is wrong by the same
+The motor plugins report metres by dividing counts by a constant built from two hardware parameters
+in the ros2_control xacros: `encoder_counts_per_wheel_rev` (145 pulses per revolution at the gearbox
+output times the belt's 1.355) and `wheel_radius_m`; with the values there today that is 521.2 counts per metre
+(until 2026-11-24 the Python node `QuadEncoders.py` held the same numbers; [how the encoders are read](../architecture/encoders-in-cpp.md)). If those are wrong the velocity the loops see is wrong by the same
 factor, and so is the velocity loop's gain (gap page, section 3.9).
 
 **Tools:** a marker, the Pi.
@@ -274,20 +275,20 @@ factor, and so is the velocity loop's gain (gap page, section 3.9).
    pi/launch.sh tank
    ```
 
-3. In a second terminal (`pi/rocko_shell.sh`) read the encoder position (metres, **left wheel**; use `/right_encoder_data` for the right), before and after
-   turning the **left wheel by hand** exactly `N` full turns (mark the tyre; `N = 10`):
+3. In a second terminal (`pi/rocko_shell.sh`) read the wheels' positions (metres; the `position` list is in the
+   order of the `name` list, so find `left_wheel_joint`), before and after turning the **left wheel by hand**
+   exactly `N` full turns (mark the tyre; `N = 10`):
 
    ```bash
-   ros2 service call /left_encoder_data rocko_interfaces/srv/QuadEncoderData
+   ros2 topic echo --once /joint_states
    ```
 
-   (`ros2 service list -t` shows the type if it differs. Each call also moves that wheel's "previous
-   position" and time, which only disturbs its velocity reading, not the position you want.) Repeat 3 times.
+   Repeat 3 times.
 4. `reported_m_per_turn = (position_after − position_before) / N`. Compare with the circumference
    from step 5, `2π × r_rolling`.
 5. `counts_per_wheel_turn = reported_m_per_turn × 521.2` (the code's counts per metre; this is the
-   number of counts the node believes it saw per turn, so it is exact only if the code's constant
-   is the one in use: check the file).
+   number of counts the plugin believes it saw per turn, so it is exact only if the xacro's
+   numbers are the ones in use: check the file).
 
 **Record:** `reported_m_per_turn`, `2π × r_rolling` [m], and the ratio of the two (1.00 means the
 node's metres are true; the code's comments predict 196.5 counts per turn, unverified). **Where it

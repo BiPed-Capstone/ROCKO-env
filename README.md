@@ -118,13 +118,13 @@ Heads up: **none of these are pinned**. There's no `requirements.txt` yet, so `p
 
 | Library | What uses it | Needs real Pi hardware? |
 | --- | --- | --- |
-| `numpy` | encoders, IMU, calibration | no |
+| `numpy` | calibration scripts | no |
 | `pygame` | the laptop gamepad script | no |
 | `tqdm`, `ahrs` | IMU calibration scripts | no |
 | `Adafruit-Blinka` (imported as `board`) | only `tools/imu_tilt_log.py` now: the robot code reads the IMU from C++ since 2026-11-24 ([how](docs/architecture/imu-i2c-read.md)) | **yes**, needs real I²C |
 | `gpiod` (`gpiod>=2.2.2,<3`) | needed by `board` on a Raspberry Pi 5, so by `tools/imu_tilt_log.py` | **yes** |
 | `adafruit-circuitpython-bno055` | `tools/imu_tilt_log.py` only (the IMU node `ICM20948.py` that used it was removed 2026-11-24) | **yes** |
-| `Encoder` | wheel encoders | **yes**, needs real GPIO |
+| `Encoder` | only the older, unused `QuadEncoder.py`: the robot's encoders are counted in C++ since 2026-11-24 ([how](docs/architecture/encoders-in-cpp.md)) | **yes**, needs real GPIO |
 
 ---
 
@@ -176,11 +176,11 @@ ROCKO-env
 │       │   ├── sim/                    SimPlant: the simulated robot (a physics model with estimated parameters), not hardware
 │       │   └── sensors/
 │       │       ├── icm20948/           IMU driver + calibration scripts
-│       │       └── quadEncoder/        Wheel encoder readers
+│       │       └── quadEncoder/        Older encoder code, loaded by nothing (the robot's encoders: motors/, WheelEncoder.hpp)
 │       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
 │       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
 ├── rocko_interfaces/                   Custom messages and services, including the supervisor's RobotState and SetEnabled/SetMode
-└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), balancing mode's (balance_teleop_test.py), the supervisor's rules (supervisor_state_machine_test.py, supervisor_flow_check.py), the IMU plugin's sample check (imu_snapshot_check_test.cpp), the feedforward controller's zero-on-deactivate (zero_commands_test.cpp), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1 (bno055_uart_protocol_test.cpp; the IMU plugin uses only its register decoding, since it reads over I²C). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
+└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), balancing mode's (balance_teleop_test.py), the supervisor's rules (supervisor_state_machine_test.py, supervisor_flow_check.py), the IMU plugin's sample check (imu_snapshot_check_test.cpp), the feedforward controller's zero-on-deactivate (zero_commands_test.cpp), the motor plugin's encoder decoding and speed filter (wheel_encoder_test.cpp), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1 (bno055_uart_protocol_test.cpp; the IMU plugin uses only its register decoding, since it reads over I²C). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
 ```
 
 A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
@@ -251,13 +251,12 @@ Anything after the mode goes to `ros2 launch`, so every launch argument below wo
 
 `description_package:=rocko_env` still works as an explicit argument, but the default is now `rocko_env` too ([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)). That change has only been built, not run: `view_robot.launch.py` needs a display, and none of the checks in [the verification ladder](docs/architecture/verification-ladder.md) has one. If it fails to start, try the explicit argument and report it.
 
-Useful launch arguments: `gui:=true` opens RViz alongside in tank mode (`rocko.launch.py` declares it but does not use it). The saved RViz layouts are installed now (finding L-4 in [the audit](docs/claude-analysis/balance-loop-findings.md)); that RViz actually opens with them has not been checked, because that needs a display. `use_mock_hardware:=true` swaps the real motor and IMU plugins for ROS's `mock_components/GenericSystem` and skips the nodes that read real sensors. It defaults to `false`, so a plain launch on the robot gets real hardware. **The mock is not a simulation**: it has no physics, each command is just echoed back as a state, and pitch stays at 0.0. It checks that the controllers *wire up*, and tells you nothing about whether the robot balances (see [the verification ladder](docs/architecture/verification-ladder.md)). With the mock on, ROS never loads the motor driver, so nothing launched by these files can move the wheels; with it off (the default), it does.
+Useful launch arguments: `gui:=true` opens RViz alongside in tank mode (`rocko.launch.py` declares it but does not use it). The saved RViz layouts are installed now (finding L-4 in [the audit](docs/claude-analysis/balance-loop-findings.md)); that RViz actually opens with them has not been checked, because that needs a display. `use_mock_hardware:=true` swaps the real motor and IMU plugins (which read the encoders and the IMU themselves) for ROS's `mock_components/GenericSystem`. It defaults to `false`, so a plain launch on the robot gets real hardware. **The mock is not a simulation**: it has no physics, each command is just echoed back as a state, and pitch stays at 0.0. It checks that the controllers *wire up*, and tells you nothing about whether the robot balances (see [the verification ladder](docs/architecture/verification-ladder.md)). With the mock on, ROS never loads the motor driver, so nothing launched by these files can move the wheels; with it off (the default), it does.
 
 You can also run individual nodes, which is handy when debugging one piece:
 
 ```bash
 pi/rocko_run.sh ros2 run rocko_env DiffDriveController.py
-pi/rocko_run.sh ros2 run rocko_env QuadEncoders.py
 pi/rocko_run.sh ros2 run rocko_env BalanceTeleop.py # balancing mode's (needs joy's game_controller_node and a supervisor)
 pi/rocko_run.sh ros2 run rocko_env TankTeleop.py    # tank mode's (needs joy's game_controller_node and a supervisor)
 ```

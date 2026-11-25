@@ -50,7 +50,8 @@ static_assert(
 constexpr double kWriteDeadbandRadPerSec = 0.05;  // [rad/s]
 // Motor12VoltQuadEncoder.hpp kStictionDutyPercent: added to every non-zero duty.
 constexpr double kWriteStictionDutyPercent = 2.0;  // [% of full duty]
-// QuadEncoders.py FILTER_ALPHA: velocity = (position change since this wheel's previous call) / (the
+// WheelEncoder.hpp kWheelVelocityFilterAlpha (the motor plugin's encoder filter since 2026-11-24; before,
+// QuadEncoders.py FILTER_ALPHA, the same 0.05): velocity = (position change since this wheel's previous call) / (the
 // real time between the two calls), then a low-pass filter with this weight on the new sample.
 constexpr double kEncoderFilterAlpha = 0.05;     // [-]
 
@@ -105,7 +106,7 @@ struct SimPlantParams
                                //   positive wheel command makes the exported pitch go UP
   double encoder_sign = +1.0;  // exported position/velocity = encoder_sign * motion toward sim-forward
   bool model_write_quirks = true;  // true: copy Motor12VoltQuadEncoder::write() exactly (§3.3)
-  bool model_encoder_node = true;  // true: copy QuadEncoders.py (filtered velocity over the real period, §3.7)
+  bool model_encoder_node = true;  // true: copy the motor plugin's encoder velocity (WheelEncoder.hpp; was QuadEncoders.py): filtered, over the real period, §3.7
   int imu_delay_max_ms = 100;      // [ms] size of the delay buffer, allocated once
 
   // ---- Scenario and fault injection (spec §5). All off by default. Times count from release. ----
@@ -331,7 +332,7 @@ public:
       right_velocity_m_s_ = left_velocity_m_s_;
       return;
     }
-    // QuadEncoders.py WheelChannel.update(): velocity from the travel since the previous call over
+    // WheelVelocityFilter::update() in WheelEncoder.hpp (was QuadEncoders.py WheelChannel.update()): velocity from the travel since the previous call over
     // the real time between the calls, then the low-pass filter. No time passed (period_s <= 0,
     // e.g. before the release): hold the filter and keep the OLD reference position, as the node does.
     if (period_s > 0.0) {

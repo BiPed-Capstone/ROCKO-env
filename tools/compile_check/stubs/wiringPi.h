@@ -21,13 +21,30 @@
 #define OUTPUT 1
 #define SOFT_PWM_OUTPUT 4
 
+// Pin levels and interrupt edges, same values as the real header (enums there, WiringPi 3.20)
+#define LOW 0
+#define HIGH 1
+#define INT_EDGE_BOTH 3
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// The interrupt record WiringPi passes an ISR, as in the real header (V3.16 and later)
+struct WPIWfiStatus {
+    int statusOK;
+    unsigned int pinBCM;
+    int edge;
+    long long int timeStamp_us;
+};
+
 extern int wiringPiSetup(void);
 extern void pinMode(int pin, int mode);
 extern void digitalWrite(int pin, int value);
+extern int digitalRead(int pin);
+extern int wiringPiISR2(int pin, int edgeMode, void (*function)(struct WPIWfiStatus wfiStatus, void* userdata),
+                        unsigned long debounce_period_us, void* userdata);
+extern int wiringPiISRStop(int pin);
 
 #ifdef __cplusplus
 }

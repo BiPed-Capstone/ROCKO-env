@@ -102,11 +102,13 @@ pi/rocko_shell.sh
 ros2 control list_controllers
 ```
 
-Success: `joint_state_broadcaster` and `diffbot_base_controller` are both `active`, **and** terminal A
-shows no `Failed to call service QuadEncoder` for 10 seconds. Both conditions are needed: the plugin
-logs that error but still reports success (`Motor12VoltQuadEncoder.cpp:196-199`), so the controllers
-stay `active` while the encoders are dead. If the error repeats, the encoder node is not answering
-the motor plugin: stop here and fix that first, because every wheel speed below depends on it.
+Success: `joint_state_broadcaster` and `diffbot_base_controller` are both `active`, and terminal A
+shows no `Could not start the interrupt on encoder pin` line. Since 2026-11-24 each motor plugin counts
+its own encoder ([how](../architecture/encoders-in-cpp.md)); if its interrupts cannot start, the plugin
+fails to configure and the controllers never become `active`. A wiring fault the plugin cannot see (an
+unplugged encoder) shows instead as a wheel whose `position` never changes in
+`ros2 topic echo /joint_states` while you turn it by hand: check that before going on, because every
+wheel speed below depends on it.
 
 ### 2. Check the encoders see the wheels
 
@@ -213,7 +215,7 @@ Anything else (heat, smell, noise, a wheel that stuck):
 | The wheels turn but a keyboard still seems to do nothing | The keyboard's low levels are below your breakaway (in precise mode the top level was 0.5 m/s, 5 %; since `df91b9e` levels 1 to 4 are 5 to 18 %) | Expected; that is proposal 0013 |
 | The wheels jerk at each step instead of turning smoothly | Duty is just above breakaway; the wheel turns, sticks, turns | Go one level higher; note both levels |
 | Two sources of commands: the wheels twitch between values | The launch was started without `teleop:=false`, so `TankTeleop.py` is publishing too | Stop the launch and start it again with `teleop:=false` |
-| `Failed to call service QuadEncoder` | The encoder node (`QuadEncoders.py`) is not running or not answering | `ros2 node list` shows whether it is up; read its log |
+| `Could not start the interrupt on encoder pin ...`, or a wheel's `position` never changes in `ros2 topic echo /joint_states` | The motor plugin counts its encoder itself since 2026-11-24 ([how](../architecture/encoders-in-cpp.md)): the interrupt could not start, or the pin numbers or wiring are wrong | Check the launch log for the motor plugin's error; compare `encoder_pin_a`/`encoder_pin_b` in the xacro with `gpio readall` |
 | `ros2 control list_controllers` prints `waiting for service /controller_manager/list_controllers` and never answers | This terminal is not root, or uses another `ROS_DOMAIN_ID`, so it cannot see the launch; or the launch in terminal A has stopped | Open the terminal with `pi/rocko_shell.sh`; check terminal A is still running |
 
 ## What this does not tell you

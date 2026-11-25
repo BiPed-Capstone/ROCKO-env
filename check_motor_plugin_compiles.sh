@@ -29,16 +29,11 @@ plugin_include="$here/rocko_env/rocko_env/hardware/motors/include"
 # script instead of reporting the problem, so we test with `[ -f ... ]` first and exit 2 ourselves.
 [ -f /opt/ros/jazzy/setup.bash ] \
   || { echo "ERROR: /opt/ros/jazzy/setup.bash not found. Run this inside the dev container." >&2; exit 2; }
-# rocko_interfaces' generated headers (the QuadEncoderData service) come from the workspace build.
+# The workspace build is sourced too, as the plugin's other ROS headers expect a built workspace.
+# (Until 2026-11-24 the plugin also needed rocko_interfaces' QuadEncoderData service header; it counts
+# its encoder itself now, finding C-1.)
 [ -f "$WS/install/setup.bash" ] \
-  || { echo "ERROR: no build in $WS/install. Run src/ROCKO-env/build_ros.sh first (it makes the rocko_interfaces headers)." >&2; exit 2; }
-# The generated header for the QuadEncoderData service must exist, or g++ fails with a confusing
-# "no such file" error that looks like a bug in the plugin. Say what is really wrong instead.
-# (Jazzy puts it under include/rocko_interfaces/rocko_interfaces/srv/, so search for it by name.)
-if [ -z "$(find "$WS/install/rocko_interfaces/include" -name quad_encoder_data.hpp 2>/dev/null | head -n 1)" ]; then
-  echo "could not run: build rocko_interfaces first (no quad_encoder_data.hpp under $WS/install/rocko_interfaces/include). Run src/ROCKO-env/build_ros.sh." >&2
-  exit 2
-fi
+  || { echo "ERROR: no build in $WS/install. Run src/ROCKO-env/build_ros.sh first." >&2; exit 2; }
 set +u
 # shellcheck disable=SC1091
 source /opt/ros/jazzy/setup.bash

@@ -306,6 +306,8 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/in
     tools/imu_snapshot_check_test.cpp -o /tmp/imu_snapshot_check_test && /tmp/imu_snapshot_check_test   # all ImuSnapshotCheck tests passed
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include \
     tools/zero_commands_test.cpp -o /tmp/zero_commands_test && /tmp/zero_commands_test        # all ZeroCommands tests passed
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/motors/include \
+    tools/wheel_encoder_test.cpp -o /tmp/wheel_encoder_test && /tmp/wheel_encoder_test        # all WheelEncoder tests passed
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include \
     tools/feedforward_timeout_test.cpp -o /tmp/feedforward_timeout_test && /tmp/feedforward_timeout_test   # all FeedforwardTimeout tests passed
 ```
@@ -318,6 +320,7 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
 | `tools/feedforward_timeout_test.cpp` (7 test functions) | `FeedforwardTimeout.hpp`, the age decision of finding H-11: nothing arrived gives 0.0 and is not a time-out; a value is used up to and at the 200 ms limit and is 0.0 one nanosecond past it, logged once (`just_timed_out()` is true for one update only); a fresh message after a time-out is used at once; a steady 100 Hz stream never times out; a stamp a little later than the loop's `now` counts as age 0; a real value of 0.0 is not confused with "none" | That the controller calls it, that its subscription callback stamps the message, DDS delivery, the clock on the Pi, that 200 ms is a good limit |
 | `tools/imu_snapshot_check_test.cpp` (9 test functions) | `ImuSnapshotCheck.hpp`, the rule the IMU plugin applies to each 12-byte BNO055 burst (findings C-1, C-2, H-3, H-6; [how the IMU is read](imu-i2c-read.md)): the offset is added to pitch and the rate is sign x gyro[axis]; a still gyro (0, 0, 0) is accepted; an all-equal (start-up, all-zero) block, a non-decoded burst, angles beyond 180/360 deg (offset included) and a pitch rate beyond 2000 deg/s on the chosen axis reject the WHOLE sample and leave the output untouched; a bad axis or sign is refused; the pitch-jump check (`pitch_step_plausible`: a 32 deg step in one still cycle is rejected, a real 300 deg/s fall is not, only the last rate sets the allowance, a rate step of 256 deg/s in 10 ms is rejected, no check after a 0.1 s gap). Red on 9 deliberate breaks (2026-11-24) | The I2C transaction, the BNO055's register map and start-up, timing, anything on the robot |
 | `tools/zero_commands_test.cpp` (4 test functions) | `ZeroCommands.hpp`, the zero-on-deactivate of `AddFeedforwardController` (row 4.14): every interface is tried even after one fails, and the count of failed writes is returned (which makes `on_deactivate` return `ERROR`). Red on 2 deliberate breaks (2026-11-24) | That `on_deactivate` returns `ERROR` on a non-zero count, and what `controller_manager` then does (read from the code; the failure cannot be provoked on the mock) |
+| `tools/wheel_encoder_test.cpp` (10 test functions) | `WheelEncoder.hpp`, the arithmetic of the motor plugin's encoder counting (finding C-1, encoder half; [how the encoders are read](encoders-in-cpp.md)): the quadrature table equals the Python `Encoder` library's in all 16 cases; 4 counts per A/B cycle, the sign reverses with direction and with A and B swapped; the scale equals `QuadEncoders.py`'s 145 x 1.355 counts per turn at 0.06 m; the speed filter (first cycle 0.0, a steady speed read in full, the same speed at 10 and 20 ms cycles, alpha 0.05 after one cycle, a zero, negative or NaN period holds the speed and keeps the reference, reset). Red on 5 deliberate breaks (2026-11-24) | The GPIO interrupts, WiringPi's threads, the pin numbers, missed edges, that the plugin calls it, the robot |
 
 ### The host test of the Pi helper scripts (not a tier)
 
@@ -433,6 +436,7 @@ fixed; see the journal.)
 | 0 | `tools/imu_node_test.py`, run against a scratch copy of `ICM20948.py` with the +/-2000 deg/s check disabled (2026-11-03) | `test_out_of_range_rate_is_nan_and_logged` went red (`gyro 40.0 rad/s: the rate must be NaN`), 6 of 7. Real node: 7 of 7. (The node and this test were removed on 2026-11-24, finding C-1.) |
 | 0 | `tools/imu_snapshot_check_test.cpp` against scratch copies of `ImuSnapshotCheck.hpp`, one break each (2026-11-24): offset not added; all-equal rule removed; rate limit removed; sign ignored; output written on a rejected sample; pitch-jump check always true; (review round 2) rate step unchecked; the new rate widening the pitch allowance; (round 4) the acceleration term removed from the pitch allowance | red on 9 of 9 (the last only after its test case was tightened: at first it stayed green). Restored: `all ImuSnapshotCheck tests passed` |
 | 0 | `tools/zero_commands_test.cpp` against scratch copies of `ZeroCommands.hpp` (2026-11-24): stop at the first failed write; failures not counted | red on 2 of 2. Restored: `all ZeroCommands tests passed` |
+| 0 | `tools/wheel_encoder_test.cpp` against scratch copies of `WheelEncoder.hpp`, one break each (2026-11-24): the +1 group of the table made -1; the ±2 case dropped; the speed divided by a fixed 0.01 s; the reference moved on a zero period; a NaN period added to the elapsed time | red on 5 of 5. Restored: `all WheelEncoder tests passed` |
 | 0 | `tools/supervisor_state_machine_test.py` with the supervisor's disable rule set back to "only `active` is unconfirmed" (2026-11-24) | the new row 4.14 case went red. After review round 1 (immediate kill, and no rule while starting), each of the two rules broken in turn: red on both. Restored: 23 tests pass |
 | 3 | Run check `FF` with the age limit infinite, and again with it set to 50 ms (`kMaxFeedforwardAgeNs` changed in a scratch build; `FF_AGE_S` left at 0.2) | red both times: with an infinite limit no time-out is ever logged after the kill; with 50 ms it is logged sooner than `FF_EARLIEST_S`. Restored: `PASS` |
 | 3 (FF, 2026-11-03, timed from the last message sent) | The same two scratch builds (limit 1000 s; 50 ms) | red both times: `never logged 'Feedforward on ... ms old' after its last message`; `logged the time-out less than 0.2 s after the last message was sent` (0.057 s, 0.055 s). Restored: `PASS` 20 of 20 |
@@ -472,8 +476,10 @@ because they show what each tier is for.
   (finding H-7). They are built by Tier 1 and loaded by Tier 2. Check C2 long deactivated the
   controller, so `on_deactivate` was called, but no check reads what it wrote (and the plant had
   already been deactivated by then). A gtest was declined in review round 2.
-- **The IMU plugin and the encoder node are not exercised.** The mock launch replaces the IMU plugin and skips
-  `QuadEncoders.py` (they need I²C and GPIO). `ICM20948.cpp`, which since 2026-11-24 reads the BNO055 over I²C
+- **The IMU plugin and the encoder counting are not exercised.** The mock launch replaces the IMU and motor
+  plugins (they need I²C and GPIO); the motor plugin, which counts its encoder itself since 2026-11-24
+  ([how](encoders-in-cpp.md)), is not even built off the Pi (the compile-only check covers its syntax and types;
+  `tools/wheel_encoder_test.cpp` its decoding and speed filter). `ICM20948.cpp`, which since 2026-11-24 reads the BNO055 over I²C
   itself ([how the IMU is read](imu-i2c-read.md)), is compiled by Tier 1, but no tier runs it: not the I²C
   transaction, the start-up, the C-2 failure path or the 10 ms timeout. Its sample check has a host test
   (`tools/imu_snapshot_check_test.cpp`) and so do the counting rules of `ImuFaultTracker` (the
@@ -514,7 +520,7 @@ because they show what each tier is for.
   in `SimPlantModel.hpp` is a copy of the new `Motor12VoltQuadEncoder::write()` (deadband, stiction
   offset, clamp), including its integer-division `MAX_RAD_PER_SEC` (119.38 rad/s, finding U-3 in
   [sim-plant.md](sim-plant.md), L-7 in the findings doc) on purpose; the encoder node's filtered velocity
-  (speed over the real call period, `FILTER_ALPHA` 0.05) is a copy of `QuadEncoders.py` (switch `model_encoder_node`). Guarded: a `static_assert` fails the
+  (speed over the real call period, filter weight 0.05) is a copy of the motor plugin's `WheelVelocityFilter` in `WheelEncoder.hpp`, which copied `QuadEncoders.py` (switch `model_encoder_node`). Guarded: a `static_assert` fails the
   build if `kWriteMaxRadPerSec` is "tidied" to 120 or more (it does not read the plugin, so a changed
   plugin constant still leaves the copy as it was), and `sim/check_sim_config.py` compares the IMU
   fault limits with `ICM20948.hpp`. Not guarded: the `write()` duty map (the deadband, the stiction

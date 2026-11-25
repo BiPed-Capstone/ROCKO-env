@@ -373,6 +373,7 @@ python3 -I tools/teleop_watchdog_test.py
 python3 -I tools/tank_teleop_test.py
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include tools/imu_snapshot_check_test.cpp -o /tmp/imu_snapshot_check_test && /tmp/imu_snapshot_check_test
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/zero_commands_test.cpp -o /tmp/zero_commands_test && /tmp/zero_commands_test
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/motors/include tools/wheel_encoder_test.cpp -o /tmp/wheel_encoder_test && /tmp/wheel_encoder_test
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/feedforward_timeout_test.cpp -o /tmp/feedforward_timeout_test && /tmp/feedforward_timeout_test
 ```
 

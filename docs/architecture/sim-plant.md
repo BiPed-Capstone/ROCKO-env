@@ -31,7 +31,9 @@ measured on the robot and the sim's defaults match them (§2.4).
 [next-steps.md](../next-steps.md)).
 
 **Code this page reads:** `bringup/config/rocko_controllers.yaml`, `DiffDriveController.py`,
-`Joystick.py`, `Motor12VoltQuadEncoder.cpp`/`.hpp`, `QuadEncoders.py`, `QuadEncoder.py`,
+`Joystick.py`, `Motor12VoltQuadEncoder.cpp`/`.hpp`, `QuadEncoders.py` (removed 2026-11-24: the motor plugin counts the
+encoder itself with the same table, scale and filter, [how](encoders-in-cpp.md); the line references to it below are to
+the file as it was), `QuadEncoder.py`,
 `ICM20948.py`/`.cpp`/`.hpp`, `AddFeedforwardController.cpp`, `rocko.ros2_control.xacro` and
 `rocko_description.urdf.xacro`, in the `ai-forward` tree of 2026-10-31, which includes the finding
 **C-2** changes to the IMU files and the new `Motor12VoltQuadEncoder::write()` (findings H-2, M-1,
@@ -92,8 +94,8 @@ meaning, or it tests a different robot.
 | --- | --- | --- | --- | --- |
 | Pitch state | `left_wheel_joint/pitch`, `right_wheel_joint/pitch` (the same number on both) | **degrees** | Unknown from code (§2.4) | Since 2026-11-24 `ICM20948.cpp` reads the BNO055's Euler registers itself (one I²C burst, [how](imu-i2c-read.md)), 16 counts per degree, and `ImuSnapshotCheck.hpp` adds the `pitch_offset_deg` xacro parameter, 7.6, to a degree value: **+7.6°** (before that, `ICM20948.py` did the same). `ICM20948.hpp` (comment on `_pitch`) also says degrees. `ICM20948::export_state_interfaces()` exports the one `_pitch` under both joints |
 | Pitch "zero" | — | degrees | — | 0.0 is whatever raw BNO055 pitch reads −7.6°. Presumably the team found that to be upright; **unmeasured**. Nothing says 0.0 is "centre of mass over the axle" |
-| Wheel velocity state | `<wheel>_joint/velocity` (state) | **m/s**, not rad/s | Unknown from code (§2.4) | `Motor12VoltQuadEncoder::read()` stores the service reply in `_wheel.vel`. Each wheel calls its own service (`left_encoder_data` / `right_encoder_data`, the `encoder_service` hardware parameter). The reply is that wheel's position change since its previous call, divided by the **measured** time between the calls (`time.monotonic()`), then low-passed (`FILTER_ALPHA` 0.05); position in metres (counts ÷ `COUNTS_PER_METER`, radius 0.06 m and belt 1.355). Until 2026-11-23 this was finding U-2 (about half the true speed); fixed, see U-2 below |
-| Wheel position state | `<wheel>_joint/position` | **m** of that wheel's travel | Same as velocity | Each wheel's own encoder (`QuadEncoders.py`, `WheelChannel.update`); `Motor12VoltQuadEncoder::read()` stores it in `_wheel.pos`. Until 2026-11-23 both joints got the left wheel's position (U-2) |
+| Wheel velocity state | `<wheel>_joint/velocity` (state) | **m/s**, not rad/s | Unknown from code (§2.4) | `Motor12VoltQuadEncoder::read()` (since 2026-11-24 it counts its own encoder's edges, [how](encoders-in-cpp.md); before, it asked `QuadEncoders.py` over a service with the same arithmetic): the wheel's position change since the previous cycle, divided by the **real** time since the previous read (measured with `steady_clock` in `read()`), then low-passed (0.05, `WheelEncoder.hpp`); position in metres (counts ÷ counts per metre, from the xacro's `encoder_counts_per_wheel_rev` 145 × 1.355 and `wheel_radius_m` 0.06). Until 2026-11-23 this was finding U-2 (about half the true speed); fixed, see U-2 below |
+| Wheel position state | `<wheel>_joint/position` | **m** of that wheel's travel | Same as velocity | Each wheel's own encoder, counted in its motor plugin (`Motor12VoltQuadEncoder::read()` stores it in `_wheel.pos`; until 2026-11-24 `QuadEncoders.py` counted it). Until 2026-11-23 both joints got the left wheel's position (U-2) |
 | Wheel command | `<wheel>_joint/velocity` (command) | **rad/s**, read as a fraction of the gearbox-output no-load speed | Positive = sim-forward, by definition | `Motor12VoltQuadEncoder::write()`: `radPerSec = _wheel.cmd`; non-finite or `abs(radPerSec) < 0.05` (`kDeadbandRadPerSec` in the `.hpp`) writes duty 0; else duty % = `clamp(abs(radPerSec) / MAX_RAD_PER_SEC * 100 + 2.0, 0, 100)` (`kStictionDutyPercent` in the `.hpp`), truncated to `int`. `MAX_RAD_PER_SEC` (the `.hpp`) is "1150 RPM" at the gearbox output (finding U-3) |
 | Direction pin | GPIO | — | `cmd >= 0` writes `!invert`, else `invert`; left unchanged for a non-finite or deadband command | `Motor12VoltQuadEncoder::write()`, the two `digitalWrite(_dirPin, ...)` calls. Left `invert=true` (`rocko.ros2_control.xacro`, `LeftDriveMotor` block), right `invert=false` (`RightDriveMotor` block) |
 | Velocity reference | `velocity_pid_controller/reference` (topic) | "m/s" by intent | Positive = stick forward, probably | `DiffDriveController.command_controller()` sends `linear_vel` (the `linear.x` it received) for both wheels; `Joystick.py` multiplies the stick by `linear_scale = -10.0` (set in `__init__`, applied where the `TwistStamped` is built), so the range is ±10 "m/s" |
@@ -153,9 +155,9 @@ are a different list; where one of these is also a finding there, the entry says
   about 10 ms of motion, the second almost none, but both divided by 0.01 s, so the low-pass filter (`alpha = 0.05`)
   settled at about 0.5 × the true speed (left ≈ 0.513 v, right ≈ 0.487 v, derived from the code, never measured), and both
   joints got the **left** wheel's position. The same fixed 0.01 s was also wrong in tank mode (50 Hz). **What it is now:**
-  `QuadEncoders.py` offers `left_encoder_data` and `right_encoder_data`; each motor plugin names its own in the
-  `encoder_service` hardware parameter (the ros2_control xacro; the plugin refuses to start without it). Each wheel
-  returns its own position and the speed over the measured time since its own previous call (first call: velocity 0;
+  each motor plugin counts its own wheel's encoder (since 2026-11-24, [how](encoders-in-cpp.md); from 2026-11-23
+  `QuadEncoders.py` did, with one service per wheel), on the pins named in its xacro parameters (the plugin refuses to
+  start without them). Each wheel reports its own position and the speed over the measured time since its own previous call (first call: velocity 0;
   no time elapsed: the last value held), low-passed with `alpha = 0.05`. That filter's time constant now depends on the
   call rate: about 0.2 s at 100 Hz, 0.4 s at 50 Hz. **Consequence for the gains:** the velocity loop now sees the true
   speed, about twice what it saw, so the outer loop's gain is effectively doubled for the same numbers; the sim gains
@@ -560,7 +562,8 @@ sim produces that frame directly. `imu_pitch_bias_deg` models an upright referen
 fixed amount (default 0.0: assumes the 7.6° calibration is exact, which nobody has checked).
 
 **Encoder velocity, `model_encoder_node = true` (default).** Copies `QuadEncoders.py` as fixed for finding U-2
-(2026-11-23): each wheel is asked once per cycle, and the speed is the travel over the real time between the calls.
+(2026-11-23), whose arithmetic the motor plugin kept when it took over the counting (2026-11-24, `WheelEncoder.hpp`):
+each wheel is read once per cycle, and the speed is the travel over the real time between the reads.
 Each `read()`, with `p = encoder_sign · r · (φ − ψ)` and `T` the physics time that `read()` advanced (the number of 1 ms
 sub-steps times 1 ms, the counterpart of the real time between two calls):
 
@@ -570,7 +573,7 @@ y       = 0.95 · y + 0.05 · s            → exported as both joints' velocity
 p_last  = p                              (T = 0: nothing is updated, y is held, as the node does for dt <= 0)
 ```
 
-`0.05` is `FILTER_ALPHA` in `QuadEncoders.py`; it is code, not an estimate. The filter runs once per call, so its time
+`0.05` is `kWheelVelocityFilterAlpha` in `WheelEncoder.hpp` (before 2026-11-24, `FILTER_ALPHA` in `QuadEncoders.py`); it is code, not an estimate. The filter runs once per call, so its time
 constant is about `T / 0.05`: 0.2 s at 100 Hz (balancing) and 0.4 s at 50 Hz (tank mode). In steady state it reads
 the true speed (host test `tools/sim_plant_model_test.cpp`, check #13, at 10 ms and 20 ms cycles). With
 `model_encoder_node = false` both joints export `encoder_sign · r · (φ̇ − ψ̇)` with no filter. Encoder counts are not quantised in either mode (§6).
@@ -637,7 +640,7 @@ assumed period `0.01` s (`QuadEncoders.py:39`, `:71`).
 | `pitch_sign` | −1 | Exported pitch = `pitch_sign × lean toward sim-forward`. Measured on the robot 2026-11-23 (§2.4) |
 | `encoder_sign` | +1 | Exported position and velocity = `encoder_sign × motion toward sim-forward`. Measured on the robot 2026-11-24 (§2.4) |
 | `model_write_quirks` | true | Replicate today's `write()` exactly (§3.3) |
-| `model_encoder_node` | true | Replicate today's `QuadEncoders.py`: filtered speed over the real call period (§3.7); false: the unfiltered true speed |
+| `model_encoder_node` | true | Replicate the motor plugin's encoder speed (`WheelEncoder.hpp`; was `QuadEncoders.py`): filtered speed over the real call period (§3.7); false: the unfiltered true speed |
 | `imu_delay_max_ms` | 100 | Ring-buffer size, allocated in `on_init` |
 | sub-step `h`, max sub-steps | 1 ms, 50 | Fixed in code (§3.5), not parameters |
 
@@ -655,8 +658,8 @@ The repo holds four different wheel radii. This page does **not** pick the right
 | 0.015 m | `rocko_description.urdf.xacro:14` | The URDF; what a Gazebo plant would use |
 
 **The sim uses 0.06 m, as an estimate.** It is the value the balancing stack actually uses (feedforward
-and the launched encoder node), and with it the sim's encoder metres match what the real node computes
-for the same wheel rotation. It is the one value with a comment claiming a physical size. None of that
+and the motor plugins' encoder scale, `wheel_radius_m` in the xacro, formerly the encoder node), and with it the
+sim's encoder metres match what the robot computes for the same wheel rotation. It is the one value with a comment claiming a physical size. None of that
 makes it correct.
 
 ### 4.3 The robustness sweep (±30 %)

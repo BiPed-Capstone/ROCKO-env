@@ -5,6 +5,9 @@ Plain Python, no ROS, so the state machine and its test can import it on a lapto
 
 # Nodes (by ROS node name) that every mode's launch starts. real_only=True: the node talks to real
 # sensors (I2C/GPIO), so it is not started, and not expected, with use_mock_hardware:=true.
+# No node needs it since 2026-11-24: the IMU and the encoders are read inside the hardware plugins
+# (finding C-1), so a dead sensor shows up as a hardware error in controller_manager, not a missing node.
+# Kept for the next sensor that has to be a separate node.
 # Each name is the one the node gives itself in its source (see the comments in MODES below).
 
 
@@ -24,7 +27,6 @@ MODES = {
         "nodes": [
             _node("controller_manager"),
             _node("robot_state_publisher"),
-            _node("node", real_only=True),          # QuadEncoders.py (real encoders), which names itself "node"
             _node("tank_teleop"),                   # TankTeleop.py
         ],
     },
@@ -46,7 +48,6 @@ MODES = {
         "nodes": [
             _node("controller_manager"),
             _node("robot_state_publisher"),
-            _node("node", real_only=True),           # QuadEncoders.py (real encoders), which names itself "node"
             _node("diff_drive_controller"),          # DiffDriveController.py
             _node("balance_teleop"),                 # the name BalanceTeleop.py gives itself
         ],

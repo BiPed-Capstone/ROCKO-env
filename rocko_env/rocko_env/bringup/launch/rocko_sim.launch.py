@@ -11,7 +11,7 @@
 #   - joint_state_broadcaster is spawned first, so pitch and wheel velocity can be watched on
 #     /dynamic_joint_states before the robot is released; the four cascade controllers are spawned
 #     as one group, exactly as on the robot, once it is running;
-#   - no ICM20948.py / QuadEncoders.py (the plugin is the sensor), and foxglove_bridge only with
+#   - no sensor nodes (SimPlant is the sensor; on the robot the IMU and motor plugins read the devices), and foxglove_bridge only with
 #     foxglove:=true.
 #
 # THE SIMULATOR'S PHYSICAL PARAMETERS ARE ESTIMATES, NOT MEASUREMENTS. A result here is a result
@@ -52,7 +52,7 @@ SIM_ARGUMENTS = {
     "body_mass_kg": ("2.0", "Body mass without the wheels [kg] (an estimate)."),
     "com_height_m": ("0.20", "Axle to body centre of mass [m] (an estimate)."),
     "motor_stall_torque_Nm": ("0.774725", "Each motor's stall torque at 12 V [N m] (an estimate; scales the motor gain)."),
-    "model_encoder_node": ("true", "true: copy QuadEncoders.py (speed over each cycle's real length, low-pass filtered, 0.05); false: the true speed."),
+    "model_encoder_node": ("true", "true: copy the motor plugin's encoder velocity (WheelEncoder.hpp: speed over each cycle's real length, low-pass filtered, 0.05); false: the true speed."),
 }
 
 

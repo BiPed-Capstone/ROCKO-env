@@ -167,20 +167,9 @@ def generate_launch_description():
         condition=IfCondition(supervised),
     )
 
-    # The encoder node reads the real encoders (GPIO), so it only starts on the robot. There is no IMU
-    # node any more: the ICM20948 hardware plugin reads the BNO055 over I2C itself (finding C-1,
-    # docs/architecture/imu-i2c-read.md).
-    encoders = Node(
-        package="rocko_env",
-        executable="QuadEncoders.py",
-        parameters=[{
-            "left_a_pin": 26,
-            "left_b_pin": 20,
-            "right_a_pin": 19,
-            "right_b_pin": 16
-        }],
-        condition=UnlessCondition(use_mock_hardware),
-    )
+    # No sensor nodes: the ICM20948 hardware plugin reads the BNO055 over I2C and the motor plugins count
+    # their encoders' edges themselves (finding C-1; docs/architecture/imu-i2c-read.md and
+    # docs/architecture/encoders-in-cpp.md). The pins are hardware parameters in the ros2_control xacro.
 
     # left_relative_encoder = Node(
     #     package="rocko_env",
@@ -244,7 +233,6 @@ def generate_launch_description():
         robot_state_pub_node,
         game_controller,
         balance_teleop,
-        encoders,
         controller_spawner,
         controller_spawner_inactive,
         delay_joint_state_broadcaster,
