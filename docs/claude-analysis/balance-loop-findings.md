@@ -119,7 +119,7 @@ the timeout branch must also remove the pending request. A client keeps each req
 until a reply arrives, so abandoning a request without removing it makes that list grow every time
 the timeout fires.
 
-**Status on `ai-forward` (2026-11-24, encoder half): both halves fixed in code. The motor plugins count their encoders' edges themselves (WiringPi interrupts into an atomic count; `read()` never waits), with the same table, scale and speed filter as `QuadEncoders.py`, which is removed ([how](../architecture/encoders-in-cpp.md), [journal](../journal/2026-11-24-c1-encoders-in-cpp.md), next-steps row 1.3). Robot result: see that journal.**
+**Status on `ai-forward` (2026-11-24, encoder half): both halves fixed in code. The motor plugins count their encoders' edges themselves (WiringPi interrupts into an atomic count; `read()` never waits), with the same table, scale and speed filter as `QuadEncoders.py`, which is removed ([how](../architecture/encoders-in-cpp.md), [journal](../journal/2026-11-24-c1-encoders-in-cpp.md), next-steps row 1.3). Checked on the robot's stand the same day: counts and signs right, and the shutdown that needed SIGKILL no longer does.**
 
 **Status on `ai-forward` (2026-11-24): IMU half fixed in code, awaiting robot; encoder half open (superseded by the line above).** The IMU plugin reads the BNO055 itself over I²C (the owner chose I²C over the UART plan: no rewiring), one burst per cycle bounded by a 10 ms kernel timeout; `ICM20948.py` is removed ([how](../architecture/imu-i2c-read.md), [journal](../journal/2026-11-24-c1-imu-i2c-and-zero-on-deactivate.md), next-steps row 1.1). The encoders still use the blocking service (row 1.3). The older status below is kept for the history.
 

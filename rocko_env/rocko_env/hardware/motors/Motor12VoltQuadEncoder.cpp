@@ -187,8 +187,12 @@ namespace rocko_env
   hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_configure(
       const rclcpp_lifecycle::State & /* previous_state */)
   {
-    // Set up the speed pin to be PWM and the dir pin to be output
-    pinMode(_speedPin, SOFT_PWM_OUTPUT);
+    // Speed and direction pins as plain outputs, the speed pin held LOW (motor off) until on_activate
+    // starts software PWM on it. Not pinMode(SOFT_PWM_OUTPUT): in WiringPi that itself starts the PWM
+    // thread, so on_activate's softPwmCreate() then failed with "already running" (found on the robot
+    // 2026-11-24, once that return value was checked).
+    pinMode(_speedPin, OUTPUT);
+    digitalWrite(_speedPin, LOW);
     pinMode(_dirPin, OUTPUT);
 
     // Encoder: inputs, the starting state, then one interrupt per pin on both edges. Edges are counted

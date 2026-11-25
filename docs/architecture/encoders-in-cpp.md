@@ -66,8 +66,11 @@ The controllers' gains, the simulation's encoder replica (`model_encoder_node`, 
 
 - **The container does not build this plugin** (it needs WiringPi). It passes the compile-only check
   (`check_motor_plugin_compiles.sh`: syntax and types against stub headers); the decoding and the filter pass a host
-  test. Whether it builds, starts and counts on the Pi is checked on the robot only; the results, when there are
-  some, are in the [journal entry](../journal/2026-11-24-c1-encoders-in-cpp.md).
+  test. On the robot (2026-11-24, on the stand, [journal](../journal/2026-11-24-c1-encoders-in-cpp.md)) it built,
+  started, counted each wheel forward-positive on its own, drove, and shut down without SIGKILL. **Not checked: the
+  wheels on the floor, and the scale over several turns** (one hand turn read 0.384 m against 0.377 m predicted).
+- **WiringPi's interrupt threads cost CPU even when nothing moves:** about 1.5 % of a core each (four of them),
+  because each wakes every 0.5 ms; at priority 55 they can preempt the control loop. Measured once, wheels still.
 - **Missed edges at speed.** Each edge has to reach a user-space thread before the next one. The Python library had the
   same exposure through a slower path. How fast the wheel can turn before counts are lost is not measured.
 - **A broken or unplugged encoder is not detected.** It stops counting and reads as a wheel standing still. Detecting

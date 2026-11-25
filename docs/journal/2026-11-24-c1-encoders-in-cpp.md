@@ -97,9 +97,9 @@ code. The sim's encoder model was not changed: the signal it copies is unchanged
 | 2 | realtime-auditor | clean on the round-1 fixes; 3 Low: `softPwmCreate`'s result ignored (M-5 pattern), the destructor does not stop the motor, no `on_error` stop | all three added as safeguards |
 | 2 | explainability-reviewer | half-documented switch keys, a finding ID still opening `read()`, references to the deleted node, a dated "safeguard" prefix | fixed; the suggestion to move parameter parsing to its own function declined for now (the reviewer agreed) |
 | 3 | realtime-auditor | clean: the three safeguards are correct (`on_error` returning SUCCESS sends the component to unconfigured, so it can be configured again; edges are not counted until then) | nothing to fix |
+| robot fix | realtime-auditor | clean: the speed pin held LOW from configure, PWM only from activate; no pin left driving, nothing in the loop changed | nothing to fix |
 
-**Not verified:** anything on the robot, including whether the plugin builds against the real WiringPi. The robot
-steps below were not run in this commit; their results get their own section when the owner runs them.
+**Not verified by the ladder:** anything on the robot. The robot steps below were run afterwards; see "On the robot".
 
 ## Robot procedure
 
@@ -127,3 +127,22 @@ here enables balance mode.
    business (pin them to another core).
 
 Abort on: a wheel turning with no command, a wheel running away, either motor component in `ERROR`, any buzz or heat.
+
+## On the robot, 2026-11-24 (owner present, agent over `ssh rocko` with the owner's permission)
+
+Commit `f689421` plus the configure fix below (built on the Pi from the working copy, then committed). Pi 5, Ubuntu
+24.04, kernel 6.8.0-1068-raspi, WiringPi 3.20. Robot on the stand, wheels off the ground, battery voltage not
+recorded. Recordings were made on the Pi in `/tmp` (`enc_turn.csv`, `enc_drive.csv`) and were not kept.
+
+| Step | Result |
+| --- | --- |
+| 1 build | `./build_ros.sh`: both packages, motor plugin compiled, no warnings |
+| 2 start (first try) | **FAILED, and the fix:** `RightDriveMotor` refused to activate: `Could not start software PWM on speed pin 13`, then `ros2_control_node` exited (`Failed to set the initial state of the component`). Cause, read in WiringPi's source: `on_configure` called `pinMode(speedPin, SOFT_PWM_OUTPUT)`, which itself starts software PWM (`wiringPi.c:2268`), so `on_activate`'s `softPwmCreate()` always returned -1, "already running" (`softPwm.c:134`). The old code ignored that return value, so the bug was invisible; the safeguard added in review round 2 exposed it. Fix: `on_configure` sets the speed pin as a plain output held LOW, and PWM starts only in `on_activate`. Nothing drove the wheels during the failed start |
+| 2 start (after the fix) | both motor components configured and active, tank `phase=ready`, disabled; no `/node` in `ros2 node list`; `/joint_states` 0.0, 0.0 |
+| 3 hand turns (30 s) | each wheel turned forward one full turn by the owner: left **+0.384 m**, right **+0.388 m**, the other wheel unchanged at 0.000 both times. Signs right, wheels independent. The code's constants predict 0.377 m per turn; the Python node read 0.360 m per turn on 2026-11-23 over five turns. One hand turn is only good to a few per cent, so this **suggests** the Python node lost counts; a five-turn repeat would settle it (handoff item 1) |
+| 4 motor-driven (30 s) | enabled with LB+RB, gentle steady stick forward: both speeds positive, steady about **0.85 m/s left, 1.07 m/s right**, no error from either motor component; both stopped when released. The 25 % difference fits the measured break-away difference (left 28 %, right 21 % duty) in open-loop tank mode; whether any of it is lost counts is not known |
+| 6 thread cost | the four WiringPi interrupt threads run at `SCHED_RR` 55 and use about **1.5 % of a core each** with the wheels still (the 0.5 ms poll), about 6 % in all; `ros2_control_node` about 10 % of one core. There is a `SCHED_FIFO` 50 thread in `ros2_control_node`, very likely the control loop, so the interrupt threads (55) can preempt it: a loop-timing item 4 question. `ps`'s CPU figure is a lifetime average, so the spinning-wheel number was not measured |
+| 5 shutdown | tank: `systemctl restart` took **0.96 s**, no SIGKILL. Tank to balance to tank with LT+RT+RB (disabled): the balance stack stopped in about **0.7 s, no SIGKILL**; the IMU started as before (pitch +8.29 deg). The SIGKILL seen earlier on 2026-11-24 is gone in both modes, consistent with the encoder service wait having been its cause. Remaining shutdown noise: two `pal_statistics` "context cannot be slept with" errors, harmless |
+
+**Stopped because:** the goal is met on the stand (code, ladder, three review rounds, robot steps 1 to 6). Not done:
+anything with the wheels on the floor, a five-turn scale check, the loop-timing measurement.
