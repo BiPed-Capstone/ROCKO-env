@@ -62,3 +62,22 @@ Done means:
 
 The owner decides proposal 0016; its test procedure is there. Whether the limit can be met by a person holding the robot is
 checked the first time balance is enabled after the next pull (the refusal message gives the rate seen).
+
+## Applied after the owner accepted proposal 0016 (2026-11-24)
+
+The owner accepted proposal 0016 ("Accept, apply it"). The agent then made the edit:
+
+- `rocko_controllers.yaml`: `reference_and_state_interfaces: ["pitch", "pitch_rate"]` for `pitch_pid_controller`, with
+  a comment; no gain changed.
+- `sim/check_sim_config.py`: `INTENTIONAL_WIRING_DIFFERENCES` is now empty, so the check demands that the sim and the
+  robot are wired alike (`ok    18 wiring values equal, with their types, plus 0 allowed difference(s)`).
+- `rocko_sim_controllers.yaml`: comments updated (no value changed).
+- Docs: the proposal's status, H-6 and L-8 status in the findings, sim-plant, the ladder's H6 note, verify-in-container's
+  expected output, next-steps item 5 and rows 1.2 and 1.13.
+
+| Tier | Command | Result |
+| --- | --- | --- |
+| all | `tools/run_ladder.sh` | **all PASS**: Tier 0 (`verify_urdf.sh`, which runs `sim/check_sim_config.py`), Tier 1 (0 compiler warnings), Tier 2 mock both modes and supervisor, Tier 3 `verify_sim.sh` both sets (`H6` included) and `verify_tools.sh`, every host test, hook tests, doc links |
+| review | realtime-auditor (mandatory: a `bringup/config` file) | clean: no gain, rate or launch change, one IMU snapshot per cycle, no NaN reference at activation; Low (already stated in the YAML comment): a standalone launch takes the reference at spawn |
+
+Robot: proposal 0016's stand test is the owner's; not run in this commit.

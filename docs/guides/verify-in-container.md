@@ -177,7 +177,7 @@ ok    rocko sim=true mock=false: the sim exports the same 14 interfaces as the r
 ok    rocko sim=true mock=true
 ok    rocko sim=true mock=true: the sim exports the same 14 interfaces as the real hardware
 ok    rocko_tank_mode sim=true (ignored by design)
-      ok    17 wiring values equal, with their types, plus 1 allowed difference(s) (INTENTIONAL_WIRING_DIFFERENCES; gains maps: next check)
+      ok    18 wiring values equal, with their types, plus 0 allowed difference(s) (INTENTIONAL_WIRING_DIFFERENCES; gains maps: next check)
       ok    each controller's `gains` keys are its dof_names in both files; every gains key except the tunable numbers is equal
       ok    29 simulator settings: header, xacro and ros2_control params agree; 10 launch-file defaults match the xacro
       ok    IMU fault limit equal in ICM20948.hpp and SimPlantModel.hpp

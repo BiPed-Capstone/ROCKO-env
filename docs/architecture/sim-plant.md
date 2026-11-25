@@ -116,10 +116,10 @@ page), each cycle it computes `error = reference − state` and
 | `velocity_pid_controller` (`rocko_controllers.yaml`) | reference "m/s" − measured velocity state (m/s, U-2) | **target pitch, degrees** (it is written into `pitch_pid_controller`'s reference, compared with pitch in degrees) | p = 2.0 °/(m/s); i = 5.0 °/m; d = 0.2 °·s²/m; integral clamp ±150 °, i.e. the integrator alone may ask for 150° of lean, far past the 35° tipover angle of finding H-4 |
 | `pitch_pid_controller` (`:20-36`) | target pitch (°) − measured pitch (°) | **wheel command, rad/s** (after the feedforward is added) | p = 10.0 (rad/s)/°, i.e. 573 (rad/s)/rad; i = 0; d = 0.1 (rad/s)/(°/s) |
 
-**The D term with a rate (finding H-6, sim only).** In `rocko_sim_controllers.yaml`,
-`pitch_pid_controller` lists `reference_and_state_interfaces: ["pitch", "pitch_rate"]`;
-`rocko_controllers.yaml` still lists `["pitch"]`. This is the one wiring difference
-`sim/check_sim_config.py` allows. The integrator read `pid_controller` 4.42.1's source at that tag
+**The D term with a rate (finding H-6).** `pitch_pid_controller` lists
+`reference_and_state_interfaces: ["pitch", "pitch_rate"]` in `rocko_sim_controllers.yaml` and, since 2026-11-24
+([proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md)), in `rocko_controllers.yaml` too, so
+`sim/check_sim_config.py` allows no wiring difference any more. The integrator read `pid_controller` 4.42.1's source at that tag
 (2026-11-02; this page's author did not): the second entry is the measured derivative of the first, the
 D term becomes `d · (rate reference − measured rate)` instead of a derivative of the error, the
 names of the two entries are arbitrary, and if the measured rate is NaN the controller silently falls back

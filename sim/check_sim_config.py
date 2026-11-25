@@ -120,12 +120,9 @@ def differences(hardware, sim, what):
 # Wiring the sim may have on purpose and the robot does not (yet), as
 # {flattened key: (value in rocko_controllers.yaml, value in rocko_sim_controllers.yaml)}.
 # Keep this list as short as possible: every entry means the sim tests a cascade the robot does not run.
-INTENTIONAL_WIRING_DIFFERENCES = {
-    # H-6, sim only; real YAML change is proposal-gated. The pitch PID takes its D term from the
-    # gyro's pitch_rate state instead of differentiating the delayed pitch angle.
-    "/pitch_pid_controller/ros__parameters/reference_and_state_interfaces":
-        (["pitch"], ["pitch", "pitch_rate"]),
-}
+# Empty since 2026-11-24: the one entry (H-6, the pitch PID's D term from the gyro's pitch_rate) went into the
+# real YAML with proposal 0016, so the sim and the robot are wired alike and this check now demands it.
+INTENTIONAL_WIRING_DIFFERENCES = {}
 
 
 def check_wiring(root):

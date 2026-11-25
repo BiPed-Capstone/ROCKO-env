@@ -26,7 +26,12 @@ pitch_pid_controller:
 
     command_interface: velocity
 
-    reference_and_state_interfaces: ["pitch"]
+    # Finding H-6 (proposal 0016, accepted by the owner 2026-11-24): with the second entry the D term is
+    # d * (pitch_rate reference - pitch_rate), from the gyro, instead of d * (change in pitch error) / dt from the
+    # fused angle. The rate reference is the gyro's reading at enable (finding L-8): the supervisor enables balance
+    # only while the robot is nearly still (ENABLE_MAX_PITCH_RATE_DEG_S in supervisor/state_machine.py). A standalone
+    # launch (not supervised) activates at spawn, and nothing checks the rate then.
+    reference_and_state_interfaces: ["pitch", "pitch_rate"]
     reference_and_state_dof_names:
       - left_wheel_joint
       - right_wheel_joint

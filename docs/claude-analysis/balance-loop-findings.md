@@ -44,7 +44,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | H-3 | High | IMU sample is three separate I²C reads at three different instants |
 | H-4 | High | No tipover cutoff — **written on `ai-forward`, awaiting robot** (2026-11-02; checked in the sim; the 35 deg limit and the 10 deg re-arm band are proposed); see H-10, C-1 and the known item under H-4 |
 | H-5 | High | No real-time scheduling or CPU isolation for `controller_manager` |
-| H-6 | High | Gyro angular rate is never read; the D term differentiates a delayed fused angle — **partly fixed on `ai-forward`** (2026-11-02): the rate is exported and wired in the sim only; the real YAML change is gated; axis and sign unverified |
+| H-6 | High | Gyro angular rate is never read; the D term differentiates a delayed fused angle — **fixed in code on `ai-forward`** (2026-11-24): the gyro rate is read in the same burst as the angles (C-1), axis and sign measured on the robot, and the real YAML takes the D term from it ([proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md), accepted); not yet run on the robot |
 | H-7 | Critical (raised from Medium/High by the `realtime-auditor`; unconfirmed on hardware) | The motors may keep their last command when the cascade stops or the IMU plugin returns ERROR (found 2026-10-31) — **partly mitigated on `ai-forward`** (controller stop logic and the motor `write()` fix, none run on a robot); the sim showed what `controller_manager` does after an `ERROR`, for one component (2026-11-02) |
 | H-8 | High | An intermittent IMU fault that alternates good and bad reads never tripped the consecutive-only counter (found 2026-10-31) — **fixed in the tracker on `ai-forward`, awaiting robot** |
 | H-9 | High (not fixed) | A frozen or reset BNO055 that still reads valid-looking numbers is undetectable (found 2026-10-31); one variant, an all-equal Euler triple, is now rejected in the node |
@@ -555,9 +555,8 @@ not one snapshot; one 12-byte burst read (registers `0x14`–`0x1F`) belongs to 
 sensor; the real, mock and sim `<ros2_control>` blocks all export it (14
 interfaces now); `SimPlant` exports `pitch_sign * degrees(psi_dot)` with no IMU delay; and the **sim**
 YAML (only) sets `pitch_pid_controller`'s `reference_and_state_interfaces` to `["pitch", "pitch_rate"]`. That
-is the one wiring difference `sim/check_sim_config.py` allows. *Not done:* the real `rocko_controllers.yaml`
-still says `["pitch"]`, so the robot's D term still differentiates the angle; changing it is a gated
-decision, now [proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md) (Open), which covers [L-8](#l-8--pid_controller-sets-the-rate-reference-once-at-activation).
+is the one wiring difference `sim/check_sim_config.py` allows. *Done 2026-11-24:* the real `rocko_controllers.yaml` has the same wiring
+([proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md), accepted by the owner), which covers [L-8](#l-8--pid_controller-sets-the-rate-reference-once-at-activation).
 *(2026-11-24: the earlier worry about a **persistent** rate failure is settled: since C-1 the angle and the rate come
 from one burst and a bad rate is a failed read in the IMU's fault tracker, so a lasting failure makes `read()` return
 `ERROR`; the `pitch_rate_required` idea is gone.)*
@@ -1268,7 +1267,7 @@ confirms, so it is a proposal and not an agent edit. Queue: [next-steps row 1.11
 
 ### L-8 — `pid_controller` sets the rate reference once, at activation
 
-**Status on `ai-forward` (2026-11-24): handled in a proposal, not yet on the robot.** The NaN case cannot happen since
+**Status on `ai-forward` (2026-11-24): handled, applied with proposal 0016, not yet run on the robot.** The NaN case cannot happen since
 C-1 (the IMU plugin never reports NaN after configure); the offset is bounded by a new supervisor rule (balance enables
 only while `|pitch_rate|` is within `ENABLE_MAX_PITCH_RATE_DEG_S`); the YAML wiring itself is
 [proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md).

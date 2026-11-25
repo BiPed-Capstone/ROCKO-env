@@ -1,6 +1,6 @@
 # Proposal 0016 — Take the pitch loop's D term from the gyro on the robot (finding H-6, with L-8 handled)
 
-- **Status:** Open
+- **Status:** Accepted (owner, 2026-11-24), applied by the agent the same day; robot test pending
 - **Gate:** the owner's rule: the wiring of a gain-bearing controller in the real `rocko_controllers.yaml` (next-steps
   handoff item 5, as ordered by the owner on 2026-11-24, says the owner approves this change). It is not a gain key,
   and the hook does not guard it.

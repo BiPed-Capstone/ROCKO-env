@@ -609,14 +609,15 @@ because they show what each tier is for.
     finding H-13; the watchdog's zero is not); in the sim a trip in the middle of a 0.5 m/s drive leaned the
     model 16 to 20 deg ([journal](../journal/2026-11-16-teleop-dashboard-logging.md), [proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md)).
   - *H6 (pitch rate).* The sim's rate has no delay and an assumed sign (`pitch_sign`), so the check shows
-    the wiring (the D term reads the exported rate) and not that the benefit exists. The real YAML
-    still says `["pitch"]`; the gyro axis and sign (`pitch_rate_axis`, `pitch_rate_sign`, hardware parameters in
+    the wiring (the D term reads the exported rate) and not that the benefit exists. The real YAML has the
+    same wiring since 2026-11-24 ([proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md), not yet run on the
+    robot); the gyro axis and sign (`pitch_rate_axis`, `pitch_rate_sign`, hardware parameters in
     `rocko.ros2_control.xacro` since 2026-11-24) were measured on the robot on 2026-11-23 (axis 0, sign -1, unit correct:
     [journal](../journal/2026-11-23-gyro-check.md)). Since 2026-11-24 the plugin reads gyro and angles in one burst
     and judges them together, like the sim's fault policy: a bad rate is a failed read. Upstream
     `pid_controller` sets the rate **reference** once, at activation (finding L-8), which the sim hides
-    because its robot is still then (rate 0.0). The sim file's allowed wiring difference was not made
-    to fail by the author of this page.
+    because its robot is still then (rate 0.0); on the robot the supervisor enables balance only while the rate is
+    small. The wiring check now allows no difference between the two files.
   - *C2 (IMU outage).* See the paragraph under the proves table: it is one component in the sim.
 - **The Pi build has not been run.** Nothing here compiles the motor plugin against real WiringPi (the
   compile-only check uses stubs) or checks that the `OFF` path produces a working `librocko_env.so`.
