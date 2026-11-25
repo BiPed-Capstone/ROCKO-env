@@ -41,11 +41,14 @@ there was no recording, so what follows is the reasoning, not a measurement:
   second at 1 m/s of wheel speed, up to `i_clamp` ±150 deg, which is no limit at all.
 - The pitch loop (`pitch_pid_controller`, `p = 10`) commands about `10 x (target lean - pitch)`. With the wheels spinning, the target keeps growing, which
   spins them faster. On a balancing robot the body would lean and slow them; held by hand, or falling, it cannot. So
-  within seconds `10 x target` is far larger than anything the real lean contributes: one direction, whatever the
-  lean.
-- Which direction it picks would depend on the first error (reasoning, not seen): until 2026-11-25 the robot
-  standing level read +10.1 deg (the pitch offset was wrong; it is fixed in the same run), so the first command would
-  have had the same sign every time.
+  within seconds `10 x target` is far larger than anything the real lean contributes.
+- The wind-up grows the target in the direction the wheels are **already** turning, so whatever the first lean was
+  picks the direction, and a later lean the other way cannot undo it: one direction, whatever the lean. Until
+  2026-11-25 the robot standing level read +10.1 deg (the pitch offset was wrong; it is fixed in the same run), so the
+  wheels would have started turning at enable, the same way every time.
+- An offline model with estimated parameters, and with the clamps acting as `pid_controller`'s parameter descriptions
+  say, shows the same lock (Evidence, the held-body rows): with the YAML as it is, the wheels keep their first
+  direction after the lean is reversed; with both clamps at ±5 deg they reverse with it. Nothing was recorded on the robot.
 
 A ±5 deg clamp keeps the target lean inside what a balancing robot ever needs (the re-arm band is 10 deg, the cutoff 35)
 and caps the integral's share at the same 5 deg. With the target at most 5 deg, the pitch loop's P term is at most
@@ -59,7 +62,9 @@ taken from the parameter descriptions in the installed `pid_controller_parameter
 | --- | --- | --- |
 | The keys exist in this `pid_controller` (4.42.1, Jazzy, `control_toolbox` 4.11.1) | read from the installed `pid_controller_parameters.hpp` in the dev container | `u_clamp_max/min` (default ±infinity), `i_clamp_max/min`, `antiwindup_strategy` (default `legacy`) |
 | The owner's test: one-direction spin in both lean directions, cutoff trips both ways | 4, the owner, 2026-11-25 | service log only (two trips at 35 deg); **no recording** |
-| The simulation's tuned velocity loop uses `i = 0` | `rocko_sim_controllers.yaml` | so the sim never showed this windup; the clamp's effect there is checked after acceptance |
+| The simulation's tuned velocity loop uses `i = 0` | `rocko_sim_controllers.yaml` | so the sim never showed this windup |
+| The owner's test with the body held: hardware gains, a person holding the lean (enabled level 3 s, leaned back 10 deg 3 s, then forward 10 deg 4 s), on the floor | offline model, `python3 -I sim/cascade_linearisation.py --floor-test` (2026-11-25; estimated plant, the clamps as `pid_controller` describes them, not from its source) | **as the YAML is: the wheels never reverse**: old offset (level read +10.1), -5.2 m/s after all three holds; new offset, +5.2 m/s after leaning back and still +5.2 m/s after leaning forward; the target lean reaches ±160 deg. **With both clamps at ±5: they reverse with the lean** (new offset: +5.2 then -5.2 m/s; the target stays at ±5). Held at one lean, both versions follow its sign; the clamp only bounds the speed below a 5 deg lean (about 2.5 to 3.1 m/s instead of 5.2) |
+| The clamp does not break the simulation | Tier 3, `verify_sim.sh scenarios` once with both clamps at ±5 in `rocko_sim_controllers.yaml`, then reverted (2026-11-25, on top of `49edea5` with only the sim YAML changed for the run and restored after, journal [2026-11-25 offline work](../journal/2026-11-25-offline-sim-work.md)) | U, I, V, K PASS, S2b and AB ok (thresholds unchanged). The clamp acted: AB (the as-built loop, expected to fall) fell at 6.87 s instead of about 4.1 s, and U's late \|pitch\| rose from about 0.05 to 0.22 deg (limit in `verify_sim.sh`) |
 | That the clamp fixes the one-direction spin on the robot | **none** | not run: it is the change being proposed |
 
 ## Risk
@@ -83,7 +88,9 @@ Wheels off the ground first, recorded ([record a run](../guides/record-a-run.md)
    not. If it reads near 10 deg either way, stop: the enable band and this clamp both assume a balance point near 0.
 2. **Stand, wheels off the ground:** balance mode, hold the robot level and still, enable (LB+RB). The wheels will turn
    (there is no floor to balance on); success is that they settle to a bounded speed instead of running up to full,
-   and that leaning the robot past 5 deg either way reverses them. Disable after about 10 s.
+   and that leaning the robot past 5 deg either way reverses them. (The model's guess, not a pass threshold: held
+   level the wheels may barely turn; at 0.5 to 2 deg of lean about 2.5 to 3.1 m/s, against about 5.2 m/s at full
+   duty.) Disable after about 10 s.
 3. **Floor, tethered:** the same as the owner's 2026-11-25 test. Success: the wheels follow the lean (lean forward,
    wheels drive forward) instead of always one way.
 4. **Abort** (LB+RB or cut power) if a wheel runs away, the wheels drive against the lean, or anything buzzes.

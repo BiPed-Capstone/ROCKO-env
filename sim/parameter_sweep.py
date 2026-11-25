@@ -32,9 +32,9 @@ Subcommands, from the repo root on the laptop:
       laptop or container, seconds: <stem>.md again from <stem>.csv. It also runs the linear model
       (cascade_linearisation.py, same perturbations) for each case and says where it disagrees.
 
-A result here is a result about a MODEL WHOSE PARAMETERS ARE ESTIMATES, with encoder_sign = -1
-ASSUMED (proposal 0006). "Passes" means "balances in simulation under an estimated model", nothing
-about the robot.
+A result here is a result about a MODEL WHOSE PARAMETERS ARE ESTIMATES, with encoder_sign = +1
+MEASURED on the robot (proposal 0006; it was an assumed -1 until 2026-11-24).
+"Passes" means "balances in simulation under an estimated model", nothing about the robot.
 """
 
 import argparse
@@ -71,9 +71,9 @@ MARGINAL_OVERSHOOT_PCT = 27.0
 # How verify_sim.sh launches each scenario, COPIED BY HAND from its scenario functions for the
 # report's record; nothing checks it. If verify_sim.sh changes a scenario's launch, change it here.
 CODE_SCENARIO_ARGS = {
-    "U": "teleop:=false initial_pitch_deg:=2.0 encoder_sign:=-1",
-    "I": "teleop:=false encoder_sign:=-1 impulse_time_s:=2.0 impulse_angular_velocity_deg_per_s:=100",
-    "V": "teleop:=true encoder_sign:=-1 (fake gamepad: 0, then 0.1 m/s from 1 s)",
+    "U": "teleop:=false initial_pitch_deg:=2.0 encoder_sign:=1",
+    "I": "teleop:=false encoder_sign:=1 impulse_time_s:=2.0 impulse_angular_velocity_deg_per_s:=100",
+    "V": "teleop:=true encoder_sign:=1 (fake gamepad: 0, then 0.1 m/s from 1 s)",
 }
 THRESHOLD_NAMES = ["U_SETTLE_FROM_S", "U_SETTLED_DEG", "U_MAX_SPEED_M_S", "I_SETTLE_S", "I_SETTLED_DEG",
                    "V_RISE_FRACTION", "V_RISE_S", "V_OVERSHOOT_PCT", "V_PITCH_DEG", "TIPOVER_DEG",
@@ -335,7 +335,7 @@ def header_lines(stem, rows, gains):
            "edit by hand. Explained in [the stage 5c-2 journal](../../docs/journal/2026-11-03-stage5c2-sweep.md).",
            "",
            "**A MODEL WITH ESTIMATED, UNMEASURED PARAMETERS** ([sim-plant.md §4](../../docs/architecture/sim-plant.md)), "
-           "with `encoder_sign:=-1` **ASSUMED** (proposal 0006). PASS means \"balances in simulation under an "
+           "with `encoder_sign:=1` as MEASURED on the robot (proposal 0006). PASS means \"balances in simulation under an "
            "estimated model\"; nothing here is about the robot.",
            "",
            "```",

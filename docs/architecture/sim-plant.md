@@ -631,8 +631,8 @@ Derived with these numbers: `a11 = 0.01044`, `a12 = 0.024`, `a22 = 0.10833` kg·
 **Copied from code, not estimates** (they must equal the real code's values; change them only when the
 code changes): `MAX_CODE = 119.381` rad/s, integer-division bug included (U-3); write deadband
 `0.05` rad/s and stiction offset `2.0` % (`kDeadbandRadPerSec` and `kStictionDutyPercent` in `Motor12VoltQuadEncoder.hpp`); duty clamp to
-`[0, 100]` and truncation to `int` (`write()`, the `softPwmWrite` call); PWM range 100 (`softPwmCreate` in `on_activate()`); encoder filter `alpha = 0.05` and
-assumed period `0.01` s (`QuadEncoders.py:39`, `:71`).
+`[0, 100]` and truncation to `int` (`write()`, the `softPwmWrite` call); PWM range 100 (`softPwmCreate` in `on_activate()`); encoder filter `alpha = 0.05` over each
+cycle's real period (`kWheelVelocityFilterAlpha` in `WheelEncoder.hpp`; before 2026-11-24 `QuadEncoders.py`, whose assumed 0.01 s period the U-2 fix had already removed).
 
 **Conventions and switches** (not physical estimates; §2.4 and §3):
 
@@ -801,7 +801,7 @@ radius by repeated squaring.
 | 10 | Exactly upright, all rates 0, `u = 0` | State stays exactly 0 for 10 s | bitwise |
 | 11 | Write replica, `u` (rad/s) → percent written (the new `write()`) | 0 → 0; 0.049 → 0 (deadband); 0.05 → 2 (offset alone); 1.0 → 2; 1.2 → 3; 5.0 → 6; 60.0 → 52; 119.381 → 100 (102 clamped); 10⁹ → 100; −5.0 → 6 with direction negative; NaN → 0. Deadband `abs(u) < 0.05` | exact |
 | 12 | Motor function alone, `V_bat = V_rated` | `τ_out(duty 1, ω_out 0) = τ_stall`; `τ_out(duty 1, ω_out = ω_noload) = 0` | 10⁻¹² |
-| 13 | Encoder replica, constant chassis-relative speed `v` | Steady state: left 0.5128·v, right 0.4872·v (mean 0.5·v). Per-cycle pole 0.9025, time constant 97.5 ms | 10⁻³ |
+| 13 | Encoder copy (`WheelEncoder.hpp`'s filter since 2026-11-24; `QuadEncoders.py` after the U-2 fix before), constant chassis-relative speed `v` | Steady state: both wheels read `v` (travel over each cycle's real length), at 10 ms and at 20 ms cycles; a period of 0 holds the filter and stays finite; `model_encoder_node = false` exports `v` directly. (Before the U-2 fix: left 0.5128·v, right 0.4872·v.) | 10⁻³ |
 | 14 | IMU delay | A step in true lean appears in exported pitch exactly `imu_delay_ms` ms later (at the first `read()` after that) | one sub-step |
 | 15 | Sign, default `pitch_sign = −1` | From upright, a positive command on both wheels makes exported pitch **rise**; with torque off, `initial_pitch_deg = +2` grows toward **+35** | sign |
 | 16 | IMU fault | With an outage covering 5 reads: reads 1–4 return `OK` and hold the last good pitch; read 5 returns `ERROR`; pitch is never 0.0 unless the held value was 0.0 | exact |
@@ -852,7 +852,7 @@ idealised write path and no encoder quirks; the run had both switched on (they a
 different failure was **not investigated**, and neither was whether the slow drift is the run-away of
 §2.4, equation (1). The run was not recorded with an exact command, so the numbers above come
 from the implementer's report of it, not from something this page can reproduce on demand. All of it is the behaviour of
-a model with estimated parameters and assumed signs; it says nothing about the real robot or about
+a model with estimated parameters (the encoder and pitch signs measured on the robot, proposal 0006); it says nothing about the real robot or about
 whether the hardware gains are good or bad.
 
 **Observed with H-6 wired in (2026-11-02, model only).** The same kind of run, with the unchanged

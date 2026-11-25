@@ -580,6 +580,18 @@ run() {
     echo "  ok   ($label)"
   elif [ "$probe_status" -eq 2 ]; then
     echo "  COULD NOT JUDGE ($label): see the probe's reason above"; could_not=1
+  elif [ "$mode" = "exceed" ] && grep -q "FAIL: |pitch| reached .* after it started to move" "$dir/probe.log" \
+       && grep -q "SimPlant: a .* control period was cut to" "$dir/launch.log"; then
+    # Only a fall that was TOO SLOW is excused, and only in a run where SimPlant skipped time. The fall
+    # is timed in wall-clock stamps, but after a container stall SimPlant integrates at most 50 ms of
+    # physics and drops the rest (SimPlant.cpp read()), so the fall looks slower than it was. On
+    # 2026-11-25 one 193 ms stall made a 0.43 s fall read 0.622 s. A robot that never fell still FAILs
+    # (the probe then prints "never reached"). The excused run is not a pass either: exit 2.
+    echo "  COULD NOT JUDGE ($label): the fall was late, but SimPlant skipped physics time after a stall,"
+    echo "    so the fall cannot be timed. The probe said: $(grep 'FAIL:' "$dir/probe.log" | tail -1 | sed 's/^ *//')"
+    echo "    The stall (the count says how many periods were cut in this run):"
+    grep -E "Overrun detected|was cut to" "$dir/launch.log" | tail -2 | sed 's/^/    /'
+    could_not=1
   else
     echo "  FAIL ($label): see the probe's reason above"; failed=1
   fi

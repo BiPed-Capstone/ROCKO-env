@@ -11,7 +11,7 @@ loops exactly as rocko_sim_controllers.yaml wires them, and prints closed-loop p
   A. continuous time, idealised (no IMU delay, no sampling): the inner loop alone, the slow
      "creep" of sim-plant.md §2.4 equation (1), and the whole cascade for both encoder signs;
   B. discrete time, as the sim runs it: 100 Hz, zero-order hold on the wheel command, the 20 ms
-     IMU delay on pitch (none on pitch_rate), the QuadEncoders.py replica (finding U-2), and the
+     IMU delay on pitch (none on pitch_rate), the motor plugin's encoder filter (WheelEncoder.hpp), and the
      pid_controller update order (velocity loop first, its output used by the pitch loop in the
      same cycle);
   C. which way the slow pole moves as the velocity-loop gains are scaled up, for each encoder
@@ -27,6 +27,7 @@ updated and finds nothing stable. `--candidate yaml` and the default report are 
     python3 -I sim/cascade_linearisation.py --sweep [--top N]     # grid sweep, ~1-2 min
     python3 -I sim/cascade_linearisation.py --candidate 12,0.8,20,0,0.2    # or: --candidate yaml
     python3 -I sim/cascade_linearisation.py --hardware-gains       # this report, hardware YAML gains
+    python3 -I sim/cascade_linearisation.py --floor-test           # body held at a lean (proposal 0017), section 7
 
 --candidate prints the gain margins (up and down), the IMU delay range for which the loop is
 stable, and a time simulation of scenarios U, I and V (section 6). A candidate is only a candidate
@@ -43,7 +44,7 @@ Sign conventions (sim-plant.md §1, §2.4):
   sim-forward   the direction a positive wheel command drives the robot (a definition);
   psi [rad]     true body lean, + toward sim-forward;   phi [rad] wheel angle, + rolling forward;
   pitch [deg]   exported = pitch_sign * degrees(psi)    (pitch_sign = -1 is the sim's default);
-  velocity [m/s] exported = encoder_sign * chassis-relative speed, through the U-2 replica
+  velocity [m/s] exported = encoder_sign * chassis-relative speed, through the encoder filter
                 (encoder_sign = +1 is the sim's default).
 """
 
@@ -101,9 +102,10 @@ derive_plant()
 # The three estimates set_plant() can replace, as written above; reset_plant() puts them back.
 DEFAULT_PLANT = (m_b, l, tau_stall)  # (body_mass_kg, com_height_m, motor_stall_torque_Nm)
 
-# Encoder replica constants, copied from QuadEncoders.py (:39 alpha, :71 the assumed 0.01 s).
+# The encoder filter, copied from WheelEncoder.hpp (kWheelVelocityFilterAlpha): once per cycle, velocity =
+# travel since the previous cycle / the cycle's length, low-pass filtered. (Until 2026-11-24 the speed came from
+# QuadEncoders.py, which filtered twice per cycle, finding U-2; this model copied that.)
 ENC_ALPHA = 0.05
-ENC_ASSUMED_PERIOD = 0.01
 
 
 def plant_derivative(psi, phi_dot, psi_dot, u):
@@ -229,7 +231,7 @@ def read_yaml(path):
 # ------------------------------------------------------------------------------------------------
 # 4. Continuous-time models (idealised: no delay, no sampling)
 # ------------------------------------------------------------------------------------------------
-TAU_ENC = -T / math.log((1 - ENC_ALPHA) ** 2)  # [s] the replica's per-cycle pole 0.9025 -> 97.5 ms
+TAU_ENC = -T / math.log(1 - ENC_ALPHA)  # [s] the filter's per-cycle pole 0.95 -> 195 ms
 
 
 def continuous_inner(gains, pitch_sign):
@@ -245,14 +247,14 @@ def continuous_inner(gains, pitch_sign):
 
 
 def continuous_cascade(gains, pitch_sign, encoder_sign, velocity_scale=1.0):
-    """State [psi, phi_dot, psi_dot, y, I]: y [m/s] the encoder replica as a first-order lag
-    (steady gain 0.5, finding U-2), I [deg] the velocity loop's integral term. Reference 0."""
+    """State [psi, phi_dot, psi_dot, y, I]: y [m/s] the encoder filter as a first-order lag
+    (steady gain 1), I [deg] the velocity loop's integral term. Reference 0."""
     Kp, _, Kd = gains["pitch"]
     Kpv, Kiv, Kdv = (velocity_scale * k for k in gains["velocity"])
 
     def f(x):
         psi, phi_dot, psi_dot, y, integ = x
-        y_dot = (0.5 * encoder_sign * r * (phi_dot - psi_dot) - y) / TAU_ENC
+        y_dot = (encoder_sign * r * (phi_dot - psi_dot) - y) / TAU_ENC
         theta_ref = Kpv * (0.0 - y) + integ + Kdv * (0.0 - y_dot)  # [deg] target pitch
         u = Kp * (theta_ref - pitch_sign * DEG * psi) + Kd * (0.0 - pitch_sign * DEG * psi_dot)
         return list(plant_derivative(psi, phi_dot, psi_dot, u)) + [y_dot, Kiv * (0.0 - y)]
@@ -329,7 +331,7 @@ def quirks_write(u):
 # reaches anything (the encoder), so no eigenvalue is spent on where the robot is.
 #   0 psi   1 phi_dot   2 psi_dot   3 delta    plant at read() of cycle k
 #   4..     psi of earlier cycles, for the IMU delay (psi_{k-1}, psi_{k-2}, ...)
-#   then    y (encoder filter after both service calls of the previous cycle),
+#   then    y (the encoder filter after the previous cycle),
 #           I (velocity integral term), e_v_prev, e_theta_prev (for the two D terms)
 #   then    only for a delay that is not a whole number of cycles (delay_ms % 10 != 0): the pitch
 #           f ms before each of the last j+1 reads, m_k = psi(t_k - f), where delay = j*10 ms + f.
@@ -364,10 +366,8 @@ def discrete_step(gains, pitch_sign, encoder_sign, delay_ms, *, outer=True, gyro
         pitch = pitch_sign * DEG * psi_seen  # [deg], IMU delayed
         pitch_rate = pitch_sign * DEG * psi_dot  # [deg/s], gyro, not delayed (sim-plant.md §3.7)
         dp = encoder_sign * r * (delta - (psi - past[0]))  # [m] chassis-relative travel this cycle
-        s1 = dp / ENC_ASSUMED_PERIOD
-        y_left = (1 - ENC_ALPHA) * z[iy] + ENC_ALPHA * s1  # first service call of the cycle
-        y_right = (1 - ENC_ALPHA) * y_left  # second call: no motion since the first
-        v_meas = 0.5 * (y_left + y_right)  # the cascade is linear: average of the two wheels' loops
+        y = (1 - ENC_ALPHA) * z[iy] + ENC_ALPHA * dp / T  # WheelVelocityFilter::update(), once per cycle
+        v_meas = y  # both wheels alike
         # --- update(): velocity_pid_controller first (upstream), then pitch_pid_controller ---
         e_v = v_ref - v_meas
         integ = z[iI] + Kiv * T * e_v
@@ -391,7 +391,7 @@ def discrete_step(gains, pitch_sign, encoder_sign, delay_ms, *, outer=True, gyro
         out[4] = psi
         for k in range(1, nd):
             out[4 + k] = past[k - 1]
-        out[iy], out[iI], out[iev], out[iet] = y_right, integ, e_v, e_theta
+        out[iy], out[iI], out[iev], out[iet] = y, integ, e_v, e_theta
         if f_ms:  # m_{k+1} = psi(t_{k+1} - f): the plant f ms before the next read
             out[im] = sum(PHI_f[1][k] * x[k] for k in range(4)) + GAM_f[1] * u_applied
             for k in range(1, nm):
@@ -671,6 +671,140 @@ def sweep(base, top):
               + ("   <- U, I, V all pass" if u["pass"] and i["pass"] and v["pass"] else ""))
 
 
+# ------------------------------------------------------------------------------------------------
+# 7. The hand-held floor test (owner's test of 2026-11-25; proposal 0017)
+# ------------------------------------------------------------------------------------------------
+SUBSTEP_S = 0.001  # [s] SimPlant's physics sub-step; the held wheel is integrated with it (Euler)
+PROPOSAL_0017_CLAMP_DEG = 5.0  # [deg] proposal 0017's bound on the target lean and on its integral share
+OLD_LEVEL_PITCH_DEG = 10.1  # [deg] what the robot read standing level before the 2026-11-25 offset fix
+CLAMP_CAVEAT = ("The clamps act as pid_controller's parameter descriptions say (legacy anti-windup: the integral "
+                "term clamped, then the output); not read from its source, not tested on the robot.")
+
+
+def read_velocity_clamps(path):
+    """(i_clamp, u_clamp) [deg] of velocity_pid_controller in a YAML file: the bound on the integral
+    term and on the output (the target lean). None where the file sets no such key (no limit; the
+    hardware YAML has no u_clamp until proposal 0017). Reads the _max keys only, so it assumes the
+    clamps are symmetric (_min = -_max), as both YAML files write them. The gain line is the one for
+    the velocity loop's output dof, which is named after the pitch controller it feeds."""
+    with open(path, encoding="utf-8") as f:
+        text = "\n".join(line.split("#")[0] for line in f.read().split("\n"))
+    if "velocity_pid_controller:" not in text:
+        raise SystemExit(f"{path}: no velocity_pid_controller block")
+    block = text.split("velocity_pid_controller:")[1]
+    found = re.search(r"pitch_pid_controller/left_wheel_joint:\s*\{([^}]*)\}", block)
+    if found is None:
+        raise SystemExit(f"{path}: no gains line for pitch_pid_controller/left_wheel_joint in velocity_pid_controller")
+
+    def bound(key):
+        m = re.search(key + r"_max:\s*([-\d.eE+]+)", found.group(1))
+        return float(m.group(1)) if m else None
+
+    return bound("i_clamp"), bound("u_clamp")
+
+
+def held_run(gains, leans, *, i_clamp, u_clamp, on_floor=True, seconds=10.0):
+    """The body HELD at a lean while the cascade runs: the owner's floor test with the lean frozen.
+
+    A person holding the body fixes psi, so the body dynamics (the part that makes the outer loop
+    negative feedback on a free robot) are gone: the wheels just obey the command. on_floor=True:
+    the wheels roll the whole robot along (wheel + body mass, a11); False: wheels in the air, only
+    the wheels' own inertia. leans: [(from_s, pitch_deg), ...], the pitch the controllers read (true
+    lean plus any offset error) from each time on: the person moves the body between holds, in one
+    step. Between steps it is constant, so the IMU delay and the gyro D term (rate 0) do nothing.
+
+    The velocity loop's clamps: see CLAMP_CAVEAT; None = no limit.
+
+    Returns a list of (t [s], wheel speed [m/s] as the encoder reports it, target lean [deg]), one
+    row per 10 ms cycle, the first at t = T."""
+    Kp = gains["pitch"][0]  # the pitch loop's D term is left out: the held body's pitch rate is 0
+    Kpv, Kiv, Kdv = gains["velocity"]
+    inertia = a11 if on_floor else I_w  # [kg m^2] what the motor torque accelerates, at the wheel
+    phi_dot = 0.0  # [rad/s] wheel speed (body still, so also the speed relative to the body)
+    y = 0.0  # [m/s] the encoder filter
+    integ = 0.0  # [deg] the velocity loop's integral term
+    e_v_prev = 0.0
+    rows = []
+    for k in range(int(round(seconds / T))):
+        now_s = k * T
+        # The latest hold that has started (the small slack stops k * T = 2.9999999 missing a 3.0 s step).
+        seen_pitch_deg = [pitch for from_s, pitch in leans if from_s <= now_s + 1e-9][-1]
+        e_v = 0.0 - y  # velocity reference 0: nobody is driving
+        integ += Kiv * T * e_v
+        if i_clamp is not None:
+            integ = max(-i_clamp, min(i_clamp, integ))
+        target = Kpv * e_v + integ + Kdv * (e_v - e_v_prev) / T  # [deg] target lean
+        if u_clamp is not None:
+            target = max(-u_clamp, min(u_clamp, target))
+        e_v_prev = e_v
+        u_applied = quirks_write(Kp * (target - seen_pitch_deg))  # [rad/s] command, then the motor plugin's write()
+        travel = 0.0  # [m] over the next cycle
+        for _ in range(int(round(T / SUBSTEP_S))):
+            phi_dd = (K_u * u_applied - c * phi_dot) / inertia
+            phi_dot += phi_dd * SUBSTEP_S
+            travel += SCEN_ENCODER_SIGN * r * phi_dot * SUBSTEP_S
+        y = (1 - ENC_ALPHA) * y + ENC_ALPHA * travel / T
+        rows.append(((k + 1) * T, y, target))
+    return rows
+
+
+def value_at(rows, seconds):
+    """The (wheel speed, target lean) of held_run's row at `seconds` (rows are one per cycle from t = T)."""
+    _, v, target = rows[int(round(seconds / T)) - 1]
+    return v, target
+
+
+def floor_test_cases():
+    i_clamp, u_clamp = read_velocity_clamps(HW_YAML)
+    return [("as the YAML is", i_clamp, u_clamp),
+            (f"proposal 0017: both clamps +-{PROPOSAL_0017_CLAMP_DEG:g} deg", PROPOSAL_0017_CLAMP_DEG,
+             PROPOSAL_0017_CLAMP_DEG)]
+
+
+def report_held_still(hw):
+    """Held at one lean for 10 s, on the floor and on a stand, as the YAML is and with proposal 0017."""
+    direction = "NEGATIVE" if hw["pitch"][0] > 0 else "POSITIVE"
+    print("Columns: the pitch the controllers read [deg] -> wheel speed [m/s] after 1, 3 and 10 s | target lean at 10 s [deg].\n"
+          f"With this p ({hw['pitch'][0]}), a positive pitch is answered with a {direction} command (u = p * (target - pitch)).")
+    for on_floor in (True, False):
+        print("\n" + ("ON THE FLOOR (wheels roll the robot along)" if on_floor
+                      else "ON A STAND (wheels in the air)"))
+        for label, ic, uc in floor_test_cases():
+            print(f"  {label} (i_clamp {ic}, u_clamp {uc}):")
+            for seen in (-10.0, -2.0, 0.5, 2.0, 10.0):
+                rows = held_run(hw, [(0.0, seen)], i_clamp=ic, u_clamp=uc, on_floor=on_floor)
+                v1, v3, (v10, target10) = value_at(rows, 1.0)[0], value_at(rows, 3.0)[0], value_at(rows, 10.0)
+                print(f"    pitch {seen:+6.1f} -> v {v1:+7.3f} {v3:+7.3f} {v10:+7.3f} | target {target10:+9.2f}")
+
+
+def report_lean_change(hw):
+    """The owner's test as it probably went: enabled while level, leaned one way, then the other. Level read
+    OLD_LEVEL_PITCH_DEG until the 2026-11-25 offset fix, so the first hold is that (old) or 0.0 (new)."""
+    print("\nLEAN CHANGED PART-WAY, ON THE FLOOR: enabled level (3 s), leaned back 10 deg (3 s), then forward 10 deg (4 s).\n"
+          "Columns: wheel speed [m/s] at the end of each hold | target lean at the end [deg].")
+    for offset_label, level in ((f"old offset, level read +{OLD_LEVEL_PITCH_DEG}", OLD_LEVEL_PITCH_DEG),
+                                ("new offset, level reads 0", 0.0)):
+        for label, ic, uc in floor_test_cases():
+            rows = held_run(hw, [(0.0, level), (3.0, level - 10.0), (6.0, level + 10.0)],
+                            i_clamp=ic, u_clamp=uc, on_floor=True)
+            v10, target10 = value_at(rows, 10.0)
+            print(f"  {offset_label:30s} {label:36s} v {value_at(rows, 3.0)[0]:+7.3f} {value_at(rows, 6.0)[0]:+7.3f}"
+                  f" {v10:+7.3f} | target {target10:+9.2f}")
+
+
+def report_floor_test():
+    """The held-body runs for the hardware gains as they are and with proposal 0017's clamp."""
+    hw = read_yaml(HW_YAML)
+    print("HELD-BODY FLOOR TEST (owner's test, 2026-11-25; proposal 0017). ESTIMATED MODEL, body held still at a\n"
+          "fixed lean, so this shows what the controllers command, not how a free robot would move.\n"
+          + CLAMP_CAVEAT + "\n"
+          f"Gains from {os.path.relpath(HW_YAML, REPO)}: pitch p={hw['pitch'][0]} d={hw['pitch'][2]}; "
+          f"velocity p={hw['velocity'][0]} i={hw['velocity'][1]} d={hw['velocity'][2]}.")
+    report_held_still(hw)
+    report_lean_change(hw)
+    return 0
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -682,7 +816,11 @@ def main():
                              "i, d; pitch i = 0); 'yaml' = the sim YAML's gains")
     parser.add_argument("--sweep", action="store_true", help="grid sweep (about 1-2 minutes)")
     parser.add_argument("--top", type=int, default=15, help="--sweep: how many to time-simulate")
+    parser.add_argument("--floor-test", action="store_true",
+                        help="the owner's hand-held floor test (proposal 0017): body held at a lean, hardware gains")
     args = parser.parse_args()
+    if args.floor_test:
+        return report_floor_test()
     if args.candidate or args.sweep:
         print("ESTIMATED MODEL (sim-plant.md §4), encoder_sign = +1 (measured, proposal 0006; sections that sweep positive velocity gains below are NOT UPDATED for negative velocity gains and describe the old encoder_sign -1 convention): numbers "
               "about a model, not about the robot. Not a gain recommendation for the robot.\n")
@@ -739,10 +877,10 @@ def report(hardware_gains):
     Kpv, Kiv, Kdv = sim["velocity"]
     Kp_rad = Kp * DEG
     m_eff = K_u * Kp_rad * (a11 + a12) / (m_b * g * l) - a11
-    k = K_u * Kp * 0.5 * r
+    k = K_u * Kp * r  # the encoder reports the true speed (steady gain 1; it was 0.5 before U-2)
     print(f"\nA2 slow-time-scale reduction, sim-plant.md §2.4 eq. (1): m_eff = {m_eff:.4f} kg m^2, "
           f"c = {c:.6f} N m s/rad, creep rate c/m_eff = {c / m_eff:.4f} 1/s")
-    print(f"   outer loop: m_eff s^2 - (c + s_v k Kpv) s - s_v k Kiv = 0, k = K_u Kp 0.5 r = {k:.6f}")
+    print(f"   outer loop: m_eff s^2 - (c + s_v k Kpv) s - s_v k Kiv = 0, k = K_u Kp r = {k:.6f}")
     for s_v in (+1, -1):
         a2, a1, a0 = m_eff - s_v * k * Kdv, -(c + s_v * k * Kpv), -s_v * k * Kiv
         disc = cmath.sqrt(a1 * a1 - 4 * a2 * a0)
@@ -753,7 +891,7 @@ def report(hardware_gains):
     print(f"   with encoder_sign = -1 it is stable only if k*Kpv > c, i.e. Kpv > {c / k:.2f} deg/(m/s); "
           f"the YAML has {Kpv}")
 
-    print("\nA3 whole cascade, continuous (encoder replica as a 97.5 ms lag of gain 0.5), poles [1/s]:")
+    print("\nA3 whole cascade, continuous (encoder filter as a 195 ms lag), poles [1/s]:")
     for s_v in (+1, -1):
         Acl = continuous_cascade(sim, -1, s_v)
         poles = eig(Acl)
@@ -762,7 +900,7 @@ def report(hardware_gains):
               + f"   char. poly at s=0: {p0:+.3e} ({'<0: odd number of real RHP roots' if p0 < 0 else '>0'})")
 
     print("\n" + "=" * 100)
-    print("B. DISCRETE TIME, as the sim runs: 100 Hz, ZOH, IMU delay on pitch only, U-2 encoder replica")
+    print("B. DISCRETE TIME, as the sim runs: 100 Hz, ZOH, IMU delay on pitch only, encoder filter")
     print("   z per 10 ms cycle (|z| > 1 grows); s = ln(z)/0.01 [1/s]. pitch_sign = -1 throughout.")
     print("   'slow' = the creep/drift mode, 'fast' = the ~3.5 Hz pitch oscillation pair")
     print("=" * 100)

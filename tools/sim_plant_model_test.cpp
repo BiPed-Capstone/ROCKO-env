@@ -265,7 +265,7 @@ int main()
       motor_output_torque(nominal, 1.0, nominal.motor_no_load_speed_rad_s), 0.0, 1e-12);
   }
 
-  // #13 Encoder replica (QuadEncoders.py after finding U-2's fix) at a constant chassis-relative
+  // #13 Encoder copy of WheelEncoder.hpp's filter (it replaced QuadEncoders.py, finding U-2) at a constant chassis-relative
   // speed. To get a constant speed out of the model: torque off, no friction, let the body fall
   // until it is "on the floor" (lean frozen); after that nothing acts on the wheels and they coast
   // at a constant rate. Then compare the exported velocities with the true speed: the node divides

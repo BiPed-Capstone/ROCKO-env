@@ -8,7 +8,7 @@ if the robot were tested, which loop it hits, and why.
 
 > **The strongest claim available: a gain set "balances in simulation under an estimated model".**
 > It does not say the robot balances. It does not say a gain is good. Every physical number in the
-> model is an estimate, the encoder sign is an assumption, and the model omits everything on this
+> model is an estimate (the encoder and pitch signs were measured on the robot, proposal 0006), and the model omits everything on this
 > page. Promoting a gain to the robot is [proposal 0008](../proposals/0008-candidate-gains-and-tethered-test.md),
 > a human decision followed by a tethered test.
 
@@ -102,7 +102,9 @@ and [§3](sim-plant.md#3-the-model).
     proportional to the motor gain. A weaker motor lowers `k`, which raises that factor. This is
     visible in the sweep: the only systematic failure, case `m+h+k−d+`, is the one with the
     **weakest motor** (stall torque −30 %) together with the heaviest, tallest body and the longest
-    delay.
+    delay. (That is the 2026-11-07 sweep, with the old gains and the assumed sign; with the
+    2026-11-24 gains and the measured sign that corner passes, and nothing fails systematically:
+    [2026-11-25 results](../../sim/results/2026-11-25-measured-signs-sweep.md).)
 - **Covered by the sweep:** a ±30 % change of the motor gain (stall torque 0.542 to 1.007 N·m),
   which is a stand-in for a battery at roughly 70 % to 130 % of the nominal voltage (the model
   scales torque with voltage the same way). Only combined with the other parameters at the
@@ -308,6 +310,8 @@ V's old overshoot metric; **re-run on `03238ca` with the corrected metric**
 ([re-run journal](../journal/2026-11-07-stage5c2-sweep-rerun.md)), which is the result below. Mass
 (1.4 to 2.6 kg), centre-of-mass height (0.14 to 0.26 m), motor gain (stall torque 0.542 to 1.007
 N·m) and IMU delay (14 to 26 ms), each alone at ±30 % and in all 16 corners.
+
+*The table below is the 2026-11-07 sweep (old gains, assumed sign). The 2026-11-25 sweep with today's gains is on its [results page](../../sim/results/2026-11-25-measured-signs-sweep.md).*
 
 | Result | Detail (corrected metric; old metric in brackets) |
 | --- | --- |
