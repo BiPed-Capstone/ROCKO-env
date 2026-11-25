@@ -52,6 +52,7 @@ battery voltage and surface not recorded.
 | --- | --- | --- |
 | host | `imu_snapshot_check_test.cpp` (in `tools/run_ladder.sh`) | passes (unchanged behaviour) |
 | 0, 1 | `build_ros.sh` and `verify_urdf.sh` on the final code | both pass. A full `tools/run_ladder.sh` was started before the `ICM20948` default change and had not reported when the session's usage limit ran out: **Tiers 2 and 3 not confirmed on this commit** |
+| all | that full `tools/run_ladder.sh` (on the code before the `ICM20948` default change) | finished after the commit: **FAIL** in Tier 3, check `S2a-no-torque` only (`|pitch| reached 35.0 deg 0.622 s after it started to move (limit 0.48 s)`), everything else PASS. Not investigated (usage limit). Nothing in this change reaches the simulation (the offset is in the real-hardware block only), so it may be a timing flake: re-run with `tools/repeat_check.sh S2a 10` and keep it red until a cause is found |
 | 4 | the new offset on the robot | **not run**: the owner switched the robot off before it could be pulled; on the next start, `git pull && ./build_ros.sh`; the `BNO055 ready: pitch ...` line `ICM20948.cpp` logs at configure should read about 0 with the robot level. **Before the next enable**, read the pitch at the robot's balance point; stop if it is near 10 deg (proposal 0017, test step 1) |
 
 ## Review rounds
