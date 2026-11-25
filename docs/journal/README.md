@@ -95,3 +95,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-22 | [Tank mode starts at boot; the 160 m/s² result; handoff to balance mode](2026-11-22-tank-boot-service-and-handoff.md) |
 | 2026-11-24 | [Read the IMU from C++ over I2C (C-1, IMU half) and make a failed zero-on-deactivate visible (row 4.14)](2026-11-24-c1-imu-i2c-and-zero-on-deactivate.md) |
 | 2026-11-24 | [Count the wheel encoders inside the C++ motor plugin (C-1, encoder half)](2026-11-24-c1-encoders-in-cpp.md) |
+| 2026-11-24 | [Measure the control loop's timing on the Pi, and decide what may run during tuning](2026-11-24-loop-timing-on-the-pi.md) |

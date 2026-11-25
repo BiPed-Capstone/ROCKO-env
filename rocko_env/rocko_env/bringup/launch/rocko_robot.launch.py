@@ -48,7 +48,8 @@ def generate_launch_description():
     # log_root (and record, ...): the dashboard's Record button needs log_root.
     declared_arguments += recording_arguments()
     # On by default: this launch is the one that starts at boot, and tank mode (the default mode) ran
-    # the dashboard by default. Its cost beside the balance loop is still unmeasured.
+    # the dashboard by default. Beside the balance loop it did not change the loop's timing measurably
+    # (docs/journal/2026-11-24-loop-timing-on-the-pi.md).
     declared_arguments += dashboard_arguments(default="true")
     declared_arguments += foxglove_arguments(default="true")
 

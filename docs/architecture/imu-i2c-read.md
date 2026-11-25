@@ -94,9 +94,10 @@ small corruptions (under about 5 deg) are not caught at all. The UART framing co
   the 10 ms is one jiffy and can fire anywhere from 0 to 10 ms (failing healthy reads at random); on a
   Pi 5 the bus driver may poll up to 20 ms for a busy bus first, so the worst case can pass 30 ms.
   The timeout is also set for the whole bus, not only for this device.
-- How long the burst takes on the Pi, and how often it fails. `read()` measures it and logs one line
-  every 3000 reads (30 s): `IMU read timing: slowest ... us of the last 3000 reads, ... failed`. Read
-  that before tuning (item 4 of the 2026-11-24 handoff in [next-steps](../next-steps.md)).
+- How long the burst takes on the Pi was measured on 2026-11-24 ([loop timing](../journal/2026-11-24-loop-timing-on-the-pi.md)):
+  the numbers are in that journal's table (in short: never near the 10 ms timeout, 0 failures). It is most of the
+  control cycle, and its variation moves the moment the motors are written. `read()` keeps logging
+  `IMU read timing: slowest ... us of the last 3000 reads, ... failed` every 30 s.
 - The H-9 checks (a frozen sensor that repeats the same bytes, or reads `SYS_STATUS`) are not done.
 
 The procedure for the first run on the robot is in the

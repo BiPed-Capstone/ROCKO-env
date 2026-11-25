@@ -131,13 +131,11 @@ or the Wi-Fi goes away, the robot stays enabled. Disable with LB + RB on the con
 
 ## What is not known
 
-- **The cost on the Pi.** The dashboard is a Python process that receives four 100 Hz topics. It keeps
-  the newest message of each and decodes it 20 times a second, and it lowers its own priority, so the
-  control loop is served first. In the dev container on a laptop it used about a fifth of one CPU core
-  (one measurement, averaged over its first 11 s, start-up included). The Pi is slower. Before using
-  it during a balance test, compare the spread of control-cycle times with and without
-  `dashboard:=true` (`/controller_manager/statistics/full`); on the robot the loop already runs late at
-  times (finding H-5).
+- **The cost on the Pi with a browser connected.** Without one, measured on 2026-11-24 with the balance stack
+  running but disabled, the dashboard did not change the control loop's timing measurably; its CPU share, from one
+  whole-system `top` sample, is in the same place ([loop timing](../journal/2026-11-24-loop-timing-on-the-pi.md)). With a page open it
+  also answers about six requests a second; that, and the cost with the balance controllers active, are not measured.
+  `tools/loop_timing.py` measures it: run it on the Pi with and without the page open.
 - Whether the page stays responsive over the lab's Wi-Fi. It asks the robot for data about six times a
   second; each answer is small.
 - How it looks on a phone. It was looked at in one desktop browser.
