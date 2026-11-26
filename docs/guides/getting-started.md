@@ -96,7 +96,8 @@ echo; then `Ctrl-C` in the first terminal stops the simulator, and `exit` leaves
 3. [The glossary](../glossary.md), whenever a word is new.
 4. [The balance-loop findings](../claude-analysis/balance-loop-findings.md): what is known to be wrong, by ID
    (C-1, H-3, ...), and what has been fixed.
-5. The handoff box at the top of [next-steps.md](../next-steps.md): where the project is today.
+5. [The project history](../journal/history.md): how it got here, in one page.
+6. The handoff box at the top of [next-steps.md](../next-steps.md): where the project is today.
 
 ## 5. Pick something to work on
 

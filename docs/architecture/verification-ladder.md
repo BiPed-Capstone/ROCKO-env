@@ -337,6 +337,15 @@ bash tools/pi_scripts_test.sh                                                   
 | --- | --- | --- |
 | `tools/pi_scripts_test.sh` | The scripts against a fake ROS setup file, a fake `ros2` and a fake `sudo` that, like the real one, drops the caller's environment: sourcing `rocko_env.sh` sets ROS, the venv, the workspace overlay and `ROS_DOMAIN_ID` 17 and `cd`s to the workspace, and a missing venv or build is reported, not fatal; `rocko_run.sh` goes through `sudo env`, hands the root environment the caller's venv, the domain and `PYTHONDONTWRITEBYTECODE=1`, passes the command and its exit status through, and refuses an empty command; `rocko_shell.sh` starts an interactive `bash --norc` through `rocko_run.sh` and `sudo`; `launch.sh tank` and `balance` choose the right launch file, keep the caller's arguments, add `log_root:=$HOME/rocko_logs` unless one is given, and refuse an unknown mode before touching `sudo`; `launch.sh` and `rocko_run.sh` refuse to run under `sudo` (root with `SUDO_USER` set, where `$HOME` would be `/root`); `build_ros.sh` takes the checkout as the workspace when `ROS2_WS` is unset (rosdep searches the two package folders) and `ROS2_WS` plus its `src/` otherwise. Red on 7 deliberate breaks (sudo dropped, tank mapped to the balance file, the domain not exported, `build_ros.sh` back to `~/ros2_ws`, the venv not handed to root, the `log_root` default dropped, the sudo guard removed), 2026-11-19. Ran on macOS bash 3.2 and in the container (bash 5.2) | That the real `sudo` accepts the calls, that root can read the venv, that a ROS 2 command run as root sees the launch run as root, that WiringPi then works. Not run on the Pi |
 
+### The doc link and index scan (not a tier)
+
+`python3 -I tools/check_doc_links.py`, run by `tools/run_ladder.sh` (also with `--host`), on the laptop. It checks
+that every relative link and `#anchor` in `docs/`, `README.md`, `CLAUDE.md` and `.claude/` points at a file and a
+heading that exist. Since 2026-11-26 it also checks that every dated journal entry and every numbered proposal is
+linked from its folder's `README.md` index. That half was red on its first run: seven journal entries had dropped
+out of the journal index unnoticed ([journal](../journal/2026-11-26-repo-tidy.md)). It prints
+`files N links N broken N unindexed N`. It cannot show that a link goes to the *right* page, or that a page is true.
+
 ### What a pass proves, and what it cannot show
 
 | Tier | A pass proves | It cannot show |

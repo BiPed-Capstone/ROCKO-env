@@ -36,7 +36,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 
 | ID | Severity | Finding |
 | --- | --- | --- |
-| C-1 | Critical | Unbounded blocking service calls inside the real-time loop — open; the BNO055 UART framing helper landed **unwired** (2026-11-07), the rest is proposal 0010 |
+| C-1 | Critical | Unbounded blocking service calls inside the real-time loop — **fixed in code on `ai-forward`** (2026-11-24): the IMU is read over I²C inside the BNO055 plugin and the encoders are counted inside the motor plugin, so no service call is left in the loop ([IMU](../architecture/imu-i2c-read.md), [encoders](../architecture/encoders-in-cpp.md)). The I²C read has run on the Pi ([loop timing](../journal/2026-11-24-loop-timing-on-the-pi.md)); balancing with it has not been shown. The UART route (proposal 0010, framing helper from 2026-11-07) is the fallback if I²C proves unreliable |
 | C-2 | Critical | IMU read failure reports pitch = 0.0 ("upright") — **fixed on `ai-forward`, awaiting robot** (2026-10-31); a frozen sensor is still undetected (H-9); the sim's copy of the rule is run end to end by check C2 (2026-11-02) |
 | C-3 | Critical | No teleop watchdog, and no defined comms-loss failsafe — **fixed on `ai-forward`, awaiting robot** (2026-11-02; checked in the sim; the 0.2 s timeout is proposed); the response is a step to zero velocity, never a motor stop |
 | H-1 | High | Motor command is open loop; no wheel velocity feedback |

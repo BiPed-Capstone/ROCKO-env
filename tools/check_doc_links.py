@@ -11,7 +11,11 @@ that file using GitHub's rule (lower-case, punctuation dropped, spaces to hyphen
 It skips http(s) and mailto links, links inside fenced code blocks, and links to files that do not exist ON
 PURPOSE are not special-cased: if a page is known to be unwritten, the link must say so in plain text instead.
 
-Exit status: 0 = no broken link, 1 = at least one broken link.
+Run with no arguments, it also checks that every journal entry and every proposal is linked from its folder's
+README index: seven journal entries had gone missing from the index by 2026-11-26, unnoticed, because nothing
+checked.
+
+Exit status: 0 = no broken link and nothing missing from an index, 1 = otherwise.
 """
 import os
 import re
@@ -59,6 +63,24 @@ def anchors(path, cache={}):
     return cache[path]
 
 
+# folder -> file-name pattern of the pages its README.md must link. Every file matching the pattern must be listed
+# (rename it or list it). The index must link the bare file name, "(name.md)", with no "./" or "#anchor", because the
+# test is a plain text search of the README.
+INDEXED = {"docs/journal": re.compile(r"^\d{4}-\d{2}-\d{2}-.*\.md$"), "docs/proposals": re.compile(r"^\d{4}-.*\.md$")}
+
+
+def unindexed():
+    """Pages in an INDEXED folder that its README.md does not link."""
+    missing = []
+    for folder, pattern in INDEXED.items():
+        with open(os.path.join(ROOT, folder, "README.md"), encoding="utf-8") as handle:
+            index = handle.read()
+        for name in sorted(os.listdir(os.path.join(ROOT, folder))):
+            if pattern.match(name) and f"({name})" not in index:
+                missing.append(f"{folder}/{name}")
+    return missing
+
+
 def main():
     paths = sys.argv[1:] or DEFAULT
     files = links = broken = 0
@@ -85,8 +107,12 @@ def main():
                     if problem:
                         broken += 1
                         print(f"{os.path.relpath(md, ROOT)}:{number}: {target}: {problem}")
-    print(f"files {files} links {links} broken {broken}")
-    return 1 if broken else 0
+    missing = [] if sys.argv[1:] else unindexed()
+    for page in missing:
+        print(f"{page}: not linked from {os.path.dirname(page)}/README.md (add it to the index)")
+    # With path arguments the index check is skipped; "-" says so instead of a 0 that would read as a pass.
+    print(f"files {files} links {links} broken {broken} unindexed {len(missing) if not sys.argv[1:] else '-'}")
+    return 1 if broken or missing else 0
 
 
 if __name__ == "__main__":

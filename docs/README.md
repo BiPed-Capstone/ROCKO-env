@@ -8,7 +8,7 @@ wheel, the folder map, and the build and run instructions. This directory is the
 | [`architecture/`](architecture/) | How a subsystem works, and **why it is built that way** |
 | [`guides/`](guides/) | Procedures — do this, get that |
 | [`decisions/`](decisions/) | Architecture Decision Records: choices, alternatives, consequences |
-| [`journal/`](journal/README.md) | One entry per AI-written change: the goal, what changed, and which checks **actually ran** |
+| [`journal/`](journal/README.md) | [The project history](journal/history.md) in one page; then one entry per AI-written change: the goal, what changed, and which checks **actually ran** |
 | [`proposals/`](proposals/README.md) | Changes waiting on a human decision: PID gains, version pins, safety behavior |
 | [`claude-analysis/`](claude-analysis/) | AI-produced audits of the code, with findings and severities |
 
