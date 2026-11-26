@@ -70,9 +70,9 @@ In tank mode the same pad drives `TankTeleop.py` straight into `diff_drive_contr
 
 To control the robot to go *faster*, the robot first has to *lean* further forward. So the velocity loop doesn't command wheel speed directly. It commands a target lean angle, and the pitch loop underneath it works out the wheel speed needed to hold that lean. The IMU supplies the actual pitch, and the wheel encoders supply the actual velocity.
 
-There are two modes. A **supervisor** node starts at boot, owns which one runs and whether the robot is **enabled** (the motion controllers active), and starts and stops each mode's stack. The Pi boots into **tank mode, disabled**; press **LB + RB** on the controller (or Enable on the dashboard) to enable; **LT + RT + RB** (or the dashboard's Tank/Balance buttons) switches mode, only while disabled. Not run on the robot yet: [the robot supervisor](docs/architecture/robot-supervisor.md), [Drive ROCKO with a USB controller](docs/guides/drive-with-usb-controller.md).
+There are two modes. A **supervisor** node starts at boot, owns which one runs and whether the robot is **enabled** (the motion controllers active), and starts and stops each mode's stack. The Pi boots into **tank mode, disabled**; press **LB + RB** on the controller (or Enable on the dashboard) to enable; **LT + RT + RB** (or the dashboard's Tank/Balance buttons) switches mode, only while disabled. On the robot since 2026-11-24 (boot, both combos, the switch to balance): [the robot supervisor](docs/architecture/robot-supervisor.md), [Drive ROCKO with a USB controller](docs/guides/drive-with-usb-controller.md).
 
-- **Balancing mode**: the cascade above. This is the real robot, **which has never balanced yet**. Uses `rocko.urdf.xacro` + `rocko_controllers.yaml`. Driven by `BalanceTeleop.py`, untested.
+- **Balancing mode**: the cascade above. This is the real robot, **which has never balanced yet** (the first floor test, 2026-11-25, did not balance: [journal](docs/journal/2026-11-25-level-pitch-offset-and-lean-clamp.md)). Uses `rocko.urdf.xacro` + `rocko_controllers.yaml`. Driven by `BalanceTeleop.py`; enabling it has run on the robot, driving it from the pad has not been recorded.
 - **Tank mode**: balancing disabled, plain differential drive, for when you just want it to move without fighting the control loop. Uses `rocko_tank_mode.urdf.xacro` + `rocko_tank_mode_controllers.yaml`.
 
 ---
@@ -228,13 +228,16 @@ colcon build --packages-select rocko_env --symlink-install
 
 ## Running it
 
-**If the boot service is installed** (`rocko.service`, from `pi/install_boot_service.sh robot`; [guide](docs/guides/run-on-the-pi.md#the-boot-service-the-supervisor)), the robot is already running the supervisor after power-on: tank mode, **disabled** until you press LB + RB. `pi/launch.sh` then refuses to start another launch until you run `sudo systemctl stop rocko.service` (it comes back at the next boot). It replaces the older `rocko-tank.service` and `rocko-dashboard.service`; the install removes them. Written 2026-11-23; **not yet run on the robot.**
+**If the boot service is installed** (`rocko.service`, from `pi/install_boot_service.sh robot`; [guide](docs/guides/run-on-the-pi.md#the-boot-service-the-supervisor)), the robot is already running the supervisor after power-on: tank mode, **disabled** until you press LB + RB. `pi/launch.sh` then refuses to start another launch until you run `sudo systemctl stop rocko.service` (it comes back at the next boot). It replaces the older `rocko-tank.service` and `rocko-dashboard.service`; the install removes them. Installed and running on the robot since 2026-11-24.
 
 **On the Pi the robot's launches run as root** (the motor plugin uses WiringPi, which needs it), in a terminal with the right environment. The scripts in `pi/` do that: [Run ROCKO on the Pi](docs/guides/run-on-the-pi.md) explains why, and what each script does. Run from the repo root:
 
 ```bash
 # The whole robot, as it starts at boot: supervisor, tank mode (disabled), controller, dashboard
 pi/launch.sh robot
+
+# The same, with speed caps for a first test (fractions in [0, 1]; see the USB controller guide)
+pi/launch.sh robot tank_max_speed:=0.3 balance_max_speed:=0.02
 
 # One mode by hand, with no supervisor (bench tests; the controller cannot enable these)
 pi/launch.sh balance
@@ -264,20 +267,22 @@ sticks must return to the centre once before it moves. **LT + RT + RB** together
 Letting go of a button does not stop the robot any more (the old hold-LB rule was replaced on 2026-11-23): press LB + RB.
 Nothing runs on your laptop. Needs `sudo apt install ros-jazzy-joy` on the Pi once:
 [Drive ROCKO with a USB game controller](docs/guides/drive-with-usb-controller.md). The web [dashboard](docs/guides/use-the-dashboard.md)
-(port 8080) shows the state and has the same buttons, with **no login**. Checked with fake controller messages and on the mock only.
-**Balancing mode has never balanced on the robot**: it can now be reached and driven from the controller, untested; see
+(port 8080) shows the state and has the same buttons, with **no login**.
+**Balancing mode has never balanced on the robot**: it can be reached and enabled from the controller; see
 [next-steps.md](docs/next-steps.md). `rocko.launch.py` run by hand starts the joy node and `BalanceTeleop.py`, but without a supervisor the teleop node
 never enables, so drive balancing through `pi/launch.sh robot`.
 
 To keep a recording of a test, add `record:=true` to any of the launches above
 (`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):
-[Record a run](docs/guides/record-a-run.md). Checked in the simulation only.
+[Record a run](docs/guides/record-a-run.md). Checked in the simulation, and run once on the Pi through the dashboard's Record
+button ([journal](docs/journal/2026-11-24-loop-timing-on-the-pi.md)).
 
 To watch the robot's values from another machine, open `http://<robot-ip>:8080` in a browser:
-[the dashboard](docs/guides/use-the-dashboard.md). Tank mode starts it by default (`dashboard:=false`
-leaves it out); balancing mode needs `dashboard:=true`, because what it costs the Pi's CPU beside the
-100 Hz balance loop has not been measured. There is no login: anyone on the network can open it.
-Checked in the simulation only.
+[the dashboard](docs/guides/use-the-dashboard.md). `pi/launch.sh robot` (and the boot service) runs it, in both
+modes: beside the balance loop it did not change the loop's timing measurably with the cascade inactive
+([journal](docs/journal/2026-11-24-loop-timing-on-the-pi.md)); with balancing enabled, not yet measured. A mode
+launched by hand starts it only in tank mode (`dashboard:=true` adds it to `pi/launch.sh balance`). There is no
+login: anyone on the network can open it. The owner reported it mostly working on the robot (2026-11-19).
 
 ### Handy debugging commands
 

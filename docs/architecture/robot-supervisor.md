@@ -174,8 +174,8 @@ It never blocks its own callbacks (service calls to `controller_manager` are asy
 ## What is not true yet
 
 - On the robot (2026-11-24, owner present): `rocko.service` boots into tank, disabled; LB+RB and LT+RT+RB worked from
-  the 8BitDo; balance mode reached `ready` and was left disabled. Balance mode was enabled once, on 2026-11-25, and did
-  not balance. The speed caps (above) have run on the mock only. With the cascade inactive the base launch did not
+  the 8BitDo; balance mode reached `ready` and was left disabled. Balance mode was enabled on the floor on 2026-11-25 and did
+  not balance ([journal](../journal/2026-11-25-level-pitch-offset-and-lean-clamp.md)). The speed caps (above) have run on the mock only. With the cascade inactive the base launch did not
   change the loop's timing measurably ([journal](../journal/2026-11-24-loop-timing-on-the-pi.md)); with it enabled,
   unmeasured.
 - Balance mode has never balanced on the robot. The balancing queue is in [next-steps.md](../next-steps.md).

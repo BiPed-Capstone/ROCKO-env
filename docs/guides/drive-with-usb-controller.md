@@ -9,12 +9,12 @@ controller button combinations or from the [dashboard](use-the-dashboard.md). Ho
 **What has been checked.** On 2026-11-22, with the old hold-LB rule, **on the robot, on blocks, the owner drove it**
 (owner-run, battery voltage not recorded): forward, reverse, turning, the LB release and the unplug/re-arm all worked,
 and a capture (not kept) matched every stick direction to its command
-([journal](../journal/2026-11-22-tank-reversal-lag.md)). **The 2026-11-23 change has not run on the Pi or the robot.**
-It was checked with fake controller messages and the mock only; what ran, and what each check can and cannot show, is in
+([journal](../journal/2026-11-22-tank-reversal-lag.md)). The 2026-11-23 change (the supervisor, LB+RB to enable) ran on the robot on 2026-11-24: it booted into tank, disabled, and
+LB+RB and LT+RT+RB worked from the 8BitDo ([robot supervisor](../architecture/robot-supervisor.md#what-is-not-true-yet)).
+Before that it was checked with fake controller messages and the mock; what ran, and what each check can and cannot show, is in
 [the journal](../journal/2026-11-23-robot-supervisor.md) and the
-[verification ladder](../architecture/verification-ladder.md). **Not checked:** the LB+RB and LT+RT+RB combos on a
-real 8BitDo (the trigger "pressed" reading is inferred from the joy node's code), the signs of its sticks, and
-anything on the robot.
+[verification ladder](../architecture/verification-ladder.md). **Not checked:** the exact trigger "pressed" threshold
+(|axis| > 0.5, inferred from the joy node's code; the combos work with it), and driving balance mode from the pad.
 
 ## How you drive it: enable with LB + RB, then split arcade
 
