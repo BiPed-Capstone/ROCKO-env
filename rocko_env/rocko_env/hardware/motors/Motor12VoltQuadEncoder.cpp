@@ -20,8 +20,6 @@
 
 namespace rocko_env
 {
-  std::string joint_name_;
-
   hardware_interface::CallbackReturn Motor12VoltQuadEncoder::on_init(
       const hardware_interface::HardwareInfo &info)
   {
@@ -140,9 +138,6 @@ namespace rocko_env
     std::istringstream(info.hardware_parameters.at(INVERT_KEY)) >> std::boolalpha >> _invert;
 
     _wheel.setup(info.joints[0].name, 0);
-
-    // Save joint name for topic selection
-    joint_name_ = info.joints[0].name;
 
     // Set up pins to have WiringPi numberings
     wiringPiSetup();

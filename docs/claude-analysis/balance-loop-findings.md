@@ -41,16 +41,16 @@ Severity reflects impact on the robot staying upright, not code quality.
 | C-3 | Critical | No teleop watchdog, and no defined comms-loss failsafe — **fixed on `ai-forward`, awaiting robot** (2026-11-02; checked in the sim; the 0.2 s timeout is proposed); the response is a step to zero velocity, never a motor stop |
 | H-1 | High | Motor command is open loop; no wheel velocity feedback |
 | H-2 | High | Near-zero commands never write, latching the previous PWM value — **code fixed on `ai-forward`, compile-checked only, awaiting robot** (2026-10-31; pulled forward of the planned order) |
-| H-3 | High | IMU sample is three separate I²C reads at three different instants |
+| H-3 | High | IMU sample is three separate I²C reads at three different instants — **fixed in code on `ai-forward`** (2026-11-24: one 12-byte burst per cycle, with C-1) |
 | H-4 | High | No tipover cutoff — **written on `ai-forward`, awaiting robot** (2026-11-02; checked in the sim; the 35 deg limit and the 10 deg re-arm band are proposed); see H-10, C-1 and the known item under H-4 |
 | H-5 | High | No real-time scheduling or CPU isolation for `controller_manager` |
 | H-6 | High | Gyro angular rate is never read; the D term differentiates a delayed fused angle — **fixed in code on `ai-forward`** (2026-11-24): the gyro rate is read in the same burst as the angles (C-1), axis and sign measured on the robot, and the real YAML takes the D term from it ([proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md), accepted); not yet run on the robot |
 | H-7 | Critical (raised from Medium/High by the `realtime-auditor`; unconfirmed on hardware) | The motors may keep their last command when the cascade stops or the IMU plugin returns ERROR (found 2026-10-31) — **partly mitigated on `ai-forward`** (controller stop logic and the motor `write()` fix, none run on a robot); the sim showed what `controller_manager` does after an `ERROR`, for one component (2026-11-02) |
 | H-8 | High | An intermittent IMU fault that alternates good and bad reads never tripped the consecutive-only counter (found 2026-10-31) — **fixed in the tracker on `ai-forward`, awaiting robot** |
-| H-9 | High (not fixed) | A frozen or reset BNO055 that still reads valid-looking numbers is undetectable (found 2026-10-31); one variant, an all-equal Euler triple, is now rejected in the node |
+| H-9 | High (not fixed) | A frozen or reset BNO055 that still reads valid-looking numbers is undetectable (found 2026-10-31); one variant, an all-equal Euler triple, is rejected (`ImuSnapshotCheck.hpp` since C-1) |
 | H-10 | High (not fixed; unmeasured) | Upstream PID integrators keep winding while the tipover cutoff is latched, so a re-arm can produce a large command (found 2026-11-02) |
 | H-11 | High | Nothing aged out the feedforward: if `DiffDriveController.py` died mid-turn, the wheels kept opposite biases and the gamepad could not stop them (found 2026-11-03; called H-A in the round-3 review and in code comments) — **fixed on `ai-forward`, awaiting robot** (2026-11-03; checked in the sim; the 200 ms limit is proposed) |
-| H-12 | High (shown in the model; unknown on the robot) | With every gain positive, the outer velocity loop is positive feedback unless the encoder reads negative when a positive wheel command drives the robot; under the sim's default signs it runs away and tips the model in about 10 s (found 2026-11-03, stage 5) — **not fixed**: the robot sign check is [proposal 0006](../proposals/0006-velocity-loop-sign-check.md) |
+| H-12 | High (shown in the model; unknown on the robot) | With every gain positive, the outer velocity loop is positive feedback unless the encoder reads negative when a positive wheel command drives the robot; under the sim's default signs it runs away and tips the model in about 10 s (found 2026-11-03, stage 5) — **addressed on the robot** (2026-11-24): the encoder reads positive under a positive command, so the velocity gains' signs were flipped ([proposal 0006](../proposals/0006-velocity-loop-sign-check.md) option A, accepted); magnitudes untuned |
 | H-13 | High (shown in the model; unknown on the robot) | A drive command reached the cascade as a step: a 0.5 m/s step, the smallest the gamepad path can send, leaned the model 21 deg and a 1.0 m/s step toppled it (found 2026-11-16) — **forward command ramped on `ai-forward`, awaiting robot**; the watchdog's step to zero is not ramped ([proposal 0012](../proposals/0012-command-ramp-and-watchdog-step.md)) |
 | M-1 | Medium | `RCLCPP_INFO` called every cycle from inside `write()` — **removed on `ai-forward`, compile-checked only** (2026-10-31) |
 | M-2 | Medium | Software PWM period equals the control period (both 100 Hz) |
@@ -60,14 +60,14 @@ Severity reflects impact on the robot staying upright, not code quality.
 | M-6 | Medium | `AddFeedforwardController`'s feedforward value was uninitialised and shared between two threads without synchronisation (found 2026-10-31) — **fixed on `ai-forward`** |
 | M-7 | Medium | The IMU node read the gyro (a second I2C transaction) inside the blocking service call every cycle although no real controller uses the rate (found 2026-11-03; called M-A in the round-3 review) — **fixed on `ai-forward`, awaiting robot**: `read_pitch_rate`, default false; one gap left |
 | M-8 | Medium | Two unthrottled INFO lines per gamepad message in `DiffDriveController.py` (found 2026-11-03; called M-B in the round-3 review) — **fixed on `ai-forward`** (the lines were removed) |
-| L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances |
+| L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances — **fixed on `ai-forward`** (2026-11-26: deleted; it was never read) |
 | L-2 | Low | IMU class is named for a part that is no longer used; dead imports |
 | L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build — **fixed on `ai-forward`** (2026-10-31) |
 | L-4 | Low | The RViz configs are never installed, so three launch files cannot find them — **fixed on `ai-forward`** (2026-10-31); RViz opening with them not checked |
 | L-5 | Low | A D-term spike after cycles in which the IMU angle was held (found 2026-10-31, not fixed) |
 | L-6 | Low now, Critical once C-1 adds a timeout | `Motor12VoltQuadEncoder::read` and `QuadEncoder::read` return OK and keep the old position and velocity when the encoder call fails (found 2026-10-31). Since C-1 (2026-11-24) the motor plugin counts its own encoders and calls nothing that can fail; the `QuadEncoder` plugin was removed 2026-11-26. Left: an encoder that silently stops counting (next-steps row 1.10) |
 | L-7 | Low | `MAX_RAD_PER_SEC` is computed with integer division (found 2026-10-31, not fixed; a human confirms the change) |
-| L-8 | Low (matters when H-6 reaches the real YAML) | `pid_controller` sets the rate reference once, at activation, and never again (found 2026-11-02, not fixed) |
+| L-8 | Low (matters now that H-6 is in the real YAML) | `pid_controller` sets the rate reference once, at activation, and never again (found 2026-11-02) — **handled on `ai-forward`** (2026-11-24, with proposal 0016: balance enables only while the robot is nearly still), not yet run on the robot |
 
 ---
 
@@ -712,10 +712,11 @@ not true. Nobody has seen it happen on ROCKO.
 Needs the read in C++ (C-1), so the plugin can see the BNO055's own status and calibration registers
 and can check that successive samples change at all. Queue: [next-steps row 1.8](../next-steps.md).
 
-**Partly covered, one variant (review round 2, 2026-10-31):** `ICM20948.py` now rejects a reply whose
+**Partly covered, one variant (review round 2, 2026-10-31; in C++ since 2026-11-24):** the IMU plugin's sample check
+(`ImuSnapshotCheck.hpp`, `kAllAnglesEqual`; first in the removed `ICM20948.py`) rejects a read whose
 three Euler values are all equal, which would catch an all-zero block from a reset or a bus fault (this rule is for the Euler angles, not the gyro rate). A
 frozen sensor that keeps returning its last real orientation, and any garbage whose three values
-differ, are still not detected. Not seen on a sensor; no tier runs the node.
+differ, are still not detected. Not seen on a sensor; the host test `imu_snapshot_check_test.cpp` covers the rule.
 
 **Related (2026-11-02):** the H-4 tipover cutoff cannot see a frozen sensor that holds a safe-looking pitch.
 
@@ -805,7 +806,7 @@ reference forever if the node that sets it dies. Journal: *Stage 4, review round
 **Found** 2026-11-03, stage 5, by a linear analysis of the simulated cascade
 (`sim/cascade_linearisation.py`; [stage 5 journal](../journal/2026-11-03-stage5-balance-in-sim.md)). The
 sign question itself was written down in [sim-plant.md §2.4](../architecture/sim-plant.md) on 2026-10-31;
-this finding shows it is what tips the model. **Not fixed. Shown in the model only**: whether the robot
+this finding shows it is what tips the model. (**2026-11-24:** measured on the robot, and the velocity gains' signs flipped to match, proposal 0006 option A; the text below is as found.) **Not fixed. Shown in the model only**: whether the robot
 has it depends on encoder wiring nobody has checked.
 
 **Where** `velocity_pid_controller` in `rocko_controllers.yaml` (lines 55-56: `p: 2.0, i: 5.0, d: 0.2`,
@@ -1132,6 +1133,9 @@ by `teleop_watchdog_test.py` still passing.
 Declared at namespace scope rather than as a class member, so both motor instances write to the
 same variable. It is currently unused beyond the assignment (`_prefix` is the member actually
 used), so there is no live bug — but it is a latent aliasing trap. Delete it or make it a member.
+
+**Status on `ai-forward` (2026-11-26): fixed.** Deleted, with its assignment in `on_init` (nothing read it). The compile-only
+check passes; not built on the Pi.
 
 ---
 
