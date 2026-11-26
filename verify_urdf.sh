@@ -18,6 +18,8 @@
 # A seventh expansion, TANK mode with use_sim_plant:=true, must still hold the two real motor plugins
 # and no SimPlant: tank mode ignores that argument BY DESIGN (rocko_tank_mode.urdf.xacro does not
 # declare it, so the simulator can only ever be reached through rocko.urdf.xacro and rocko_sim.launch.py).
+# Then tools/check_plugin_names.py checks that every hardware plugin the expansions name is declared in
+# rocko_env_hardware.xml and exported by a C++ source (off the Pi the real plugins are never loaded).
 # Finally sim/check_sim_config.py checks that the simulator's configuration has not drifted: the sim
 # controller YAML keeps the hardware YAML's wiring, and the simulator settings' defaults agree in
 # SimPlantModel.hpp, rocko.urdf.xacro and rocko_sim.launch.py.
@@ -236,6 +238,20 @@ else
   fi
 fi
 
+# Every hardware plugin named in any expansion must be declared in rocko_env_hardware.xml and exported
+# by a C++ source with the same class and base class. Off the Pi the real plugins are never loaded, so
+# a mismatch would otherwise first show up on the robot (tools/check_plugin_names.py says more).
+# Exit 1 means a mismatch; exit 2 means the checker could not run, which says nothing about the names.
+python3 -I "$here/tools/check_plugin_names.py" "$work"/*.urdf >"$work/plugins" 2>&1
+plugins_status=$?
+if [ "$plugins_status" -eq 0 ]; then
+  sed 's/^/      /' "$work/plugins"
+elif [ "$plugins_status" -eq 1 ]; then
+  fail "plugin names do not match the plugin XML or the C++ sources:"; show "$work/plugins"
+else
+  fail "plugin name check could not run (exit $plugins_status; this is not a mismatch):"; show "$work/plugins"
+fi
+
 # The simulator's configuration must not drift (what each check guards: the script's docstring).
 # Exit 1 means drift (lines starting FAIL); exit 2 means the checker could not run at all (a file
 # unreadable, or PyYAML missing), which says nothing about drift.
@@ -251,7 +267,7 @@ else
 fi
 
 if [ "$failures" -eq 0 ]; then
-  echo "PASS: all seven expansions (four real/mock, two sim, one tank-with-sim-request) expand, parse, hold the right hardware, the mock and the sim match the real interfaces, tank mode ignores the sim request, and the sim config has not drifted."
+  echo "PASS: all seven expansions (four real/mock, two sim, one tank-with-sim-request) expand, parse, hold the right hardware, the mock and the sim match the real interfaces, tank mode ignores the sim request, every plugin name matches its plugin XML entry and C++ export, and the sim config has not drifted."
   exit 0
 fi
 echo "FAIL: $failures problem(s) above."

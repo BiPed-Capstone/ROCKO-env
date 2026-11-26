@@ -175,7 +175,7 @@ blind. So:
 
 | Tier | What it proves | What it cannot |
 | --- | --- | --- |
-| **0 Static** | `verify_urdf.sh` — the URDF expands in all four modes, parses, and holds the right hardware (real or mock); scripts parse; the hook tests pass | That anything compiles or runs |
+| **0 Static** | `verify_urdf.sh` — the URDF expands in all four modes, parses, and holds the right hardware (real or mock), under plugin names the plugin XML and the C++ export agree on; scripts parse; the hook tests pass | That anything compiles or runs |
 | **1 Build** | `build_ros.sh` builds both packages in the container | Anything about the **motor plugin** (left out off-Pi), or runtime behavior |
 | **2 Mock** | `verify_mock.sh` — the controllers the launch spawns load, claim real interfaces, chain and activate | Physics. The mock echoes commands and holds pitch at 0.0, so a balance controller always looks fine |
 | **3 Simulation** | Controller behavior against modeled dynamics | Whatever the model omits. See `bootstrap-sim` and [ADR 0003](docs/decisions/0003-simulation-target.md) |
