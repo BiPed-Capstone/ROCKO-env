@@ -132,14 +132,18 @@ comes from SDL, and a wrong one would drive the wrong way or fire the wrong comb
 ## Drive
 
 **The first time, wheels off the ground** (the robot on a stand, as in the [bench test](bench-test-tank-mode.md)), with
-the controller plugged in. The supervisor starts tank mode with the default caps (full speed); **the launch arguments
-`max_speed:=` and `max_turn:=` do not reach tank mode through `rocko_robot.launch.py`**, so on the stand push the
-sticks gently. (Caps are a gap: see *What this does not cover*.) On the Pi, either let the boot service start it
-(next section) or run it by hand:
+the controller plugged in. The supervisor starts tank mode with the default caps (full speed), so for a first test run it by
+hand with a cap (the boot service must be stopped first, next section):
 
 ```bash
-pi/launch.sh robot
+pi/launch.sh robot tank_max_speed:=0.3 tank_max_turn:=0.3
 ```
+
+`tank_max_speed` and `tank_max_turn` (and `balance_max_speed`, `balance_max_turn`) are fractions in [0, 1] of that
+mode's full speed; left out, each mode's default applies. A bad value (not a number in [0, 1], for example `0,3`) is
+replaced by 0 with an `ERROR` line from the supervisor: a bad `max_speed` does not drive at all, a bad `max_turn` does
+not turn. Check the log if the robot will not move. Without a cap, `pi/launch.sh robot` runs what the boot
+service runs.
 
 Success looks like this in the launch output (the tank teleop line says it follows the supervisor):
 
@@ -238,7 +242,8 @@ What exists, so you know what a press does:
 - `BalanceTeleop.py` reads the same pad: **left stick Y** is forward speed and **right stick X** is turn, with the
   same deadzone, expo, enable and centre rules. Its defaults are `max_speed` 0.05 (0.5 m/s) and `max_turn` 0.2, **untested
   starting points**, not tuned values. They are launch arguments of `rocko.launch.py` (`max_speed:=`, `max_turn:=`,
-  `teleop:=`).
+  `teleop:=`); under the supervisor, which is how the pad drives, pass `balance_max_speed:=` and
+  `balance_max_turn:=` to `pi/launch.sh robot` instead (see *Drive*).
 - Disabling in balance mode means the robot **falls**. Never disable it unless it is held.
 
 **Driving by hand without the supervisor.** `rocko.launch.py` run by hand (`supervised:=false`) starts
@@ -269,9 +274,8 @@ balance mode. The simulation launch (`rocko_sim.launch.py`) starts neither: its 
 
 ## What this does not cover
 
-- **Speed caps for tank mode.** `max_speed:=` and `max_turn:=` are launch arguments of `rocko_tank_mode.launch.py`, and
-  `rocko_robot.launch.py` does not pass them on. A hand launch of tank mode accepts them, but cannot be driven from
-  the controller (no supervisor, so the teleop node never enables).
+- **Caps for the boot service.** `rocko.service` runs `pi/launch.sh robot` with no caps. To boot with caps, add
+  them to its `ExecStart` line (a human's change; it is installed by `pi/install_boot_service.sh`).
 - **Balancing itself** (above), and anything about it on the robot.
 
 ## Where the numbers live

@@ -112,6 +112,14 @@ each mode's existing launch file as a child process, with `supervised:=true`.
 the dashboard and the Foxglove bridge. It also makes the launch file spawn the motion controllers inactive. With
 `supervised:=false` (the default), each launch file behaves exactly as before, for bench tests by hand.
 
+**Speed caps.** The supervisor passes each mode's caps on as `max_speed:=` and `max_turn:=`, taken from its own
+launch arguments `<mode>_max_speed` and `<mode>_max_turn` (for example `pi/launch.sh robot tank_max_speed:=0.3`).
+Each is a unitless fraction in [0, 1] (what of, is in `CAP_ARGS` in `modes.py`). Left empty (the default), the mode
+launch's own default applies. A value that is not a number in [0, 1] becomes **0** with an error in the supervisor's
+log: a bad `max_speed` means no driving, a bad `max_turn` no turning. Two other choices were worse: passed on, a word
+fails the whole launch (and at boot nobody reads why); dropped, the default applies, and a typo such as `0,3` would
+give tank mode full speed. The command is built by `launch_command()` in `modes.py`.
+
 **Stopping a stack.** The supervisor sends SIGINT to the child's whole *process group* (every node at once, as
 systemd's default does). Stopping only `ros2 launch` made `ros2_control_node` hang in the motor plugin's encoder
 call (finding C-1; seen on 2026-11-22). If the group has not exited after `stop_timeout_s`, the supervisor sends
@@ -165,7 +173,10 @@ It never blocks its own callbacks (service calls to `controller_manager` are asy
 
 ## What is not true yet
 
-- None of this has run on the Pi or the robot. Its CPU cost beside the 100 Hz loop is unmeasured, as the dashboard's is.
-- Balance mode has never balanced on the robot; this change only makes it reachable from the controller. The
-  balancing queue in [next-steps.md](../next-steps.md) is unchanged by it.
+- On the robot (2026-11-24, owner present): `rocko.service` boots into tank, disabled; LB+RB and LT+RT+RB worked from
+  the 8BitDo; balance mode reached `ready` and was left disabled. Balance mode was enabled once, on 2026-11-25, and did
+  not balance. The speed caps (above) have run on the mock only. With the cascade inactive the base launch did not
+  change the loop's timing measurably ([journal](../journal/2026-11-24-loop-timing-on-the-pi.md)); with it enabled,
+  unmeasured.
+- Balance mode has never balanced on the robot. The balancing queue is in [next-steps.md](../next-steps.md).
 - The trigger "pressed" reading (|axis| > 0.5) is inferred from the joy node's code, not seen on the 8BitDo.

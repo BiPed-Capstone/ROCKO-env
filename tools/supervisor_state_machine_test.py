@@ -253,6 +253,35 @@ def test_modes_table():
         check("node" not in modes.expected_nodes(mode, False), f"real {mode}: no encoder node any more")
 
 
+def test_speed_caps_reach_the_mode_launch():
+    # Passed through as name:=value; an empty or missing value is left out (the launch's default applies).
+    base = ["ros2", "launch", "rocko_env", "rocko_tank_mode.launch.py", "supervised:=true", "use_mock_hardware:=false"]
+    check(modes.launch_command("tank", False) == base, "no caps: the command is unchanged")
+    check(modes.launch_command("tank", False, "", {"max_speed": "", "max_turn": ""}) == base, "empty caps are left out")
+    cmd = modes.launch_command("balance", True, "/logs", {"max_speed": "0.02"})
+    check(cmd[3] == "rocko.launch.py" and "use_mock_hardware:=true" in cmd and "log_root:=/logs" in cmd,
+          f"balance command keeps mode, mock and log_root: {cmd}")
+    check("max_speed:=0.02" in cmd and not any(a.startswith("max_turn:=") for a in cmd), f"only the cap given: {cmd}")
+    # Both mode launches declare the caps, or the passed argument would be silently ignored.
+    launch_dir = REPO / "rocko_env" / "rocko_env" / "bringup" / "launch"
+    for mode in modes.mode_names():
+        text = (launch_dir / modes.launch_file(mode)).read_text()
+        for name in modes.CAP_ARGS:
+            check(f'"{name}", default_value=' in text, f"{modes.launch_file(mode)} declares {name}")
+
+
+def test_bad_caps_are_refused():
+    for good in ("", "0", "0.3", "1", "1.0"):
+        check(modes.cap_problem(good) is None, f"{good!r} is a usable cap")
+    for bad in ("abc", "-0.1", "1.5", "nan", "inf"):
+        check(modes.cap_problem(bad) is not None, f"{bad!r} must be refused")
+    # A bad cap fails safe: 0 (no driving), never the launch default, which in tank mode is full speed.
+    caps, errors = modes.checked_caps({"max_speed": "0,3", "max_turn": ""})
+    check(caps == {"max_speed": "0"} and len(errors) == 1, f"a typo becomes 0 with one error: {caps} {errors}")
+    caps, errors = modes.checked_caps({"max_speed": " 0.3 ", "max_turn": "0.5"})
+    check(caps == {"max_speed": "0.3", "max_turn": "0.5"} and not errors, f"good caps pass through: {caps}")
+
+
 def enabled_balance():
     m = ready_machine("balance")
     ok, _ = m.request_enable(True, "dashboard", 0.0, 10.0, 0.0)

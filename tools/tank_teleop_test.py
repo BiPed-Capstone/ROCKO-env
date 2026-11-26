@@ -399,8 +399,8 @@ def test_launch_files_wire_the_teleops_and_the_supervised_flag():
           "rocko.launch.py: supervised defaults to false; the cascade spawns --inactive only when supervised")
     check(balance.count('"--activate-as-group"') == 1, "the unsupervised spawn keeps --activate-as-group")
     sim = (LAUNCH / "rocko_sim.launch.py").read_text()
-    check("TankTeleop" not in sim and "game_controller_node" not in sim and "BalanceTeleop" not in sim,
-          "rocko_sim.launch.py is untouched by the teleop split")
+    check(all(f'executable="{x}"' not in sim for x in ("TankTeleop.py", "game_controller_node", "BalanceTeleop.py")),
+          "rocko_sim.launch.py starts no gamepad node (its checks publish cmd_vel themselves)")
     for path in ("controllers/diffdrive/DiffDriveController.py",
                  "controllers/balance_teleop/BalanceTeleop.py"):
         check("tank_teleop" not in (PACKAGE / "rocko_env" / path).read_text(), f"{path} must not use the tank node")

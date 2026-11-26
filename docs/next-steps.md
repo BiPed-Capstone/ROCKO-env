@@ -56,7 +56,7 @@ changed when, and why, is in the [journal](journal/README.md) and in this file's
 > candidates (its procedure, after its preconditions); tuning ([tune-gains](../.claude/skills/tune-gains/SKILL.md),
 > row 3.3).
 >
-> **Smaller open items:** the supervisor does not pass `max_speed:=`/`max_turn:=` through to the mode stacks; one red
+> **Smaller open items:** one red
 > run in the ±30 % sweep (`m-h-k-d+`, scenario V, 3.107 s against 3.0 s; cause not found;
 > [results](../sim/results/2026-11-25-measured-signs-sweep.md)). The dashboard's history check in `verify_tools.sh` failed
 > twice inside full ladder runs (38 points) and passes alone; cause not found. **Every robot step is the owner's** (CLAUDE.md §3); in

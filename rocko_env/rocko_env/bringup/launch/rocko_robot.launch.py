@@ -14,6 +14,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 from rocko_env.recording.launch_recording import real_or_mock, recording_arguments
+from rocko_env.supervisor import modes
 from rocko_env.teleop import gamepad
 from rocko_env.webserver.launch_dashboard import dashboard_arguments, dashboard_node
 from rocko_env.webserver.launch_foxglove import foxglove_arguments, foxglove_bridge_process
@@ -53,6 +54,17 @@ def generate_launch_description():
     declared_arguments += dashboard_arguments(default="true")
     declared_arguments += foxglove_arguments(default="true")
 
+    # Speed caps for each mode's teleop node, passed through by the supervisor, e.g. for a first stand test:
+    #   pi/launch.sh robot tank_max_speed:=0.3 balance_max_speed:=0.02
+    # Empty (the default) keeps each mode launch's own default (max_speed and max_turn in
+    # rocko_tank_mode.launch.py and rocko.launch.py). A bad value becomes 0 (max_speed: no driving; max_turn: no turning).
+    for mode in modes.mode_names():
+        for name in modes.CAP_ARGS:
+            declared_arguments.append(DeclareLaunchArgument(
+                f"{mode}_{name}", default_value="",
+                description=f"{mode} mode's {name} (see max_speed/max_turn in its launch file), a fraction "
+                            f"in [0, 1]; empty: that launch's default; a bad value: 0"))
+
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
 
     supervisor = Node(
@@ -62,6 +74,8 @@ def generate_launch_description():
             "use_mock_hardware": ParameterValue(use_mock_hardware, value_type=bool),
             "initial_mode": ParameterValue(LaunchConfiguration("initial_mode"), value_type=str),
             "log_root": ParameterValue(LaunchConfiguration("log_root"), value_type=str),
+            **{f"{mode}_{name}": ParameterValue(LaunchConfiguration(f"{mode}_{name}"), value_type=str)
+               for mode in modes.mode_names() for name in modes.CAP_ARGS},
         }],
         output="both",
         sigterm_timeout=SUPERVISOR_SIGTERM_TIMEOUT_S,

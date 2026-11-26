@@ -38,7 +38,6 @@ from rocko_env.supervisor import modes
 from rocko_env.supervisor.state_machine import PHASE_STARTING, StateMachine
 from rocko_env.teleop import gamepad
 
-PACKAGE = "rocko_env"
 WHEEL_WITH_PITCH = "left_wheel_joint"           # the IMU plugin exports pitch [deg] on both wheel joints
 REARM_CONTROLLER = "left_add_feedforward_controller"
 REARM_PARAMETER = "rearm_max_pitch_deg"          # [deg] the tipover cutoff's own re-arm band
@@ -65,10 +64,17 @@ class Supervisor(Node):
         self.declare_parameter("stop_timeout_s", 15.0)     # [s] SIGINT, then SIGKILL after this
         self.declare_parameter("start_timeout_s", 60.0)    # [s] to reach "ready"
         self.declare_parameter("log_root", "")             # passed through to the child launch
+        # Speed caps per mode, passed through to that mode's launch: <mode>_max_speed, <mode>_max_turn
+        # (modes.CAP_ARGS says what they mean). Text, not float: "" (the default) must mean "not set",
+        # and the defaults live in the mode launch files, not here.
+        for mode in modes.mode_names():
+            for name in modes.CAP_ARGS:
+                self.declare_parameter(f"{mode}_{name}", "")
         self.use_mock = bool(self.get_parameter("use_mock_hardware").value)
         self.stop_timeout_s = float(self.get_parameter("stop_timeout_s").value)
         self.start_timeout_s = float(self.get_parameter("start_timeout_s").value)
         self.log_root = str(self.get_parameter("log_root").value)
+        self.caps = {mode: self.read_caps(mode) for mode in modes.mode_names()}
 
         self.sm = StateMachine(str(self.get_parameter("initial_mode").value))
 
@@ -118,6 +124,15 @@ class Supervisor(Node):
 
         self.run_actions()   # the boot action: start the initial mode's stack
         self.get_logger().info(f"supervisor up: mode {self.sm.mode}, disabled, use_mock_hardware={self.use_mock}")
+
+    def read_caps(self, mode):
+        """This mode's speed caps. A bad value becomes 0 with an error (modes.checked_caps says why), so
+        the stack still starts, and does not drive faster than was asked for."""
+        texts = {name: str(self.get_parameter(f"{mode}_{name}").value) for name in modes.CAP_ARGS}
+        caps, errors = modes.checked_caps(texts)
+        for error in errors:
+            self.get_logger().error(f"{mode}_{error}")
+        return caps
 
     # ------------------------------------------------------------------ requests
     def on_set_enabled(self, request, response):
@@ -183,10 +198,7 @@ class Supervisor(Node):
                 self.pending_rearm = True    # published once ACTIVATE has succeeded
 
     def start_stack(self, mode):
-        cmd = ["ros2", "launch", PACKAGE, modes.launch_file(mode), "supervised:=true",
-               f"use_mock_hardware:={'true' if self.use_mock else 'false'}"]
-        if self.log_root:
-            cmd.append(f"log_root:={self.log_root}")
+        cmd = modes.launch_command(mode, self.use_mock, self.log_root, self.caps[mode])
         self.get_logger().info("starting stack: " + " ".join(cmd))
         # start_new_session: the child gets its own process group, so killpg reaches every node.
         self.proc = subprocess.Popen(cmd, start_new_session=True)

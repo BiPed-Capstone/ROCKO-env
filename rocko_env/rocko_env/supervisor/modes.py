@@ -60,6 +60,13 @@ BASE_NODES = ["supervisor", "game_controller_node"]
 
 DEFAULT_MODE = "tank"
 
+# Speed caps the supervisor can pass to a mode's launch, as `name:=value`. Every mode's launch declares
+# both (rocko_tank_mode.launch.py, rocko.launch.py) and gives them to its teleop node. Each is a unitless
+# fraction in [0, 1], not m/s: max_speed of full wheel speed (tank) or of 10 m/s forward (balance),
+# max_turn the turn stick's strength. The defaults live in those launch files, not here: an empty value
+# here means "not set, use the launch file's default".
+CAP_ARGS = ["max_speed", "max_turn"]
+
 
 def mode_names():
     return list(MODES)
@@ -79,6 +86,51 @@ def motion_controllers(mode):
 
 def falls_when_disabled(mode):
     return MODES[mode]["falls_when_disabled"]
+
+
+def cap_problem(text):
+    """Why `text` is not a usable cap (None if it is): empty means "not set" and is fine. A bad value
+    must not reach the launch, where a word that is not a number fails the whole stack."""
+    if text == "":
+        return None
+    try:
+        value = float(text)
+    except ValueError:
+        return f"'{text}' is not a number"
+    if not 0.0 <= value <= 1.0:   # also false for NaN
+        return f"{text} is not a fraction in [0, 1]"
+    return None
+
+
+def checked_caps(texts):
+    """{name: text} -> (caps for launch_command, error messages). An empty value is left out. A bad one
+    becomes "0" (a bad max_speed: no driving; a bad max_turn: no turning) until it is fixed. Dropping it
+    instead would leave the launch file's default, and a typo such as 0,3 would give tank mode full speed."""
+    caps, errors = {}, []
+    for name in CAP_ARGS:
+        text = texts.get(name, "").strip()
+        problem = cap_problem(text)
+        if problem:
+            caps[name] = "0"
+            errors.append(f"{name}: {problem}; using 0 until it is fixed")
+        elif text:
+            caps[name] = text
+    return caps, errors
+
+
+def launch_command(mode, use_mock_hardware, log_root="", caps=None):
+    """The `ros2 launch` command that starts `mode`'s stack under the supervisor. caps: {"max_speed": "0.3"};
+    a missing or empty value is left out, so the launch file's default applies. Check values with
+    cap_problem() first."""
+    cmd = ["ros2", "launch", "rocko_env", launch_file(mode), "supervised:=true",
+           f"use_mock_hardware:={'true' if use_mock_hardware else 'false'}"]
+    if log_root:
+        cmd.append(f"log_root:={log_root}")
+    for name in CAP_ARGS:
+        value = (caps or {}).get(name, "")
+        if value != "":
+            cmd.append(f"{name}:={value}")
+    return cmd
 
 
 def expected_nodes(mode, use_mock_hardware):
