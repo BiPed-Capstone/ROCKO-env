@@ -2,8 +2,8 @@
 
 **Status:** written 2026-11-23 as the design for the change in
 [the journal](../journal/2026-11-23-robot-supervisor.md). What has been checked, and on which tier, is in that entry
-and the [verification ladder](verification-ladder.md); this page says how it works and why. Nothing here has run on
-the robot yet. The decision and the alternatives are in [ADR 0006](../decisions/0006-robot-supervisor.md).
+and the [verification ladder](verification-ladder.md); this page says how it works and why. It runs on the robot
+since 2026-11-24 (what was seen: [What is not true yet](#what-is-not-true-yet)). The decision and the alternatives are in [ADR 0006](../decisions/0006-robot-supervisor.md).
 
 ## The idea in one paragraph
 
