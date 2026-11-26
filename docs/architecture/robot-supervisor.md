@@ -144,8 +144,8 @@ systemd: rocko.service ──> pi/launch.sh robot ──> ros2 launch rocko_env 
                               Supervisor.py ──child──> ros2 launch rocko_env <mode's launch file> supervised:=true
 ```
 
-`rocko.service` replaces `rocko-tank.service` and `rocko-dashboard.service`: installing it removes those two, because
-two launches would fight over the motors and two dashboards over the port. `pi/launch.sh` refuses any other launch
+`rocko.service` replaced the older `rocko-tank.service` and `rocko-dashboard.service` (removed from the repo
+2026-11-26); installing it removes any copy still on the Pi, because two launches would fight over the motors. `pi/launch.sh` refuses any other launch
 while it runs. Install and remove: [run-on-the-pi.md](../guides/run-on-the-pi.md).
 
 ## The ROS interfaces

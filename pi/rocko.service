@@ -6,8 +6,8 @@
 # controller reader, the dashboard and the Foxglove bridge. The supervisor then starts TANK mode's stack as a child
 # (it boots into tank, DISABLED) and starts and stops tank or balance mode when asked from the controller or the
 # dashboard. The wheels cannot move until someone enables the robot (LB + RB, or the dashboard's Enable button).
-# This service REPLACES rocko-tank.service and rocko-dashboard.service: pi/install_boot_service.sh robot removes
-# them, and refuses to install either while this one is installed (two launches would fight over the motors).
+# It replaced the older rocko-tank.service and rocko-dashboard.service (removed from the repo 2026-11-26):
+# pi/install_boot_service.sh robot removes any copy still installed (two launches would fight over the motors).
 # While this runs, pi/launch.sh refuses to start any other launch: stop it first with `sudo systemctl stop rocko.service`.
 # Design: docs/architecture/robot-supervisor.md. Guide: docs/guides/run-on-the-pi.md.
 

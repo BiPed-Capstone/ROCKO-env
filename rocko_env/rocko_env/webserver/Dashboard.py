@@ -517,8 +517,8 @@ def main():
     except OSError as error:
         if error.errno != errno.EADDRINUSE:
             raise
-        # Another dashboard already serves this port: on the Pi, normally the one the boot service
-        # (pi/rocko-dashboard.service) started, which sees the same topics. Step aside cleanly (exit 0),
+        # Another dashboard already serves this port: on the Pi, normally the robot launch's own
+        # (rocko_robot.launch.py, started by rocko.service), which sees the same topics. Step aside cleanly (exit 0),
         # so a launch file's dashboard:=true does not end in "process has died".
         dashboard.get_logger().info(
             f"dashboard: port {dashboard.port} is already in use by another process (usually the boot "

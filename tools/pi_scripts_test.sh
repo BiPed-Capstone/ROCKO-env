@@ -143,42 +143,16 @@ for script in "launch.sh tank" "rocko_run.sh ros2 x"; do
   check "${script%% *}: run under sudo is refused (2) with the reason" "$r" "code $code: $out"
 done
 
-# 8. the boot services: each unit is rendered with the caller's paths; installing under sudo is refused
-out="$(HOME="$home" ROCKO_VENV="$home/myvenv" ROCKO_DOMAIN_ID=23 "$repo/pi/install_boot_service.sh" dashboard print 2>&1)"; code=$?
-r=0; [ "$code" -eq 0 ] || r=1
-has "$out" "Environment=ROCKO_VENV=$home/myvenv" || r=1
-has "$out" "Environment=ROCKO_DOMAIN_ID=23" || r=1
-has "$out" "Environment=HOME=/root" || r=1
-has "$out" "ExecStart=$repo/pi/rocko_run.sh ros2 run rocko_env Dashboard.py" || r=1
-has "$out" "log_root:=$home/rocko_logs" || r=1
-grep -qE '@[A-Z_]+@' <<<"$out" && r=1   # no @PLACEHOLDER@ left behind
-check "install_boot_service.sh dashboard print: this checkout, the caller's venv, logs, domain, HOME=/root" "$r" "$out"
-out="$(HOME="$home" ROCKO_VENV="$home/myvenv" "$repo/pi/install_boot_service.sh" tank print 2>&1)"; code=$?
-r=0; [ "$code" -eq 0 ] || r=1
-has "$out" "ExecStart=$repo/pi/launch.sh tank log_root:=$home/rocko_logs" || r=1
-has "$out" "Environment=ROCKO_BOOT_SERVICE=1" || r=1
-has "$out" "KillSignal=SIGINT" || r=1
-has "$out" "Environment=HOME=/root" || r=1
-grep -qE '@[A-Z_]+@' <<<"$out" && r=1
-check "install_boot_service.sh tank print: pi/launch.sh tank, the service marker, a SIGINT stop, HOME=/root" "$r" "$out"
-out="$(PATH="$work/asroot:$PATH" "$repo/pi/install_boot_service.sh" tank install 2>&1)"; code=$?   # the asroot fake id says uid 0
+# 8. the boot service installer: under sudo it refuses to install; any name but "robot" gets the usage (tank and
+# dashboard were the old services, removed 2026-11-26)
+out="$(PATH="$work/asroot:$PATH" "$repo/pi/install_boot_service.sh" robot install 2>&1)"; code=$?   # the asroot fake id says uid 0
 r=0; [ "$code" -eq 2 ] || r=1; has "$out" "without sudo" || r=1
 check "install_boot_service.sh: install under sudo is refused (2) with the reason" "$r" "code $code: $out"
-out="$("$repo/pi/install_boot_service.sh" balance 2>&1)"; code=$?
-r=0; [ "$code" -eq 2 ] || r=1; has "$out" "usage" || r=1
-check "install_boot_service.sh: an unknown service name is refused with the usage" "$r" "code $code: $out"
-
-# 9. while the tank boot service runs, launch.sh refuses other launches; the service itself is let through
-mkdir -p "$work/tankup"
-# fake systemctl: reports "active" (exit 0) only for 'is-active --quiet rocko-tank.service'; anything else exits 3 (not active)
-printf '#!/bin/sh\n[ "$1 $2 $3" = "is-active --quiet rocko-tank.service" ] && exit 0\nexit 3\n' >"$work/tankup/systemctl"
-chmod +x "$work/tankup/systemctl"
-out="$(PATH="$work/tankup:$PATH" "$repo/pi/launch.sh" balance 2>&1)"; code=$?
-r=0; [ "$code" -eq 2 ] || r=1; has "$out" "sudo systemctl stop rocko-tank.service" || r=1; has "$out" "ros2 launch" && r=1
-check "launch.sh balance while rocko-tank.service runs: refused (2), says how to stop it" "$r" "code $code: $out"
-out="$(PATH="$work/tankup:$PATH" ROCKO_BOOT_SERVICE=1 "$repo/pi/launch.sh" tank 2>&1)"; code=$?
-r=0; [ "$code" -eq 0 ] || r=1; has "$out" "ros2 launch rocko_env rocko_tank_mode.launch.py" || r=1
-check "launch.sh tank from the service itself (ROCKO_BOOT_SERVICE=1): let through" "$r" "code $code: $out"
+for name in tank dashboard balance; do
+  out="$("$repo/pi/install_boot_service.sh" $name 2>&1)"; code=$?
+  r=0; [ "$code" -eq 2 ] || r=1; has "$out" "usage" || r=1
+  check "install_boot_service.sh $name: not a service it installs; refused with the usage" "$r" "code $code: $out"
+done
 
 # 10. the supervisor: launch.sh robot, rocko.service rendered, and the guard that rocko.service sets
 out="$("$repo/pi/launch.sh" robot 2>&1)"
@@ -209,7 +183,7 @@ out="$(PATH="$work/robotup:$PATH" ROCKO_BOOT_SERVICE=1 "$repo/pi/launch.sh" robo
 r=0; [ "$code" -eq 0 ] || r=1; has "$out" "ros2 launch rocko_env rocko_robot.launch.py" || r=1
 check "launch.sh robot from the service itself (ROCKO_BOOT_SERVICE=1): let through" "$r" "code $code: $out"
 
-# 11. installing: robot replaces the tank and dashboard units; tank/dashboard refuse while rocko.service exists.
+# 11. installing: robot removes any old tank or dashboard unit still on the Pi, then installs rocko.service.
 # A fake systemctl that logs, a unit folder in the work dir (ROCKO_UNIT_DIR), and the fake sudo above.
 mkdir -p "$work/units" "$work/sysctl"
 # (sudo's env_reset drops variables, so the log's path is written into the fake itself.)
@@ -232,14 +206,6 @@ has "$(cat "$SYSTEMCTL_LOG")" "disable --now rocko-tank.service" || r=1
 has "$(cat "$SYSTEMCTL_LOG")" "enable --now rocko.service" || r=1
 check "install_boot_service.sh robot: stops, disables and removes the tank and dashboard units (and says so), installs rocko.service" "$r" "code $code: $out
 $(cat "$SYSTEMCTL_LOG")"
-
-for other in tank dashboard; do
-  : >"$SYSTEMCTL_LOG"
-  out="$(PATH="$work/sysctl:$PATH" ROCKO_UNIT_DIR="$work/units" "$repo/pi/install_boot_service.sh" $other 2>&1)"; code=$?
-  r=0; [ "$code" -eq 2 ] || r=1; has "$out" "rocko.service is installed" || r=1
-  [ ! -e "$work/units/rocko-$other.service" ] || r=1; [ ! -s "$SYSTEMCTL_LOG" ] || r=1
-  check "install_boot_service.sh $other while rocko.service is installed: refused (2), nothing installed" "$r" "code $code: $out"
-done
 
 echo
 echo "$pass passed, $fail failed"

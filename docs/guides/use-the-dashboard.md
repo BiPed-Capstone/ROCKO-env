@@ -43,9 +43,8 @@ default; to open it from the laptop's browser the container's port 8080 would ha
 
 ### It starts at boot with the robot
 
-The separate dashboard service (`rocko-dashboard.service`) is **replaced** by `rocko.service`. Installing the new
-service removes the old one, and `pi/install_boot_service.sh dashboard` refuses to install while `rocko.service` is
-installed (two dashboards would fight over port 8080). How to install, check and remove it, and how to migrate:
+The boot service `rocko.service` starts the dashboard along with the supervisor; there is no separate dashboard
+service any more. How to install, check and remove it:
 [Run ROCKO on the Pi](run-on-the-pi.md#the-boot-service-the-supervisor).
 
 How it behaves under the supervisor:

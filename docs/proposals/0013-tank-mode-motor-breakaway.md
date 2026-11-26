@@ -1,6 +1,9 @@
 # Proposal 0013 — make a small drive command start the wheels turning in tank mode
 
-- **Status:** Open
+- **Status:** Open. **Updated 2026-11-26:** the keyboard this describes was removed, and tank mode's full stick now
+  reaches 100 % duty ([0014](0014-tank-mode-full-speed-for-shaped-sticks.md)), so option B is void and tank mode
+  drives. The question that remains is A or C for balancing, whose commands stay near zero, where the dead band
+  bites; the owner's breakaway numbers are in the [bench guide](../guides/bench-test-tank-mode.md).
 - **Gate:** on-robot step (a bench measurement) and a hardware limit (a motor output constant in a
   critical-path file, `Motor12VoltQuadEncoder.cpp`/`.hpp`, section 6 of [CLAUDE.md](../../CLAUDE.md))
 - **Raised:** 2026-11-18, commit `0c6fb98` (the working tree also held an uncommitted edit to

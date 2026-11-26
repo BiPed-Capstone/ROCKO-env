@@ -181,9 +181,8 @@ pi/install_boot_service.sh robot
 ```
 
 Success: `Installed /etc/systemd/system/rocko.service; enabled at boot; started.` It starts **now** as well, so do
-this with the robot on blocks or with space around it. If the older `rocko-tank.service` or `rocko-dashboard.service`
-is installed, the script removes them first (it prints which); **the new service replaces both**, because two
-launches would fight over the motors and two dashboards over the port. Check it:
+this with the robot on blocks or with space around it. If a Pi still has the older
+`rocko-tank.service` or `rocko-dashboard.service`, the script removes them first and prints which. Check it:
 
 ```bash
 pi/install_boot_service.sh robot status

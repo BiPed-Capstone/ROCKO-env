@@ -24,8 +24,7 @@ the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) nee
 - **A way to read battery voltage** (multimeter or the robot's own meter).
 - **If the robot starts at boot** (`rocko.service`, [guide](run-on-the-pi.md#the-boot-service-the-supervisor)),
   stop it first: `sudo systemctl stop rocko.service`, and check with `pi/install_boot_service.sh robot status`
-  (`running now: inactive`). `pi/launch.sh` refuses to start while it runs. (The older `rocko-tank.service` is
-  stopped the same way, if that is what your Pi still has.)
+  (`running now: inactive`). `pi/launch.sh` refuses to start while it runs.
 - **Your laptop** is not needed for this guide. The launch below uses `teleop:=false`, which leaves out the
   USB controller nodes: `TankTeleop.py` would otherwise publish its own commands (zero, 50 times a second)
   and they would fight the test commands below.

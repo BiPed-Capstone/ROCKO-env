@@ -42,7 +42,6 @@ a laptop is different: there the checkout sits inside a workspace, `/ros2_ws/src
 | `pi/rocko_shell.sh` | Opens a root shell that already has the environment, in the workspace. `exit` leaves it. The prompt ends in `#` | One per extra terminal: `ros2 control list_controllers`, `ros2 topic echo ...` |
 | `pi/rocko_run.sh <command>` | Runs one command as root in the environment | A single command without opening a shell: `pi/rocko_run.sh ros2 topic list` |
 | `pi/install_boot_service.sh robot` | Installs (or with `status` / `remove`, checks or removes) the systemd service `rocko.service` that starts `pi/launch.sh robot` at boot, as root | Once: [below](#the-boot-service-the-supervisor). **While it runs, `pi/launch.sh` refuses to start another launch**: `sudo systemctl stop rocko.service` first |
-| `pi/install_boot_service.sh dashboard` or `... tank` | The older single-purpose services (`rocko-dashboard.service`, `rocko-tank.service`). **Replaced by `robot`**: do not install them next to it (the script refuses) | Only on a Pi that has not moved to `robot` yet |
 | `pi/rocko_env.sh` | **Sourced**, not run: `source pi/rocko_env.sh`. Sets up the terminal as your user (no root) | Building: it needs no root |
 
 Typical session, two terminals (SSH twice). Each command starts with `sudo`'s password prompt the
@@ -122,11 +121,10 @@ To stop it starting at boot, and stop it now:
 pi/install_boot_service.sh robot remove
 ```
 
-- **Migrating from the two old services.** `pi/install_boot_service.sh robot` finds `rocko-tank.service` and
-  `rocko-dashboard.service`, if they are installed, stops and removes them, and says so: two launches would fight over
-  the motors, and two dashboards over port 8080. Installing either old one while `rocko.service` is installed is refused;
-  run `pi/install_boot_service.sh robot remove` first.
-- **The launch guard.** While `rocko.service` (or the old `rocko-tank.service`) runs, `pi/launch.sh` refuses every
+- **Older Pis.** Until 2026-11-24 tank mode and the dashboard had boot services of their own (`rocko-tank.service`,
+  `rocko-dashboard.service`; removed from the repo 2026-11-26). If either is still installed,
+  `pi/install_boot_service.sh robot` stops and removes it and says so: two launches would fight over the motors.
+- **The launch guard.** While `rocko.service` runs, `pi/launch.sh` refuses every
   launch, including `pi/launch.sh robot`, and prints how to stop it. This protects the motors from a second launch.
 - **Before a hand launch or a bench test** (`pi/launch.sh tank`, `pi/launch.sh balance`, the
   [bench test](bench-test-tank-mode.md)): stop the service until the next boot, and check it stopped:

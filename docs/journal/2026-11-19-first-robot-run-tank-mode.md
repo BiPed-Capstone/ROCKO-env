@@ -61,7 +61,7 @@ that fits the numbers; the bench data do not separate it from "the supply sags" 
 | `0158991` | `pi/` helper scripts, `build_ros.sh` takes the checkout as the workspace, `tools/pi_scripts_test.sh`; docs say `~/ROCKO-env`, not `~/ros2_ws` ([journal](2026-11-19-pi-helper-scripts.md)) |
 | `7b4d20e` | tank mode starts the dashboard by default (the owner's edit, kept at their request); the bench results recorded in proposal 0013 |
 | `df91b9e` | **the owner's:** `keyboard_teleop.py` precise mode off, `STEPS_TO_FULL` 5 to 10, re-wrapped |
-| this commit | this entry, the keyboard guide corrected to `df91b9e`, [next-steps.md](../next-steps.md) rows and handoff, the [ladder](../architecture/verification-ladder.md)'s Tier 1 and 4 lines, [the Xbox controller plan](../claude-analysis/xbox-controller-macos-plan.md) |
+| this commit | this entry, the keyboard guide corrected to `df91b9e`, [next-steps.md](../next-steps.md) rows and handoff, the [ladder](../architecture/verification-ladder.md)'s Tier 1 and 4 lines, the Xbox controller plan (removed 2026-11-26; in git history) |
 
 ## Known red, on purpose left red
 
@@ -97,7 +97,7 @@ Two jobs, in the owner's order. The details are in [next-steps.md](../next-steps
 top and rows 4.5 to 4.7).
 
 1. **Xbox controller over Bluetooth on macOS** (row 4.5). Plan, unknowns and a first step the owner can do in
-   ten minutes: [the plan](../claude-analysis/xbox-controller-macos-plan.md). Settle the low-duty problem
+   ten minutes: the plan, `docs/claude-analysis/xbox-controller-macos-plan.md` (superseded, and removed 2026-11-26; it is in git history). Settle the low-duty problem
    first or alongside (row 4.6, proposal 0013): a stick passes through the 0 to 28 % band on every push, and a
    stick that does not rest at exactly zero will hum the motors.
 2. **Self-balancing.** Nothing about balancing was run today, and tank mode says nothing about it (no

@@ -78,22 +78,35 @@ Record: commit SHA, launch file and config, battery voltage, surface, where the 
 
 ## Index
 
-| # | Proposal | Gate | Status |
+Proposals keep their numbers and files when decided, so links to them never break; only this index
+sorts them.
+
+### Waiting on you
+
+In the order that most helps the robot: the first rows unblock the next balance test. "Needs" says whether
+deciding takes the robot or only a desk.
+
+| # | What you decide | Needs | Gate |
 | --- | --- | --- | --- |
-| [0001](0001-allow-container-mount-check.md) | Allow `./check_container_mount.sh` without a prompt | guardrail | Accepted (applied 2026-10-30 with 0002, item B) |
-| [0002](0002-unattended-run-settings.md) | Settings and enforcement for a run nobody is watching (items A to F; B includes 0001) | guardrail | Partly accepted: A, B, C, D applied 2026-10-30; E, F open |
-| [0003](0003-finish-tipover-refactor-and-guard-new-keys.md) | Finish the tipover refactor (a hook-refused edit) and guard the new safety keys | safety behavior / guardrail | Open |
-| [0004](0004-safety-thresholds.md) | Confirm the proposed safety thresholds (watchdog, tipover, IMU faults, motor) | hardware limits | Open |
-| [0005](0005-amend-adr-0003-simulpant-first.md) | Amend ADR 0003: `SimPlant` first, Gazebo later | decision | Open |
-| [0006](0006-velocity-loop-sign-check.md) | Check the robot's velocity-loop sign on a stand (finding H-12), then flip one sign if it is wrong | on-robot step / hardware gains | Accepted (option A, 2026-11-24) |
-| [0007](0007-measure-robot-parameters.md) | Measure the robot's physical parameters (guide: [measure-inertia.md](../guides/measure-inertia.md)), then replace the model's estimates | on-robot step | Open |
-| [0008](0008-candidate-gains-and-tethered-test.md) | Sim-tuned candidate gains for `rocko_controllers.yaml`, with preconditions and a tethered test (nothing tested on a robot) | hardware gains / on-robot step | Open |
-| [0009](0009-controller-manager-minimum-version.md) | What minimum `controller_manager` version should `find_package` require? | version pin | Open |
-| [0010](0010-c1-imu-uart-and-encoders-in-cpp.md) | (Original ask) Finding C-1: read the BNO055 over UART and the encoders in C++, inside the plugins, with a bounded deadline | on-robot step | Mostly superseded: C-1 was done another way on 2026-11-24 (IMU over I²C, encoders in the motor plugin); the UART sections apply only if I²C proves unreliable |
-| [0011](0011-agent-loop-cost-settings.md) | Settings that would make the agent loop cheaper: allow-list entries for the new helper scripts, trimming plugins and MCP servers, a measured model/effort test | guardrail (`.claude/settings.json`) / plugins | Open |
-| [0012](0012-command-ramp-and-watchdog-step.md) | Confirm the drive command's ramp limit (finding H-13), and decide whether the teleop watchdog's zero should ramp too | hardware limit / safety behavior | Open |
-| [0013](0013-tank-mode-motor-breakaway.md) | Tank mode: the keyboard's top speed gives about 5 % motor duty and the wheels only hum; measure the breakaway command on a bench, then add a per-motor stiction duty (option A), or change the keyboard scale (B), or change nothing (C) | on-robot step / hardware limit | Open |
-| [0014](0014-tank-mode-full-speed-for-shaped-sticks.md) | Tank mode: a full stick reaches 100 % motor duty (15 m/s, 93.75 rad/s) instead of the old gamepad's 68 %; now in `TankTeleop.py` | hardware limit (in spirit; set in a launch file) | Proposed, applied at the owner's request (2026-11-20); owner to confirm; not run on a robot |
-| [0015](0015-tank-mode-faster-reversal.md) | Tank mode reverses slowly: `diff_drive_controller`'s 10 m/s² ramp, measured on the robot; raise the deceleration limit (A) or both limits (B) to 30 m/s², and drop the ineffective `min_acceleration` line | hardware limit | Accepted (owner, 2026-11-22): applied, then raised to 160 m/s² to match turning |
-| [0016](0016-pitch-d-term-from-the-gyro.md) | Take the pitch loop's D term from the gyro on the robot: `reference_and_state_interfaces: ["pitch", "pitch_rate"]` in `rocko_controllers.yaml`, no gain change; finding L-8 handled by C-1's good-sample guarantee and a new hold-still enable rule | the owner's rule (wiring of the pitch controller) | Accepted (owner, 2026-11-24): applied; robot test pending |
-| [0017](0017-clamp-the-target-lean.md) | Clamp the velocity loop's target lean (its output, and its integral share) to ±5 deg, from ±150: the likely cause (reasoned, not recorded) of the one-way wheel spin on the owner's floor test | hardware limit | Open |
+| [0017](0017-clamp-the-target-lean.md) | Clamp the velocity loop's target lean to ±5 deg (from ±150): the likely cause, reasoned not recorded, of the one-way wheel spin on the 2026-11-25 floor test | desk to decide; robot to test | hardware limit |
+| [0016](0016-pitch-d-term-from-the-gyro.md) | Nothing to decide (accepted and applied 2026-11-24): run its robot test | robot | wiring of the pitch controller |
+| [0008](0008-candidate-gains-and-tethered-test.md) | Sim-tuned candidate gains for `rocko_controllers.yaml`, with preconditions and a tethered test (nothing tested on a robot) | robot | hardware gains |
+| [0004](0004-safety-thresholds.md) | Confirm the proposed safety thresholds (watchdog, tipover, IMU faults, motor) | desk; some want a robot check | hardware limits |
+| [0013](0013-tank-mode-motor-breakaway.md) | The motors' dead band: add a per-motor stiction duty (A), or change nothing (C); matters for balancing, where commands stay near zero | robot (bench measurement) | hardware limit |
+| [0012](0012-command-ramp-and-watchdog-step.md) | Confirm the drive command's ramp limit (H-13), and whether the watchdog's zero should ramp too | desk | hardware limit / safety behavior |
+| [0007](0007-measure-robot-parameters.md) | Measure the robot's mass, inertia and geometry ([guide](../guides/measure-inertia.md)) so the simulator stops using estimates | bench | on-robot step |
+| [0014](0014-tank-mode-full-speed-for-shaped-sticks.md) | Confirm tank mode's full stick = 100 % motor duty (applied at your request 2026-11-20) | desk | hardware limit (in spirit) |
+| [0003](0003-finish-tipover-refactor-and-guard-new-keys.md) | A five-minute hand edit the hook refused (delete a duplicate copy of the tipover check), and add four safety keys to the hook's list | desk | safety behavior / guardrail |
+| [0009](0009-controller-manager-minimum-version.md) | Which minimum `controller_manager` version the build should require | desk (read the Pi's installed version) | version pin |
+| [0005](0005-amend-adr-0003-simulpant-first.md) | Amend ADR 0003 to say what was built: `SimPlant` first, Gazebo later if needed | desk | decision |
+| [0002](0002-unattended-run-settings.md) | Items E (git hooks) and F (GitHub branch protection); A to D were applied 2026-10-30 | desk | guardrail |
+| [0011](0011-agent-loop-cost-settings.md) | Settings that make agent runs cheaper: allow-list entries for the helper scripts, fewer plugins and MCP servers | desk | guardrail |
+
+### Decided or superseded
+
+| # | Proposal | Outcome |
+| --- | --- | --- |
+| [0001](0001-allow-container-mount-check.md) | Allow `./check_container_mount.sh` without a prompt | Accepted; applied 2026-10-30 with 0002, item B |
+| [0006](0006-velocity-loop-sign-check.md) | Check the velocity-loop sign on a stand (H-12) | Accepted (option A, 2026-11-24); see its record |
+| [0010](0010-c1-imu-uart-and-encoders-in-cpp.md) | Finding C-1: read the BNO055 over UART and the encoders in C++ | Mostly superseded 2026-11-24: C-1 was done with the IMU over I²C; the UART sections are the fallback if I²C proves unreliable |
+| [0015](0015-tank-mode-faster-reversal.md) | Tank mode reverses slowly: raise `diff_drive_controller`'s deceleration limit | Accepted 2026-11-22; applied, then raised to 160 m/s² by the owner |

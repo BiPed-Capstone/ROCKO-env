@@ -1,6 +1,7 @@
 # Proposal 0012 — confirm the drive command's ramp limit, and decide whether the watchdog's zero should ramp too
 
-- **Status:** Open
+- **Status:** Open (items 1 and 2). **Item 3 is void (2026-11-26):** the keyboard and `Joystick.py` were removed;
+  the USB controller's caps are `max_speed`/`max_turn` ([drive guide](../guides/drive-with-usb-controller.md)).
 - **Gate:** hardware limit (an acceleration limit on the drive command) / changing a safety behavior
   (the teleop watchdog, finding C-3)
 - **Raised:** 2026-11-16, built on `8af19dd`, run journal:
