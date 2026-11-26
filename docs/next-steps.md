@@ -63,6 +63,10 @@ changed when, and why, is in the [journal](journal/README.md) and in this file's
 > past sessions the owner let the agent run commands on the Pi over SSH (`ssh rocko`) while present; a new session asks
 > again.
 >
+> **2026-11-26, without the robot** ([journal](journal/2026-11-26-cleanup.md)): dead code removed, speed caps through the
+> supervisor (`pi/launch.sh robot tank_max_speed:=0.3 balance_max_speed:=0.02`), recordings now hold `/rocko/state`.
+> **On the Pi, after pulling: build from clean** (`rm -rf build install log`, then `./build_ros.sh`).
+>
 > Earlier handoffs (2026-11-03 to 2026-11-23) are in this file's git history and in the journals they link to.
 
 ## How to use it
