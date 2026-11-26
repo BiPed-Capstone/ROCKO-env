@@ -61,7 +61,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | M-7 | Medium | The IMU node read the gyro (a second I2C transaction) inside the blocking service call every cycle although no real controller uses the rate (found 2026-11-03; called M-A in the round-3 review) — **fixed on `ai-forward`, awaiting robot**: `read_pitch_rate`, default false; one gap left |
 | M-8 | Medium | Two unthrottled INFO lines per gamepad message in `DiffDriveController.py` (found 2026-11-03; called M-B in the round-3 review) — **fixed on `ai-forward`** (the lines were removed) |
 | L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances — **fixed on `ai-forward`** (2026-11-26: deleted; it was never read) |
-| L-2 | Low | IMU class is named for a part that is no longer used; dead imports |
+| L-2 | Low | IMU class is named for a part that is no longer used; dead imports — the imports went with `ICM20948.py` (removed 2026-11-24, C-1); the name remains (next-steps row 1.6) |
 | L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build — **fixed on `ai-forward`** (2026-10-31) |
 | L-4 | Low | The RViz configs are never installed, so three launch files cannot find them — **fixed on `ai-forward`** (2026-10-31); RViz opening with them not checked |
 | L-5 | Low | A D-term spike after cycles in which the IMU angle was held (found 2026-10-31, not fixed) |
