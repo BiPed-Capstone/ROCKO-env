@@ -98,13 +98,14 @@ actually behaves — what to launch, what success looks like, when to abort.
 ## 7. Known findings — read before proposing anything
 
 [`docs/claude-analysis/balance-loop-findings.md`](../../../docs/claude-analysis/balance-loop-findings.md)
-already catalogues the live problems (blocking service calls in the loop, IMU failure reporting
-upright, open-loop motor command, no tipover cutoff, no watchdog) with severities and locations.
+catalogues the problems found in the loop (blocking service calls, IMU failure reporting upright, open-loop
+motor command, no tipover cutoff, no watchdog) with severities, locations and a status line for each; several
+are fixed in code (C-1, C-2, C-3, H-4, H-6), so read the status before assuming one is live.
 [`bno055-improvements.md`](../../../docs/claude-analysis/bno055-improvements.md) covers the sensor side.
 
 Check whether your idea is already written up there. If it is, reference the finding ID (C-1, H-3, …)
-instead of rediscovering it, and **respect the stated ordering** — C-1 dominates the sensor work, so
-sensor improvements landed first will be measured against a still-broken feedback path.
+instead of rediscovering it, and **respect the stated ordering**. (C-1 dominated the sensor work until it was
+fixed on 2026-11-24; [`docs/next-steps.md`](../../../docs/next-steps.md) has the order as it stands.)
 
 Note what the findings do and do not tell you to do. Fixing C-1 (move device I/O into C++) or C-2
 (stop reporting upright on failure) is code you may write — and a *reduction* of the fail-safe

@@ -5,6 +5,16 @@
 **Applies to:** `rocko_env/rocko_env/hardware/sensors/icm20948/` (the directory and classes are named
 for an ICM20948; the part actually fitted is a BNO055 — see [Naming](#naming) below)
 
+**Status (2026-11-26):** what became of each change. The rest of this page is the analysis as written.
+
+| # | Status |
+| --- | --- |
+| 1 | **Done in code** (2026-11-24): the pitch loop's D term reads the gyro rate ([proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md)); its stand test is pending |
+| 2 | **Not done, by choice**: the owner kept I²C (no rewiring) and the IMU plugin now reads it itself, one bounded burst per cycle ([how](../architecture/imu-i2c-read.md)); 0 failures in about 5 minutes on the robot. UART stays the fallback ([proposal 0010](../proposals/0010-c1-imu-uart-and-encoders-in-cpp.md)) |
+| 3 | **Not done**: the plugin still selects NDOF (`kModeNdof` in `ICM20948.cpp`) |
+| 4 | **Not done**: the plugin reads Euler angles (in the same burst as the gyro, finding H-3) |
+| offset | The hardcoded pitch offset is now the xacro parameter `pitch_offset_deg`, set so level reads 0 ([journal](../journal/2026-11-25-level-pitch-offset-and-lean-clamp.md)) |
+
 ---
 
 ## Summary

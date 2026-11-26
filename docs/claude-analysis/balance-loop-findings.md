@@ -537,6 +537,8 @@ axis corresponds to robot pitch, and verify the sign — an inverted D term is w
 This is likely the largest single control improvement available without changing any hardware. See
 [`bno055-improvements.md`](bno055-improvements.md) § 1.
 
+**Status on `ai-forward` (2026-11-24): fixed in code, awaiting robot.** `rocko_controllers.yaml` wires the pitch loop to `["pitch", "pitch_rate"]`, so its D term reads the gyro rate ([proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md), accepted and applied; its stand test is pending). The IMU plugin reads the gyro every cycle in the same burst as the angles ([how](../architecture/imu-i2c-read.md)); the axis and sign were measured on the robot, axis 0 (X), sign -1 ([journal](../journal/2026-11-23-gyro-check.md)). The older status below describes the removed Python node.
+
 **Status on `ai-forward` (2026-11-02): partly fixed.** Next-steps row 1.2. *Done in code:*
 `Icm20948Data.srv` has `pitch_rate_deg_s`; `ICM20948.py` reads `.gyro` once per reply, **only when its `read_pitch_rate` parameter is true (default false since
 2026-11-03, finding [M-7](#m-7--the-imu-node-read-the-gyro-every-cycle-for-nothing); with it false the rate is NaN and

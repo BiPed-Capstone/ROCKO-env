@@ -45,9 +45,11 @@ the path is fixed. Before proposing gains, check the code and the findings doc f
 - Is the loop actually running at 100 Hz, without overruns?
 - Does a failed sensor read still report "upright"? (finding C-2)
 - Is the motor command still open loop — PWM straight from commanded velocity? (finding H-1)
-- Is the D term differentiating a fused angle instead of reading gyro rate? (finding H-6: the plugin now
-  exports `pitch_rate` and the sim YAML uses it, but `rocko_controllers.yaml` still has `["pitch"]` and the
-  gyro axis and sign are unverified, so for the robot the answer is still yes)
+- Is the D term differentiating a fused angle instead of reading gyro rate? (finding H-6: since 2026-11-24
+  `rocko_controllers.yaml` takes it from the gyro, `["pitch", "pitch_rate"]`, with the axis and sign measured on
+  the robot; proposal 0016's stand test is still pending)
+- What the current state of each of these is: the HANDOFF box at the top of
+  [`docs/next-steps.md`](../../../docs/next-steps.md). It is the one place that tracks them.
 
 If any answer is yes, say clearly that tuning is premature and point at
 [`balance-loop-findings.md`](../../../docs/claude-analysis/balance-loop-findings.md). Fixing the
