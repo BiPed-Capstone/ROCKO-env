@@ -14,23 +14,18 @@ Read this whole file before your first tool call.
 
 ## 1. What the robot is
 
-Read [`README.md`](README.md) first — it has the signal-path diagram, the folder map, and build
-instructions. In one paragraph:
+[`README.md`](README.md) has the signal-path diagram and the folder map; the words are in the
+[glossary](docs/glossary.md). In short: a USB gamepad on the Pi → `joy`'s `game_controller_node` → `Supervisor.py` (mode, enabled) and, in
+balancing mode, `BalanceTeleop.py` → `DiffDriveController.py` → a **cascade**: `velocity_pid_controller` compares
+commanded and measured wheel velocity and outputs a *target lean angle*, `pitch_pid_controller` compares that target
+with measured pitch and outputs *wheel velocity*, and
+`left/right_add_feedforward_controller` adds a feedforward term and drives the `Motor12VoltQuadEncoder` hardware
+plugin. To go faster the robot must first lean; that inversion is why the loops are nested in that order
+([control-cascade.md](docs/architecture/control-cascade.md)).
 
-A USB gamepad plugged into the Pi is read by `joy`'s `game_controller_node`; `Supervisor.py` picks
-the mode and whether the robot is enabled, and in balancing mode `BalanceTeleop.py` turns the sticks
-into a velocity command. `DiffDriveController.py` turns that into per-wheel references. Then a **cascade**: `velocity_pid_controller` compares
-commanded vs. measured wheel velocity and outputs a *target lean angle*; `pitch_pid_controller`
-compares that target against measured pitch and outputs *wheel velocity*;
-`left/right_add_feedforward_controller` adds a feedforward term and drives the
-`Motor12VoltQuadEncoder` hardware plugin. To go faster the robot must first lean — that inversion is
-why the loops are nested in that order. See
-[docs/architecture/control-cascade.md](docs/architecture/control-cascade.md).
-
-Two modes: **balancing** (`rocko.launch.py`, the real thing) and **tank** (`rocko_tank_mode.launch.py`,
-balancing disabled, plain diff drive). Both take `use_mock_hardware:=true` to run against a mock
-that checks controller wiring (§4). It defaults to `false`, and must stay that way: a robot launched
-with no arguments gets real hardware.
+Two modes: **balancing** (`rocko.launch.py`, the real thing) and **tank** (`rocko_tank_mode.launch.py`, balancing
+disabled, plain diff drive). Both take `use_mock_hardware:=true` to run against a mock that checks controller wiring (§4). It defaults to
+`false`, and must stay that way: a robot launched with no arguments gets real hardware.
 
 ---
 
@@ -62,22 +57,21 @@ allows and the evidence is written down.
 7. **Document in the same change** (§7): journal entry, architecture page, ADR if the choice is not
    obvious, README, the verification ladder's status table, and the row in
    [`docs/next-steps.md`](docs/next-steps.md) if the change finishes, starts or blocks an item.
-8. **Commit, then publish `ai-forward`.** Commit verified work to the working branch in logical
-   commits, one goal at a time. On `ai-forward`, once the review loop is finished, push it, **without
-   asking**: the maintainer has said so (2026-10-29: "the agent should always be able to push code").
-   Do not ask "shall I push?", offer it as a choice, or wait for a go-ahead; push every commit you
-   make on `ai-forward` before the turn ends, and report what went out. The only reasons not to are
-   the fetch check below and a third review round that is still dirty (step 6). First
-   `git fetch origin`, then `git log --oneline HEAD..origin/ai-forward`: it lists commits the remote
-   has and you do not, and it must print **nothing** (an `unknown revision` error only means the
-   branch is not on the remote yet). If it lists commits, a human has pushed: stop and report it, and
-   do not merge, rebase or force. Otherwise `git push origin ai-forward` (`git push -u origin
-   ai-forward` the first time). Run it as its own command, with nothing chained,
-   piped, redirected or appended (no `cd ... &&`, no `2>&1 | tail`, no `; echo`): the wrapped form did
-   not match the allow rule. If the push is refused,
-   is declined at a prompt, or fails, stop and report it; do not try another form (`gh api`, a reworded
-   or chained command, another remote). Do not add a commit only to log the push: the remote is the
-   record of what went out. Never commit to `main`, never push another branch, never force-push.
+8. **Commit, then publish `ai-forward`, without asking.** Commit verified work in logical commits, one goal at a
+   time. Once the review loop is finished, push every commit you make before the turn ends, and report what went
+   out: the maintainer has said so (2026-10-29: "the agent should always be able to push code"). Do not ask "shall I
+   push?", offer it as a choice, or wait for a go-ahead. The procedure:
+   - `git fetch origin`, then `git log --oneline HEAD..origin/ai-forward`. It must print **nothing** (an `unknown
+     revision` error only means the branch is not on the remote yet). If it lists commits, a human has pushed: stop
+     and report it; do not merge, rebase or force.
+   - Then `git push origin ai-forward` (`git push -u origin ai-forward` the first time), **in exactly those words, as
+     its own command**: nothing chained, piped, redirected or appended (no `cd ... &&`, no `2>&1 | tail`, no
+     `; echo`). Only that exact form matches the allow rule.
+   - If the push is refused, declined at a prompt, or fails, stop and report it; do not try another form (`gh api`,
+     a reworded or chained command, another remote). Do not add a commit only to log the push: the remote is the
+     record of what went out.
+   - The only reasons not to push: the fetch check above, and a third review round still dirty (step 6). Never
+     commit to `main`, never push another branch, never force-push.
 9. **Report honestly** (§4 closes with what this means): the tiers you ran and what they printed,
    the findings you fixed and any you declined (with why), the proposals you filed, what you did
    **not** verify, and the procedure a human should follow on the robot.
@@ -87,25 +81,23 @@ or (b) the goal is ambiguous in a way that changes the design and reading the co
 settle it. Ask one question with your recommendation. If the environment is broken, diagnose it
 rather than paper over it; a tier you could not run is reported as *not run*.
 
-**Unattended runs.** Nobody is answering prompts when the run is headless (started with `claude -p`)
-or the person says they are away. A session that does not pick a permission mode is set to start in
-`acceptEdits` (`.claude/settings.json`, proposal 0002 item A, 2026-10-30): edits should not prompt,
-and a command that is not on the allow-list should. Whether the desktop app honors that over its own
-mode picker, and what the guard hook does in that mode, is not verified. Then:
+**Unattended runs.** Nobody is answering prompts when the run is headless (`claude -p`) or the person says they are
+away. A session that picks no permission mode starts in `acceptEdits` (`.claude/settings.json`, proposal 0002 item A):
+edits should not prompt, commands not on the allow-list should. Whether the desktop app honors that over its own mode
+picker, and what the guard hook does in that mode, is not verified. Then:
 
-- A tool call that comes back refused counts as a hook denial (§3): do not retry it by another route
-  (`sed -i`, a differently spelled command). Write a proposal that names the exact command, unless
-  an open one already does (cite it), and carry on with whatever does not need it. A session that
-  waits at a prompt instead just stalls while the person is away, so avoid commands you know prompt.
-- If `./check_container_mount.sh` is refused, or you skip it, report everything
-  that runs in the container as *not run* (`verify_urdf.sh`, Tier 1 and Tier 2): without it those results cannot be tied to this checkout
-  (§8). The host checks still count.
-- Pick work by the rule in [`docs/next-steps.md`](docs/next-steps.md), *How to use it*, item 6:
-  Wave 0 rows an agent can write and check. Wave 1 or later only when the person names the row.
-- Stop, rather than invent work, when no such row is left, when step 6's third round is still dirty,
-  or when nothing else can go on without the refused command.
-- Nobody reads the chat. Put the step 9 report in the journal entry (the commit message, when there
-  is none) and end it with a line saying why you stopped.
+- A tool call that comes back refused counts as a hook denial (§3): do not retry it by another route (`sed -i`, a
+  differently spelled command). Write a proposal naming the exact command, unless an open one already does (cite it),
+  and carry on with what does not need it. Avoid commands you know prompt: a waiting session just stalls.
+- If `./check_container_mount.sh` is refused or skipped, report everything that runs in the container
+  (`verify_urdf.sh`, Tier 1, Tier 2) as *not run*: those results cannot be tied to this checkout (§8). Host checks
+  still count.
+- Pick work by the rule in [`docs/next-steps.md`](docs/next-steps.md), *How to use it*, item 6: Wave 0 rows an agent
+  can write and check; Wave 1 or later only when the person names the row.
+- Stop, rather than invent work, when no such row is left, when step 6's third round is still dirty, or when nothing
+  else can go on without the refused command.
+- Nobody reads the chat: put the step 9 report in the journal entry (the commit message when there is none), ending
+  with a line saying why you stopped.
 
 ---
 
@@ -122,48 +114,42 @@ damage hardware or silently change what the project supports.
 | *Adding* a safeguard (a tipover cutoff, a watchdog, a clamp) | **The guardrails**: `.claude/hooks/`, `.claude/settings.json`, `.claude/settings.local.json`, `.claude/commands/`, `.mcp.json`, `.git/config`, `.git/hooks/` (the hook *asks*) |
 | Gains in a separate `*_sim.yaml`, once a physics sim exists | **Anything on a robot**: `ros2 launch`/`run` on a Pi, a flash, a first tethered test |
 
-**Pushing is allowed for one thing only, and needs no go-ahead (step 8):** `git push origin
-ai-forward` (or `git push -u origin ai-forward`), in exactly those words. `.claude/settings.json`
-allows those two commands by exact match, so in `default` mode (and, untested, in `acceptEdits`) any
-other `git push` prompts a human, except that a push spelled `git push --force ...`, `-f`,
-`--force-with-lease`, `--delete` or `--no-verify` is refused outright by the deny list (proposal
-0002, item D; tried 2026-10-30 in `auto` mode). Don't attempt one, and never force-push or delete a
-remote branch. A push publishes: everything on `ai-forward` is readable by whoever can read the
-team's GitHub repo, so never commit secrets or credentials.
+**Pushing is allowed for one thing only, and needs no go-ahead:** `git push origin ai-forward` (or `git push -u
+origin ai-forward`), in exactly those words, by the procedure in §2 step 8. `.claude/settings.json` allows those two
+commands by exact match, so in `default` mode (and, untested, in `acceptEdits`) any other `git push` prompts a human;
+a push spelled `--force`, `-f`, `--force-with-lease`, `--delete` or `--no-verify` is refused outright by the deny
+list (proposal 0002, item D; tried 2026-10-30 in `auto` mode). Don't attempt one; never force-push or delete a remote
+branch. A push publishes: everything on `ai-forward` is readable by whoever can read the team's
+GitHub repo, so never commit secrets or credentials.
 
-**These rules stop accidents, not a determined agent.** `gh api` is off the allow-list (proposal 0002,
-item C) but can still move or delete any remote ref, and in `auto` mode a classifier decides whether it
-prompts; a chain of allowed commands such as `git fetch origin && git push origin ai-forward` runs
-without one; the push target is whatever `.git/config` says; and a rule added by answering "don't ask
-again", or kept in `settings.local.json` or a user's own settings, is invisible to this file. Keep to
-the spirit.
+Also off limits: committing to `main` and merging. The deny list refuses a command that starts `git merge` (not
+`git -C . merge` or `git pull`), and nothing stops a commit on `main` until the git hooks are installed (proposal 0002,
+item E), so don't.
 
-Also off limits: committing to `main` and merging. The deny list refuses a command that starts
-`git merge` (not `git -C . merge` or `git pull`), and nothing stops a commit on `main` until the git
-hooks are installed (proposal 0002, item E), so don't.
+When the hook denies an edit, do **not** work around it with `sed -i` or a shell redirect. The hook does not watch
+Bash, but the rule applies all the same. Write a proposal ([`docs/proposals/`](docs/proposals/README.md)): the
+change, why, the evidence and its tier, and the test a human should run. Then carry on with the rest of the task.
 
-When the hook denies an edit, do **not** work around it with `sed -i` or a shell redirect. The hook
-does not watch Bash, but the rule applies all the same. Write a proposal
-([`docs/proposals/`](docs/proposals/README.md)) — the change, why, the evidence and its tier, and the
-test a human should run — then carry on with the rest of the task.
+**These rules stop accidents, not a determined agent; keep to their spirit where the code cannot.** The hook
+(`.claude/hooks/guard_protected_files.py`; tests: `.claude/hooks/test-guard-protected-files.sh`) is a tripwire, not a
+proof:
 
-**The hook is a tripwire, not a proof.** Its source, `.claude/hooks/guard_protected_files.py`, lists
-what it knows. Its limits, so you can keep to the *spirit* of this table where the code cannot:
-
-- It watches `Edit`, `Write` and `MultiEdit` only. Not Bash, and not the commands on the
-  `settings.json` allow-list that can write files or run code (`docker compose`, `colcon`, `xacro`,
-  `git commit`). Those are trusted to be used for their purpose.
-- It knows a fixed list of gain and limit keys, version-pin patterns and safety words. The safety
-  check counts words; it cannot tell a real clamp from a comment that repeats the word.
-- **The gain guard reads lines, not YAML.** A quoted key (`{"p": 5}`), a `gains: |` block scalar, or
-  moving a line out of its map is beyond it. Don't do those either.
-- **Launch files are free to edit, but** one that loads a different YAML or overrides `update_rate`
-  sidesteps the gain guard. Don't; `ros2-control-reviewer` checks for it.
-- `CLAUDE.md`, `.claude/agents/` and `.claude/skills/` are unguarded: a human reads their diffs. Do
-  not loosen §3 or the honesty rule in them.
+- It watches `Edit`, `Write` and `MultiEdit` only: not Bash, and not allow-listed commands that can write files or
+  run code (`docker compose`, `colcon`, `xacro`, `git commit`). Those are trusted to be used for their purpose.
+- It knows a fixed list of gain and limit keys, version-pin patterns and safety words. The safety check counts words;
+  it cannot tell a real clamp from a comment that repeats the word.
+- **The gain guard reads lines, not YAML.** A quoted key (`{"p": 5}`), a `gains: |` block scalar, or moving a line
+  out of its map is beyond it. Don't do those either.
+- **Launch files are free to edit, but** one that loads a different YAML or overrides `update_rate` sidesteps the
+  gain guard. Don't; `ros2-control-reviewer` checks for it.
+- `CLAUDE.md`, `.claude/agents/` and `.claude/skills/` are unguarded: a human reads their diffs. Do not loosen §3 or
+  the honesty rule in them.
 - If the hook itself cannot run (no `python3`, a lost execute bit) the edit proceeds.
-
-Tests for the hook: `.claude/hooks/test-guard-protected-files.sh`.
+- Beyond the hook: `gh api` is off the allow-list (proposal 0002, item C) but can still move or delete any remote ref,
+  and in `auto` mode a classifier decides whether it prompts; a chain of allowed commands such as
+  `git fetch origin && git push origin ai-forward` runs without a prompt; the push target is whatever `.git/config`
+  says; and a rule added by answering "don't ask again", or kept in `settings.local.json` or a user's own settings,
+  is invisible to this file.
 
 ---
 
@@ -268,18 +254,19 @@ checked today, with who can do each item and what can check it.
 This repo is judged on how well it is documented and how easily a stranger can reproduce a result.
 With AI writing the code, the docs are how a human comes to understand it.
 
-- **All docs live in [`docs/`](docs/).** `README.md` is the entry point and links into `docs/`.
-  Homes: [`architecture/`](docs/architecture/) (how it works and why),
-  [`guides/`](docs/guides/) (do this, get that), [`decisions/`](docs/decisions/) (ADRs),
-  [`journal/`](docs/journal/README.md) (what each run did and verified),
-  [`proposals/`](docs/proposals/README.md) (decisions waiting on a human),
-  [`claude-analysis/`](docs/claude-analysis/) (AI-produced audits).
+- **All docs live in [`docs/`](docs/README.md).** `README.md` is the entry point and links into `docs/`; it does not
+  repeat procedures. Homes: [`architecture/`](docs/architecture/) (how it works and why),
+  [`guides/`](docs/guides/README.md) (do this, get that), [`decisions/`](docs/decisions/) (ADRs),
+  [`journal/`](docs/journal/README.md) (what each run did and verified; [the history](docs/journal/history.md) is the
+  one-page summary), [`proposals/`](docs/proposals/README.md) (decisions waiting on a human),
+  [`claude-analysis/`](docs/claude-analysis/) (AI-produced audits), [`glossary.md`](docs/glossary.md).
 - **A behavior change is not done until its docs change with it, in the same commit.**
 - **A number that changes (a check count, a duration, a sweep tally, a gain) is written in ONE page**
   (the ladder's status table, the results file, or the YAML); every other page links to it instead of
   copying it. Five of six docs reviews in the 2026-11 run found a stale copy, and each cost a fix agent
   ([the measurements](docs/claude-analysis/agent-loop-efficiency.md)).
-- Write for a capstone student in week one. Define jargon on first use. Never write "simply".
+- Write for a capstone student in week one. Define jargon on first use, or add it to the glossary. Never write
+  "simply".
 - **State what is not true.** Do not document an aspiration as a fact; and when a limitation is
   fixed, delete the sentence that says it exists.
 - Every procedure is **copy-pasteable and complete**: which machine, which shell, what to source
@@ -314,24 +301,21 @@ docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_
 .githooks/test-git-hooks.sh                                                                   # Tier 0, host; only if you changed .githooks/
 ```
 
-**One container, one checkout.** A laptop has one dev container, and it shows whichever *checkout*
-(a folder holding a copy of this repo: a second clone, or a git worktree) last ran
-`docker compose -f <checkout>/docker/compose.yml up -d`. Work in a checkout it is not showing and the
-commands above still run and still pass, but they test the *other* folder's files. Run
-`./check_container_mount.sh` from the repo root, in those words, at the start of a session and
-whenever you change checkout: exit 0 means the container sees your files; exit 1 means it does not,
-and it prints the fix; exit 2 means it could not tell (no Docker, or the container is not running).
-`up -d` is itself the switch: it points the container at the checkout you run it from and takes it
-away from a session using another one. And `ok` does not mean the build output is yours: after a
-switch, rebuild from clean (the fix prints the command) before you trust Tiers 1 and 2. It is on
-the `settings.json` allow-list as an exact rule, so run it in exactly those words
-([proposal 0001](docs/proposals/0001-allow-container-mount-check.md), accepted 2026-10-30). The full
-explanation is in [Verify a change without the robot](docs/guides/verify-in-container.md).
+`tools/run_ladder.sh` runs all of these except the `.githooks` test, and the rest of the ladder, in one call (§12).
 
-`build_ros.sh` passes `-DROCKO_SKIP_WIRINGPI` (compose sets it to `ON`) and exits 1 if the build
-fails. Run it from `src/ROCKO-env/`, not `/ros2_ws/build_ros.sh`: that second copy is a single-file
-mount that goes stale when the host file is replaced. The `build-verify` skill has the expected
-output, the failure modes and the container details.
+**One container, one checkout.** A laptop has one dev container, and it shows whichever checkout (a clone or a git
+worktree) last ran `docker compose -f <checkout>/docker/compose.yml up -d`. `up -d` is itself the switch: it points
+the container at the checkout you run it from and takes it away from a session using another one. In another
+checkout the commands above still run and pass, against the other folder's files. So run `./check_container_mount.sh`
+from the repo root, **in exactly those words** (an exact allow-list rule, [proposal
+0001](docs/proposals/0001-allow-container-mount-check.md)), at the start of a session and whenever you change
+checkout: exit 0 means the container sees your files; 1 means it does not, and it prints the fix; 2 means it could
+not tell (no Docker, or the container is not running). After a switch, `ok` does not mean the build output is yours:
+rebuild from clean (`tools/run_ladder.sh --clean`, or the command the fix prints) before you trust Tiers 1 and 2. Details: [Verify a change without the robot](docs/guides/verify-in-container.md).
+
+`build_ros.sh` passes `-DROCKO_SKIP_WIRINGPI` (compose sets it to `ON`) and exits 1 if the build fails. Run it from
+`src/ROCKO-env/`, not `/ros2_ws/build_ros.sh`: that second copy is a single-file mount that goes stale when the host
+file is replaced. The `build-verify` skill has the expected output, the failure modes and the container details.
 
 ---
 
@@ -355,32 +339,19 @@ in, say so out loud instead of omitting them. A result you got from the mock is 
   `rocko_env_hardware.xml` or `rocko_env_controllers.xml`, or ROS will not find them. Use the
   `add-hardware` skill, and keep the mock's interface names in step with the real ones.
 - Don't commit `build/`, `install/`, or `log/` — gitignored, but they exist in the tree.
-- The IMU plugin is `rocko_env::BNO055` (plugin name `rocko_env/BNO055`, folder `hardware/sensors/bno055/`),
-  named after the part fitted, a Bosch BNO055; it is all-caps because it is a part number, while the helper
-  headers beside it (`Bno055UartProtocol.hpp`, `ImuFaultTracker.hpp`, `ImuSnapshotCheck.hpp`) are ordinary
-  PascalCase. Until 2026-11-26 it was called `ICM20948`, an unrelated IMU that is not on the robot (finding L-2).
-  Journals and proposals written before then still use the old name.
+- The IMU plugin is `rocko_env::BNO055` (plugin `rocko_env/BNO055`, folder `hardware/sensors/bno055/`): all capitals
+  because it is the part number, an exception to PascalCase; its helper headers are ordinary PascalCase. Before
+  2026-11-26 it was `ICM20948`, a different part's name (finding L-2); older journals and proposals use that name.
 
 ---
 
 ## 11. Skills and agents
 
-| Skill | Use it when |
-| --- | --- |
-| `build-verify` | Building, or climbing the verification ladder |
-| `control-loop-change` | Touching any §6 critical-path file |
-| `tune-gains` | Reasoning about or proposing PID gains |
-| `add-hardware` | Adding a sensor or actuator plugin |
-| `bootstrap-sim` | Building Tier 3, or any check the loop is missing |
-| `write-docs` | Writing or updating anything in `docs/` |
-| `orchestrate-run` | Continuing a multi-stage run, launching more than one subagent, or asked about the cost of the loop |
-
-| Agent | Checks |
-| --- | --- |
-| `realtime-auditor` | Real-time safety of the 100 Hz path |
-| `ros2-control-reviewer` | Plugin registration, interface names, chaining, mock parity, version lock |
-| `explainability-reviewer` | Simplicity and whether a student can follow it |
-| `docs-reviewer` | Docs accuracy against the code, reproducibility |
+Claude Code lists the skills (`.claude/skills/`) and review agents (`.claude/agents/`) with their descriptions, so
+they are not repeated here. Which reviewer runs when is in §2 step 5; `control-loop-change` is required reading for a
+§6 file, `tune-gains` for anything about gains, `orchestrate-run` before continuing a multi-stage run, launching more than one
+subagent, or answering a question about the loop's cost, `build-verify` for building and the ladder, `add-hardware`
+for a new plugin, `bootstrap-sim` for a missing check, and `write-docs` for anything in `docs/`.
 
 ---
 
@@ -391,10 +362,13 @@ the 2026-10 to 2026-11 runs: 96 % of tokens were cache reads, about a third of t
 checks that failed at random, and 46 % of the orchestrator's turns were replies to "still waiting" notices
 ([the page](docs/claude-analysis/agent-loop-efficiency.md)). So:
 
-- **Run the ladder with `tools/run_ladder.sh`** (once, one table out), a check N times with
-  `tools/repeat_check.sh <check> <N>`, links with `tools/check_doc_links.py`, a run's token use with
-  `tools/session_usage.py <session-id>`. Do not write your own wait loop or link scanner; two hand-written
-  loops cost hours (a `pgrep` that matched itself, runs that overlapped).
+- **Run the ladder with `tools/run_ladder.sh`** (once, one table out; `--host` for the laptop-only checks), a check N
+  times with `tools/repeat_check.sh <check> <N>`, links and the journal/proposal indexes with
+  `tools/check_doc_links.py`, a run's token use with `tools/session_usage.py <session-id>`. Do not write your own wait
+  loop or link scanner; two hand-written loops cost hours (a `pgrep` that matched itself, runs that overlapped).
+- **After fixing review findings, rerun every host test** (`tools/run_ladder.sh --host`), not only the ones you
+  think the fix touched: on 2026-11-26 a commit went out with a host test red because only two were rerun
+([journal](docs/journal/2026-11-26-cleanup.md)).
 - **A timing check stamps at the source** and never uses a fixed window around an event whose duration it does
   not control (`bootstrap-sim`, "Designing a check that does not fail at random"). A red result stays red until
   a cause is found: rerunning it (`tools/repeat_check.sh <check> 10`) gathers evidence and reports the tally,

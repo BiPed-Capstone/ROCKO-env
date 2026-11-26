@@ -144,6 +144,26 @@ systemd: rocko.service ──> pi/launch.sh robot ──> ros2 launch rocko_env 
                               Supervisor.py ──child──> ros2 launch rocko_env <mode's launch file> supervised:=true
 ```
 
+What the child stack holds (read from the launch files with `supervised:=true` and `modes.py`; "inactive" means
+loaded but not commanding until the supervisor's enable):
+
+```
+tank:    rocko_tank_mode.launch.py
+           ├── ros2_control_node      motor plugins (the IMU is not used in tank mode)
+           │     ├── joint_state_broadcaster   active
+           │     └── diffbot_base_controller   inactive (diff_drive_controller)
+           ├── robot_state_publisher
+           └── TankTeleop.py          /joy -> diffbot_base_controller/cmd_vel, only while enabled
+balance: rocko.launch.py
+           ├── ros2_control_node      motor plugins and the BNO055 IMU plugin
+           │     ├── velocity_pid_controller, pitch_pid_controller,
+           │     │   left/right_add_feedforward_controller   inactive (the cascade)
+           │     └── joint_state_broadcaster   active (the supervisor reads pitch from it)
+           ├── robot_state_publisher
+           ├── BalanceTeleop.py       /joy -> diffbot_base_controller/cmd_vel, only while enabled
+           └── DiffDriveController.py cmd_vel -> velocity_pid_controller/reference and the feedforward topics
+```
+
 `rocko.service` replaced the older `rocko-tank.service` and `rocko-dashboard.service` (removed from the repo
 2026-11-26); installing it removes any copy still on the Pi, because two launches would fight over the motors. `pi/launch.sh` refuses any other launch
 while it runs. Install and remove: [run-on-the-pi.md](../guides/run-on-the-pi.md).
