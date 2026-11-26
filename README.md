@@ -17,7 +17,7 @@ The project is built on **ROS 2**, a framework for robot software. The two ideas
 
 On top of that we use **ros2_control**, which is a standard way to separate *"how do I physically talk to this motor"* from *"what should the motor do right now."* That split explains the whole folder layout:
 
-- A **hardware interface** is a C++ plugin that owns a real device. `Motor12VoltQuadEncoder` writes PWM to a motor pin; `ICM20948` reads the IMU. These are the only files that touch GPIO.
+- A **hardware interface** is a C++ plugin that owns a real device. `Motor12VoltQuadEncoder` writes PWM to a motor pin; `BNO055` reads the IMU (a Bosch BNO055, over I²C). These are the only files that touch GPIO.
 - A **controller** reads sensor values and decides what to command. Controllers can be *chained*, meaning one controller's output becomes the next one's input. That chaining is exactly how the balancing works.
 - The **controller_manager** is the process that loads both of the above and runs them on a fixed clock (100 Hz for us).
 
@@ -173,7 +173,7 @@ ROCKO-env
 │       │   ├── motors/                 Motor driver, the only file writing motor PWM; also counts the wheel encoders (WheelEncoder.hpp)
 │       │   ├── sim/                    SimPlant: the simulated robot (a physics model with estimated parameters), not hardware
 │       │   └── sensors/
-│       │       └── icm20948/           IMU driver (the BNO055, read over I²C; the name is historical)
+│       │       └── bno055/             IMU driver (the BNO055, read over I²C)
 │       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
 │       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
 ├── rocko_interfaces/                   Custom messages and services, including the supervisor's RobotState and SetEnabled/SetMode

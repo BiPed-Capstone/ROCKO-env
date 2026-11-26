@@ -1,8 +1,7 @@
 # How the IMU is read: one bounded I2C burst inside the plugin
 
-**What this page covers:** how the `ICM20948` hardware plugin gets pitch, roll, yaw and pitch rate
+**What this page covers:** how the `BNO055` hardware plugin gets pitch, roll, yaw and pitch rate
 from the BNO055 every control cycle, why it was changed on 2026-11-24, and what is still unverified.
-(The part fitted is a BNO055; the `ICM20948` name is historical, see `CLAUDE.md` section 10.)
 
 ## The short version, for a student
 
@@ -24,12 +23,12 @@ counts.
 
 | When | What happens | Where |
 | --- | --- | --- |
-| `on_init` | Reads the hardware parameters from the xacro: `i2c_device`, `i2c_address`, `pitch_offset_deg`, `pitch_rate_axis`, `pitch_rate_sign`. A bad axis or sign refuses to start. | `ICM20948.cpp` |
-| `on_configure` (about 1 s, never in the loop) | Opens the bus; sets the I2C timeout (10 ms) and no retries; checks the chip id (`0xA0`); then starts the sensor the way Adafruit's Python driver did: CONFIG mode, reset, normal power, page 0, NDOF fusion mode. Then waits up to 3 s for two believable samples in a row that agree, because a freshly started BNO055 returns all zeros for a while. No sample means `ERROR`: the controllers never start on NaN. | `ICM20948.cpp` |
-| `read()`, every cycle | One 12-byte burst read. The bytes are decoded (16 counts per degree and per deg/s) and judged by `check_imu_snapshot()`. | `ICM20948.cpp`, `ImuSnapshotCheck.hpp`, decoding in `Bno055UartProtocol.hpp` (the register layout is the same on I2C and UART) |
+| `on_init` | Reads the hardware parameters from the xacro: `i2c_device`, `i2c_address`, `pitch_offset_deg`, `pitch_rate_axis`, `pitch_rate_sign`. A bad axis or sign refuses to start. | `BNO055.cpp` |
+| `on_configure` (about 1 s, never in the loop) | Opens the bus; sets the I2C timeout (10 ms) and no retries; checks the chip id (`0xA0`); then starts the sensor the way Adafruit's Python driver did: CONFIG mode, reset, normal power, page 0, NDOF fusion mode. Then waits up to 3 s for two believable samples in a row that agree, because a freshly started BNO055 returns all zeros for a while. No sample means `ERROR`: the controllers never start on NaN. | `BNO055.cpp` |
+| `read()`, every cycle | One 12-byte burst read. The bytes are decoded (16 counts per degree and per deg/s) and judged by `check_imu_snapshot()`. | `BNO055.cpp`, `ImuSnapshotCheck.hpp`, decoding in `Bno055UartProtocol.hpp` (the register layout is the same on I2C and UART) |
 | A good sample | pitch = sensor pitch + `pitch_offset_deg`; pitch rate = `pitch_rate_sign` x gyro[`pitch_rate_axis`]. All four values are stored for the controllers. | `ImuSnapshotCheck.hpp` |
-| A failed read | A bus error or timeout, or a sample the check rejects (see below). **All four values hold their last good numbers** (never 0.0, finding C-2). The fault tracker counts it; `read()` returns `ERROR` after 5 failures in a row or 10 of the last 20. | `ICM20948.cpp`, `ImuFaultTracker.hpp` |
-| `on_cleanup` / `on_shutdown` | Closes the bus. | `ICM20948.cpp` |
+| A failed read | A bus error or timeout, or a sample the check rejects (see below). **All four values hold their last good numbers** (never 0.0, finding C-2). The fault tracker counts it; `read()` returns `ERROR` after 5 failures in a row or 10 of the last 20. | `BNO055.cpp`, `ImuFaultTracker.hpp` |
+| `on_cleanup` / `on_shutdown` | Closes the bus. | `BNO055.cpp` |
 
 ### What the check rejects
 
@@ -68,8 +67,8 @@ logged, and never counted as a fault. That gap had to be closed before any contr
 | Pitch-rate axis and sign | gyro X, sign -1, measured 2026-11-23 ([journal](../journal/2026-11-23-gyro-check.md)) | `rocko.ros2_control.xacro` |
 | I2C bus and address | `/dev/i2c-1`, `0x28` | `rocko.ros2_control.xacro` |
 | Pitch-jump slack; rate-step limit | 5 deg; 20 000 deg/s² + 50 deg/s (PROPOSED) | `kMaxPitchJumpSlackDeg`, `kMaxPitchAccelDegS2`, `kMaxRateStepSlackDegS` in `ImuSnapshotCheck.hpp` |
-| I2C timeout | 10 ms (PROPOSED) | `kI2cTimeoutMs` in `ICM20948.hpp` |
-| Fault limits | 5 in a row, 10 of 20 (PROPOSED) | `ICM20948.hpp`, `ImuFaultTracker.hpp` |
+| I2C timeout | 10 ms (PROPOSED) | `kI2cTimeoutMs` in `BNO055.hpp` |
+| Fault limits | 5 in a row, 10 of 20 (PROPOSED) | `BNO055.hpp`, `ImuFaultTracker.hpp` |
 
 ## Why I2C and not UART
 

@@ -4,7 +4,7 @@
 // Turns one decoded BNO055 burst (gyro and Euler angles read together, finding H-3) into the values
 // the controllers see, or rejects it. Header-only, standard library only, no I/O, no allocation, so
 // the decision can be tested on a laptop (tools/imu_snapshot_check_test.cpp) and called from the
-// 100 Hz read() of ICM20948.cpp.
+// 100 Hz read() of BNO055.cpp.
 //
 // Why it is separate from the I2C code: the bus can only be exercised on the robot, but whether a
 // sample is believable can be checked anywhere. A sample is all-or-nothing: the angles and the rate
@@ -75,9 +75,9 @@ inline SnapshotVerdict check_imu_snapshot(
     return SnapshotVerdict::kNotDecoded;
   }
   // Real data has 1/16 deg resolution and three independent angles, so three exactly equal values
-  // almost never happen; the all-zero block a starting or reset sensor returns does (ICM20948.py had
-  // the same rule; tools/imu_tilt_log.py saw the zeros at start-up). Zeros plus the offset would
-  // look like a believable pitch. The gyro is NOT in this rule: a still gyro really reads 0, 0, 0.
+  // almost never happen; the all-zero block a starting or reset sensor returns does (the removed
+  // Python IMU node had the same rule; tools/imu_tilt_log.py saw the zeros at start-up). Zeros plus
+  // the offset would look like a believable pitch. The gyro is NOT in this rule: a still gyro really reads 0, 0, 0.
   if (s.heading_deg == s.roll_deg && s.roll_deg == s.pitch_deg) {
     return SnapshotVerdict::kAllAnglesEqual;
   }

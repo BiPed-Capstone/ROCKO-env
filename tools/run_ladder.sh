@@ -70,7 +70,7 @@ if [ "$DO_CONTAINER" = 1 ]; then
 fi
 
 # Host tests: no ROS, no container. Every C++ test gets every include folder (a test uses the ones it needs).
-INC=(-I rocko_env/rocko_env/hardware/sensors/icm20948/include -I rocko_env/rocko_env/hardware/sim/include
+INC=(-I rocko_env/rocko_env/hardware/sensors/bno055/include -I rocko_env/rocko_env/hardware/sim/include
      -I rocko_env/rocko_env/controllers/add_feedforward/include -I rocko_env/rocko_env/hardware/motors/include)
 for t in tools/*_test.cpp; do
   n=$(basename "$t" .cpp)

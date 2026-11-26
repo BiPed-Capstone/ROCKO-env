@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-20
 **Companion to:** [`balance-loop-findings.md`](balance-loop-findings.md)
-**Applies to:** `rocko_env/rocko_env/hardware/sensors/icm20948/` (the directory and classes are named
-for an ICM20948; the part actually fitted is a BNO055 — see [Naming](#naming) below)
+**Applies to:** `rocko_env/rocko_env/hardware/sensors/bno055/` (called `icm20948/` when this was written;
+renamed 2026-11-26 — see [Naming](#naming) below)
 
 **Status (2026-11-26):** what became of each change. The rest of this page is the analysis as written.
 
@@ -261,6 +261,10 @@ assembled robot, not of the sensor.
 ---
 
 ## Naming
+
+**Status (2026-11-26): done in code, awaiting robot.** The class, plugin name, folder and files are
+now `BNO055` (next-steps row 1.6). The service type and the Python node went earlier, with C-1. The
+paragraphs below are as written.
 
 The class, file, directory, service type (`Icm20948Data`), pluginlib export, and the
 `rocko.ros2_control.xacro` plugin reference all say **ICM20948**. The part fitted is a **BNO055** —

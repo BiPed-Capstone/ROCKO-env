@@ -236,7 +236,7 @@ balance loop, which reads as bad gains and wastes tuning days.
 **Critical path = these files.** Touching them makes `realtime-auditor` mandatory.
 
 - `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp` + `wheel.hpp` + `WheelEncoder.hpp`
-- `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.cpp` + its headers (`ImuFaultTracker.hpp`, `ImuSnapshotCheck.hpp`, `Bno055UartProtocol.hpp`)
+- `rocko_env/rocko_env/hardware/sensors/bno055/BNO055.cpp` + its headers (`ImuFaultTracker.hpp`, `ImuSnapshotCheck.hpp`, `Bno055UartProtocol.hpp`)
 - `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp` + its headers (`TipoverLatch.hpp`, `FeedforwardTimeout.hpp`, `ZeroCommands.hpp`)
 - `rocko_env/rocko_env/bringup/config/*.yaml` (update_rate, gains, interface wiring)
 
@@ -355,8 +355,11 @@ in, say so out loud instead of omitting them. A result you got from the mock is 
   `rocko_env_hardware.xml` or `rocko_env_controllers.xml`, or ROS will not find them. Use the
   `add-hardware` skill, and keep the mock's interface names in step with the real ones.
 - Don't commit `build/`, `install/`, or `log/` — gitignored, but they exist in the tree.
-- The IMU directory and classes are named `ICM20948`; the part actually fitted is a **BNO055**.
-  Don't "fix" this casually — it is a real rename touching plugin XML, URDF, and launch files.
+- The IMU plugin is `rocko_env::BNO055` (plugin name `rocko_env/BNO055`, folder `hardware/sensors/bno055/`),
+  named after the part fitted, a Bosch BNO055; it is all-caps because it is a part number, while the helper
+  headers beside it (`Bno055UartProtocol.hpp`, `ImuFaultTracker.hpp`, `ImuSnapshotCheck.hpp`) are ordinary
+  PascalCase. Until 2026-11-26 it was called `ICM20948`, an unrelated IMU that is not on the robot (finding L-2).
+  Journals and proposals written before then still use the old name.
 
 ---
 

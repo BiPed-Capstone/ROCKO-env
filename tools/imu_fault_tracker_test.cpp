@@ -1,7 +1,7 @@
 // Host-side self-test for rocko_env::ImuFaultTracker. No ROS needed; it runs on a laptop.
 //
 // Build and run (from the repo root):
-//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include \
 //       tools/imu_fault_tracker_test.cpp -o /tmp/imu_fault_tracker_test && /tmp/imu_fault_tracker_test
 // Exit status 0 and the line "all ImuFaultTracker tests passed" mean success. A failed check
 // prints the line and aborts (non-zero). This proves the counting logic only; it says nothing

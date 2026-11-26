@@ -111,7 +111,7 @@ If you changed `ImuFaultTracker.hpp`, also run its host test. It needs only a C+
 or the container's), run from the repo root:
 
 ```bash
-g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/imu_fault_tracker_test.cpp -o /tmp/imu_fault_tracker_test && /tmp/imu_fault_tracker_test
 ```
 
@@ -122,7 +122,7 @@ If you changed `Bno055UartProtocol.hpp` (the BNO055 UART framing for finding C-1
 yet), run its host test the same way:
 
 ```bash
-g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/bno055_uart_protocol_test.cpp -o /tmp/bno055_uart_protocol_test && /tmp/bno055_uart_protocol_test
 ```
 
@@ -180,7 +180,7 @@ ok    rocko_tank_mode sim=true (ignored by design)
       ok    18 wiring values equal, with their types, plus 0 allowed difference(s) (INTENTIONAL_WIRING_DIFFERENCES; gains maps: next check)
       ok    each controller's `gains` keys are its dof_names in both files; every gains key except the tunable numbers is equal
       ok    29 simulator settings: header, xacro and ros2_control params agree; 10 launch-file defaults match the xacro
-      ok    IMU fault limit equal in ICM20948.hpp and SimPlantModel.hpp
+      ok    IMU fault limit equal in BNO055.hpp and SimPlantModel.hpp
 ok    sim config: no drift
 PASS: all seven expansions (four real/mock, two sim, one tank-with-sim-request) expand, parse, hold the right hardware, the mock and the sim match the real interfaces, tank mode ignores the sim request, and the sim config has not drifted.
 ```
@@ -357,7 +357,7 @@ To run the plant's own unit test (no ROS, any machine with a C++17 compiler; fro
 
 ```bash
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
-    -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test
 ```
 
@@ -371,7 +371,7 @@ from the repo root; not tiers; `tools/run_ladder.sh` runs them all):
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/tipover_latch_test.cpp -o /tmp/tipover_latch_test && /tmp/tipover_latch_test
 python3 -I tools/teleop_watchdog_test.py
 python3 -I tools/tank_teleop_test.py
-g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include tools/imu_snapshot_check_test.cpp -o /tmp/imu_snapshot_check_test && /tmp/imu_snapshot_check_test
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include tools/imu_snapshot_check_test.cpp -o /tmp/imu_snapshot_check_test && /tmp/imu_snapshot_check_test
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/zero_commands_test.cpp -o /tmp/zero_commands_test && /tmp/zero_commands_test
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/motors/include tools/wheel_encoder_test.cpp -o /tmp/wheel_encoder_test && /tmp/wheel_encoder_test
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include tools/feedforward_timeout_test.cpp -o /tmp/feedforward_timeout_test && /tmp/feedforward_timeout_test

@@ -90,14 +90,14 @@ when the IMU plugin returns `ERROR` (finding **C-2**, next-steps row 0.1). It ne
 compiler and the one header, no ROS, so it runs on the laptop or in the container. From the repo root:
 
 ```bash
-g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/imu_fault_tracker_test.cpp -o /tmp/imu_fault_tracker_test && /tmp/imu_fault_tracker_test
 ```
 
 Success is the line `all ImuFaultTracker tests passed` and exit status 0; a failed check aborts with
 a non-zero status. It is **not a tier**: it checks the counting rules of one class (the consecutive
 limit, the 10-of-20 window, a good read clearing the run, the total never resetting) and nothing
-about `ICM20948.cpp`, the sensor, timing or a robot. It is not run by any script here, so nothing
+about `BNO055.cpp`, the sensor, timing or a robot. It is not run by any script here, so nothing
 makes anyone run it.
 
 ### The host unit test of the BNO055 UART framing (not a tier)
@@ -109,7 +109,7 @@ rest is [proposal 0010](../proposals/0010-c1-imu-uart-and-encoders-in-cpp.md). I
 compiler, no ROS. From the repo root:
 
 ```bash
-g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/bno055_uart_protocol_test.cpp -o /tmp/bno055_uart_protocol_test && /tmp/bno055_uart_protocol_test
 ```
 
@@ -282,7 +282,7 @@ root:
 
 ```bash
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
-    -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test
 ```
 
@@ -302,7 +302,7 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
     tools/tipover_latch_test.cpp -o /tmp/tipover_latch_test && /tmp/tipover_latch_test      # all TipoverLatch tests passed
 python3 -I tools/teleop_watchdog_test.py
 python3 -I tools/tank_teleop_test.py
-g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/imu_snapshot_check_test.cpp -o /tmp/imu_snapshot_check_test && /tmp/imu_snapshot_check_test   # all ImuSnapshotCheck tests passed
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/include \
     tools/zero_commands_test.cpp -o /tmp/zero_commands_test && /tmp/zero_commands_test        # all ZeroCommands tests passed
@@ -341,8 +341,8 @@ bash tools/pi_scripts_test.sh                                                   
 
 | Tier | A pass proves | It cannot show |
 | --- | --- | --- |
-| 0 | The URDF expands and parses in seven expansions (balancing and tank, mock off and on, plus balancing with `use_sim_plant:=true`, without and with `use_mock_hardware:=true`, where the sim must win, plus tank mode asked for `use_sim_plant:=true`, which tank mode ignores by design), and each holds the right hardware: the two real motor plugins (and the IMU, in balancing mode) when the mock is off, exactly one `MockRocko` system when it is on, exactly one `SimPlant` system (`SimRocko`) and nothing else for the sim, and still the two real motor plugins and no `SimPlant` for the tank request; no plugin of any other kind; and the mock exports exactly the same interfaces (joints, sensors and gpio; a duplicate counts as a difference) as the real hardware, and so does the sim: 14 in balancing mode (the 12 of before plus a `pitch_rate` state on each wheel joint, finding H-6), 6 in tank mode. A pass prints 12 `ok` lines at the left margin (four more, indented, come from the config check below) and `PASS`. `sim/check_sim_config.py` also checks that `rocko_sim_controllers.yaml` equals `rocko_controllers.yaml` in everything except the `gains` maps and one allowed difference named in the script (`INTENTIONAL_WIRING_DIFFERENCES`: the sim's `pitch_pid_controller` has `reference_and_state_interfaces: ["pitch", "pitch_rate"]`, the hardware file `["pitch"]`; the entry fails if either file stops having exactly those values) (values compared with their type, so `100` and `100.0` differ; 17 wiring values equal plus 1 allowed difference on 2026-11-02); that in both files each controller's `gains` keys are exactly its `dof_names` and every `gains` key other than the tunable numbers (`p`, `i`, `d`, the clamps, `feedforward_gain`) is equal; that every simulator setting's default is the same in `SimPlantModel.hpp`, `rocko.urdf.xacro` and (for the settings in its `SIM_ARGUMENTS`) `rocko_sim.launch.py`, that each `<param>` in `rocko.ros2_control.xacro` is wired to the xacro arg of the same name, and that an `int` setting is written as an integer; and that the IMU fault limit the sim copies equals `ICM20948.hpp`'s. The guard hook blocks what it should and passes what it should. The git hooks in `.githooks/`, installed by copy in a throwaway repository, refuse and allow what they should | That anything compiles or runs. That the git hooks are installed in your clone |
-| host unit test (not a tier) | The counting logic of `ImuFaultTracker`: it trips at exactly the consecutive limit and not before; a good read clears the run; a sensor that alternates 4 bad and 1 good reads, which never reaches the consecutive limit, trips the 10-of-20 window; the window clears after 20 good reads; the total count is never reset; one bad read in ten never trips it; a custom window limit is honoured | That `ICM20948.cpp` calls it correctly, that the limits are right for the robot, or anything about the sensor, timing or physics |
+| 0 | The URDF expands and parses in seven expansions (balancing and tank, mock off and on, plus balancing with `use_sim_plant:=true`, without and with `use_mock_hardware:=true`, where the sim must win, plus tank mode asked for `use_sim_plant:=true`, which tank mode ignores by design), and each holds the right hardware: the two real motor plugins (and the IMU, in balancing mode) when the mock is off, exactly one `MockRocko` system when it is on, exactly one `SimPlant` system (`SimRocko`) and nothing else for the sim, and still the two real motor plugins and no `SimPlant` for the tank request; no plugin of any other kind; and the mock exports exactly the same interfaces (joints, sensors and gpio; a duplicate counts as a difference) as the real hardware, and so does the sim: 14 in balancing mode (the 12 of before plus a `pitch_rate` state on each wheel joint, finding H-6), 6 in tank mode. A pass prints 12 `ok` lines at the left margin (four more, indented, come from the config check below) and `PASS`. `sim/check_sim_config.py` also checks that `rocko_sim_controllers.yaml` equals `rocko_controllers.yaml` in everything except the `gains` maps and one allowed difference named in the script (`INTENTIONAL_WIRING_DIFFERENCES`: the sim's `pitch_pid_controller` has `reference_and_state_interfaces: ["pitch", "pitch_rate"]`, the hardware file `["pitch"]`; the entry fails if either file stops having exactly those values) (values compared with their type, so `100` and `100.0` differ; 17 wiring values equal plus 1 allowed difference on 2026-11-02); that in both files each controller's `gains` keys are exactly its `dof_names` and every `gains` key other than the tunable numbers (`p`, `i`, `d`, the clamps, `feedforward_gain`) is equal; that every simulator setting's default is the same in `SimPlantModel.hpp`, `rocko.urdf.xacro` and (for the settings in its `SIM_ARGUMENTS`) `rocko_sim.launch.py`, that each `<param>` in `rocko.ros2_control.xacro` is wired to the xacro arg of the same name, and that an `int` setting is written as an integer; and that the IMU fault limit the sim copies equals `BNO055.hpp`'s. The guard hook blocks what it should and passes what it should. The git hooks in `.githooks/`, installed by copy in a throwaway repository, refuse and allow what they should | That anything compiles or runs. That the git hooks are installed in your clone |
+| host unit test (not a tier) | The counting logic of `ImuFaultTracker`: it trips at exactly the consecutive limit and not before; a good read clears the run; a sensor that alternates 4 bad and 1 good reads, which never reaches the consecutive limit, trips the 10-of-20 window; the window clears after 20 good reads; the total count is never reset; one bad read in ten never trips it; a custom window limit is honoured | That `BNO055.cpp` calls it correctly, that the limits are right for the robot, or anything about the sensor, timing or physics |
 | host unit test of the BNO055 UART framing (not a tier) | `Bno055UartProtocol.hpp`, in 11 test functions and 389 checks: the read request is `AA 01 14 0C` and a 0-byte read is refused; the write request's bytes, and its refusals; a good 14-byte reply decodes to exact gyro (deg/s, 16 LSB each) and Euler (deg, 16 LSB each) values, negative ones and the int16 extremes included (low byte first, two's complement); every `0xEE` status gives a device error with that status; every truncation, an extra byte, a wrong first byte (all 256 tried: only `0xBB` is accepted) and a wrong length byte are refused; on every failure all six values are NaN and the snapshot is invalid | That the frame bytes, status codes, register addresses or scale factors match the real BNO055 (written from memory, marked UNVERIFIED); termios, timing, the sensor's reply delay; which field is the robot's pitch; anything a plugin does (none uses it) |
 | compile-only (not a tier) | `Motor12VoltQuadEncoder.cpp` parses, every name resolves, every call matches a declared signature, and the ROS 2 headers it uses exist in Jazzy. First run, 2026-10-31, on the unmodified file: pass. Rerun on the edited file (the new `write()`, review round 2): pass. It was not made to fail on the new `write()` | That the real WiringPi signatures match: the stubs are copied by hand, so a stub that differs from the real header would hide a mistake. That it links, runs, behaves, is fast enough, or builds on a Pi |
 | 1 | `rocko_interfaces` and `rocko_env` compile and link; declared dependencies install | Anything about **`Motor12VoltQuadEncoder.cpp`** (left out off-Pi: it needs WiringPi; only the compile-only check above type-checks it). Anything at runtime |
@@ -413,6 +413,7 @@ fixed; see the journal.)
 | 0 | 2026-11-07, a tuned gain missing on one joint, in scratch copies: delete `p:` from only the right wheel's entry of `pitch_pid_controller` in the sim YAML; the same in the hardware YAML; delete velocity `i:` from only the right wheel in the sim YAML. The 12 breaks of the row above re-run on the current files | Each of the three: `FAIL ... \`p\` (SIM_TUNED_GAINS) is missing for right_add_feedforward_controller/right_wheel_joint`, exit 1 (the check before this change passed the first two, exit 0). The 12 older breaks: as before (11 red, control green). Real tree: six `ok`. [Review-fixes journal](../journal/2026-11-07-stage5c-review-fixes.md) |
 | 0 | Make the tank description hold a `SimPlant` plugin (a comment containing it, in the tank `<ros2_control>` macro); rename `struct SimPlantParams` so the checker cannot read it | `verify_urdf.sh` `FAIL`, exit 1, with `got sim=1` in the `rocko_tank_mode sim=true` line; and `sim config check could not run (exit 2; this is not drift)` |
 | 0 | (2026-11-26, `tools/check_plugin_names.py`) Three breaks, one at a time: rename the IMU's class in `rocko_env_hardware.xml`; change the motor plugin's exported base class in `Motor12VoltQuadEncoder.cpp`; misspell the motor plugin in the tank xacro | each `verify_urdf.sh` `FAIL`, exit 1, naming the plugin: `no <class name="rocko_env/ICM20948">`; `says base class ...ActuatorInterface, the source exports ...SystemInterface`; `no <class name="rocko_env/Motor12VoltQuadEncodr">`. After review, three more: the IMU's export commented out (`no PLUGINLIB_EXPORT_CLASS(rocko_env::ICM20948, ...)`); `SimPlant.cpp` commented out of `CMakeLists.txt` (`... exports it, but CMakeLists.txt does not build that file`); the XML's `<library path>` changed (`... but the CMake library target is rocko_env`). Restored: PASS |
+| 0 | (2026-11-26, after the IMU plugin was renamed `BNO055`, finding L-2) Two breaks, one at a time: the xacro's `<plugin>` back to `rocko_env/ICM20948`; the plugin XML's `type` back to `rocko_env::ICM20948` | each `verify_urdf.sh` `FAIL`, exit 1: `no <class name="rocko_env/ICM20948">` (and `imu=0` in the real-hardware count); `says type rocko_env::ICM20948, but no PLUGINLIB_EXPORT_CLASS(rocko_env::ICM20948, ...)`. Restored: `PASS` ([journal](../journal/2026-11-26-rename-imu-plugin-bno055.md)) |
 | 3 | Give `released_problem` (in `verify_sim.sh`) a hand-made launch log whose release stamp is 9.5 s, 2.5 s or -1.2 s (after) before the last sample in `metrics.json`; and a `metrics.json` with no `last_stamp_s` | 9.5 s: no problem. 2.5 s and -1.2 s: `less than 3 s before the probe's last sample`. No `last_stamp_s`: says so. Run on the function alone, not in a full `verify_sim.sh` run |
 | host unit test of the plant | Weaken four of the `invalid_reason()` checks in a copy of `SimPlantModel.hpp` (allow `imu_delay_max_ms` up to 100000; drop the `battery_voltage_V`, `body_depth_m` and mass-matrix checks) | 5 of the #17 checks go red; the real header passes all 70 |
 
@@ -481,13 +482,13 @@ because they show what each tier is for.
 - **The IMU plugin and the encoder counting are not exercised.** The mock launch replaces the IMU and motor
   plugins (they need I²C and GPIO); the motor plugin, which counts its encoder itself since 2026-11-24
   ([how](encoders-in-cpp.md)), is not even built off the Pi (the compile-only check covers its syntax and types;
-  `tools/wheel_encoder_test.cpp` its decoding and speed filter). `ICM20948.cpp`, which since 2026-11-24 reads the BNO055 over I²C
+  `tools/wheel_encoder_test.cpp` its decoding and speed filter). `BNO055.cpp`, which since 2026-11-24 reads the BNO055 over I²C
   itself ([how the IMU is read](imu-i2c-read.md)), is compiled by Tier 1, but no tier runs it: not the I²C
   transaction, the start-up, the C-2 failure path or the 10 ms timeout. Its sample check has a host test
   (`tools/imu_snapshot_check_test.cpp`) and so do the counting rules of `ImuFaultTracker` (the
   [host unit test](#the-host-unit-test-of-the-imu-fault-tracker-not-a-tier)); how `read()` uses them is
   not run anywhere. `SimPlant` applies the same counting rule to its own simulated IMU (a copy of the
-  decision, not `ICM20948.cpp`), so it does not cover that file either. A sensor that freezes or resets
+  decision, not `BNO055.cpp`), so it does not cover that file either. A sensor that freezes or resets
   while still returning valid-looking numbers is not detected by the code either (finding **H-9**).
   The BNO055 UART framing helper for C-1 (`Bno055UartProtocol.hpp`) has a host test but is used by no
   plugin, so nothing about the serial read it is meant for is tested
@@ -525,7 +526,7 @@ because they show what each tier is for.
   (speed over the real call period, filter weight 0.05) is a copy of the motor plugin's `WheelVelocityFilter` in `WheelEncoder.hpp`, which copied `QuadEncoders.py` (switch `model_encoder_node`). Guarded: a `static_assert` fails the
   build if `kWriteMaxRadPerSec` is "tidied" to 120 or more (it does not read the plugin, so a changed
   plugin constant still leaves the copy as it was), and `sim/check_sim_config.py` compares the IMU
-  fault limits with `ICM20948.hpp`. Not guarded: the `write()` duty map (the deadband, the stiction
+  fault limits with `BNO055.hpp`. Not guarded: the `write()` duty map (the deadband, the stiction
   offset, the clamp) and the encoder-node copy (its filter constant and assumed period). Nothing
   checks that those still match the files they copy.
 - **`rocko_sim_controllers.yaml` is a copy of the hardware controller wiring, and its gains may

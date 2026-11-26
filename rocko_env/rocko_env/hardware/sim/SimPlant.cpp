@@ -29,7 +29,7 @@ constexpr double kStepSlack = 1e-6;  // [sub-steps]
 // Minimum time between repeats of the same throttled log line in this file.
 constexpr int kLogThrottleMs = 1000;  // [ms]
 
-// Interface names. The same strings the real plugins (Motor12VoltQuadEncoder, ICM20948) and the
+// Interface names. The same strings the real plugins (Motor12VoltQuadEncoder, BNO055) and the
 // MockRocko block use, in the same order as the xacro lists them.
 const char * const kJointNames[] = {"left_wheel_joint", "right_wheel_joint"};
 const char * const kStateNames[] = {
@@ -302,7 +302,7 @@ hardware_interface::return_type SimPlant::read(
   }
 
   // The IMU (spec §5). An injected outage is a failed read: keep the last good pitch, count it,
-  // and return ERROR once the fault tracker trips, exactly as ICM20948::read() does (finding C-2).
+  // and return ERROR once the fault tracker trips, exactly as BNO055::read() does (finding C-2).
   const double t = model_->time_s();
   const bool imu_outage = released_ && params_.imu_fault_duration_s > 0.0 &&
     t >= params_.imu_fault_start_s && t < params_.imu_fault_start_s + params_.imu_fault_duration_s;

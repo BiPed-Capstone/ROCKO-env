@@ -1,6 +1,6 @@
 ---
 name: control-loop-change
-description: Procedure and real-time rules for changing anything in ROCKO's 100 Hz control path — hardware plugins (Motor12VoltQuadEncoder with its WheelEncoder, ICM20948), controllers (AddFeedforwardController), update_rate, or the interface wiring in rocko_controllers.yaml. Use before editing any of those, and when asked about loop latency, jitter, blocking calls, real-time safety, or why the balance loop is unreliable.
+description: Procedure and real-time rules for changing anything in ROCKO's 100 Hz control path — hardware plugins (Motor12VoltQuadEncoder with its WheelEncoder, BNO055), controllers (AddFeedforwardController), update_rate, or the interface wiring in rocko_controllers.yaml. Use before editing any of those, and when asked about loop latency, jitter, blocking calls, real-time safety, or why the balance loop is unreliable.
 ---
 
 # Changing the 100 Hz control path
@@ -74,7 +74,7 @@ Never, in the loop:
 
 - `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp`, `include/rocko_env/wheel.hpp`,
   `include/rocko_env/WheelEncoder.hpp` (the encoder counting and speed filter, read every cycle)
-- `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.cpp` and the headers it includes (`ImuFaultTracker.hpp`,
+- `rocko_env/rocko_env/hardware/sensors/bno055/BNO055.cpp` and the headers it includes (`ImuFaultTracker.hpp`,
   `ImuSnapshotCheck.hpp`, `Bno055UartProtocol.hpp`)
 - `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp` and its headers (`TipoverLatch.hpp`,
   `FeedforwardTimeout.hpp`, `ZeroCommands.hpp`)

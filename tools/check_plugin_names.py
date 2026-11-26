@@ -8,11 +8,11 @@ motor and IMU plugins are never loaded (the mock or the simulator stands in for 
 that does not match would first show up on the robot, as "class not found" when the launch starts.
 For each <plugin> inside a <ros2_control> block it checks the three places that must agree:
 
-  1. the URDF:       <plugin>rocko_env/ICM20948</plugin>
-  2. the plugin XML: rocko_env/rocko_env_hardware.xml has <class name="rocko_env/ICM20948"
-                     type="rocko_env::ICM20948" base_class_type="hardware_interface::SensorInterface">
+  1. the URDF:       <plugin>rocko_env/BNO055</plugin>
+  2. the plugin XML: rocko_env/rocko_env_hardware.xml has <class name="rocko_env/BNO055"
+                     type="rocko_env::BNO055" base_class_type="hardware_interface::SensorInterface">
   3. the C++ source: some .cpp under rocko_env/ says
-                     PLUGINLIB_EXPORT_CLASS(rocko_env::ICM20948, hardware_interface::SensorInterface)
+                     PLUGINLIB_EXPORT_CLASS(rocko_env::BNO055, hardware_interface::SensorInterface)
 
 and three build facts pluginlib also needs: that .cpp is listed in rocko_env/CMakeLists.txt; the XML's
 <library path> is the CMake library target (add_library); and CMake exports the XML with

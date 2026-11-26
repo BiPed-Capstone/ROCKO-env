@@ -61,7 +61,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | M-7 | Medium | The IMU node read the gyro (a second I2C transaction) inside the blocking service call every cycle although no real controller uses the rate (found 2026-11-03; called M-A in the round-3 review) — **fixed on `ai-forward`, awaiting robot**: `read_pitch_rate`, default false; one gap left |
 | M-8 | Medium | Two unthrottled INFO lines per gamepad message in `DiffDriveController.py` (found 2026-11-03; called M-B in the round-3 review) — **fixed on `ai-forward`** (the lines were removed) |
 | L-1 | Low | `joint_name_` is at namespace scope and shared between both motor instances — **fixed on `ai-forward`** (2026-11-26: deleted; it was never read) |
-| L-2 | Low | IMU class is named for a part that is no longer used; dead imports — the imports went with `ICM20948.py` (removed 2026-11-24, C-1); the name remains (next-steps row 1.6) |
+| L-2 | Low | IMU class is named for a part that is no longer used; dead imports — **fixed on `ai-forward`, awaiting robot**: the imports went with `ICM20948.py` (removed 2026-11-24, C-1); the plugin is `BNO055` since 2026-11-26 (next-steps row 1.6) |
 | L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build — **fixed on `ai-forward`** (2026-10-31) |
 | L-4 | Low | The RViz configs are never installed, so three launch files cannot find them — **fixed on `ai-forward`** (2026-10-31); RViz opening with them not checked |
 | L-5 | Low | A D-term spike after cycles in which the IMU angle was held (found 2026-10-31, not fixed) |
@@ -1140,6 +1140,11 @@ check passes; not built on the Pi.
 ---
 
 ### L-2 — IMU class is named for a part that is no longer used
+
+**Status on `ai-forward` (2026-11-26): fixed in code, awaiting robot.** The class is `rocko_env::BNO055`,
+the plugin name `rocko_env/BNO055`, the folder `hardware/sensors/bno055/` (journal
+[2026-11-26](../journal/2026-11-26-rename-imu-plugin-bno055.md)). The text below, and the file paths
+elsewhere on this page, are as written.
 
 `ICM20948.py` imports `adafruit_icm20x`, `numpy`, `ahrs.filters.Madgwick`, `acc2q` and `Quaternion`,
 and uses none of them — it instantiates `adafruit_bno055.BNO055_I2C` (git history: "changed to

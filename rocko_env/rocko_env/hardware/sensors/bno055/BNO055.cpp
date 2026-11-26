@@ -19,7 +19,7 @@
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "rocko_env/ICM20948.hpp"
+#include "rocko_env/BNO055.hpp"
 
 namespace rocko_env
 {
@@ -30,7 +30,7 @@ namespace
 constexpr int kLogThrottleMs = 1000;  // [ms]
 
 // BNO055 registers and values used to start the sensor. They are the ones Adafruit's
-// adafruit_bno055 driver uses (the driver ICM20948.py ran, and the one the 2026-11-23/24 axis and sign
+// adafruit_bno055 driver uses (the driver the removed Python IMU node ran, and the one the 2026-11-23/24 axis and sign
 // measurements were taken with), written from memory of that driver and the datasheet: UNVERIFIED
 // against the datasheet in this change. The first on-robot run checks them (the chip id check below
 // fails loudly if the address or bus is wrong).
@@ -80,17 +80,17 @@ int whole_parameter_or(
 }
 }  // namespace
 
-ICM20948::~ICM20948()
+BNO055::~BNO055()
 {
   close_bus();
 }
 
-hardware_interface::CallbackReturn ICM20948::on_init(
+hardware_interface::CallbackReturn BNO055::on_init(
     const hardware_interface::HardwareInfo & info)
 {
   // Parameters are read from `info` directly, as SimPlant does. (Calling the base on_init(info) is
   // deprecated in this Jazzy ros2_control, and the framework stores the info itself.)
-  // Hardware parameters from the xacro. Missing ones keep the defaults in ICM20948.hpp, except
+  // Hardware parameters from the xacro. Missing ones keep the defaults in BNO055.hpp, except
   // pitch_offset_deg, which has none (NaN) and so must be given; a value that does not parse, or a mounting
   // that check_imu_snapshot() would reject, refuses to start.
   try {
@@ -123,7 +123,7 @@ hardware_interface::CallbackReturn ICM20948::on_init(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn ICM20948::on_configure(const rclcpp_lifecycle::State &)
+hardware_interface::CallbackReturn BNO055::on_configure(const rclcpp_lifecycle::State &)
 {
   close_bus();
   // A fresh start forgets the failures of the last run (an IMU fault, then cleanup and configure).
@@ -214,19 +214,19 @@ hardware_interface::CallbackReturn ICM20948::on_configure(const rclcpp_lifecycle
   return hardware_interface::CallbackReturn::ERROR;
 }
 
-hardware_interface::CallbackReturn ICM20948::on_cleanup(const rclcpp_lifecycle::State &)
+hardware_interface::CallbackReturn BNO055::on_cleanup(const rclcpp_lifecycle::State &)
 {
   close_bus();
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn ICM20948::on_shutdown(const rclcpp_lifecycle::State &)
+hardware_interface::CallbackReturn BNO055::on_shutdown(const rclcpp_lifecycle::State &)
 {
   close_bus();
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-void ICM20948::close_bus()
+void BNO055::close_bus()
 {
   if (_i2c_fd >= 0) {
     ::close(_i2c_fd);
@@ -234,7 +234,7 @@ void ICM20948::close_bus()
   }
 }
 
-bool ICM20948::read_registers(std::uint8_t first_register, std::uint8_t * out, std::uint16_t length)
+bool BNO055::read_registers(std::uint8_t first_register, std::uint8_t * out, std::uint16_t length)
 {
   if (_i2c_fd < 0) {
     return false;
@@ -256,7 +256,7 @@ bool ICM20948::read_registers(std::uint8_t first_register, std::uint8_t * out, s
   return ::ioctl(_i2c_fd, I2C_RDWR, &transfer) == 2;
 }
 
-bool ICM20948::write_register(std::uint8_t reg, std::uint8_t value)
+bool BNO055::write_register(std::uint8_t reg, std::uint8_t value)
 {
   if (_i2c_fd < 0) {
     return false;
@@ -273,7 +273,7 @@ bool ICM20948::write_register(std::uint8_t reg, std::uint8_t value)
   return ::ioctl(_i2c_fd, I2C_RDWR, &transfer) == 1;
 }
 
-SnapshotVerdict ICM20948::read_snapshot(double elapsed_s)
+SnapshotVerdict BNO055::read_snapshot(double elapsed_s)
 {
   // ONE transaction for gyro and Euler angles (registers 0x14..0x1F): the rate and the angle are
   // (The decoder lives in Bno055UartProtocol.hpp; the register bytes are the same on I2C, see its STATUS note.)
@@ -300,7 +300,7 @@ SnapshotVerdict ICM20948::read_snapshot(double elapsed_s)
   return verdict;
 }
 
-std::vector<hardware_interface::StateInterface> ICM20948::export_state_interfaces()
+std::vector<hardware_interface::StateInterface> BNO055::export_state_interfaces()
 {
   // Export the member level vars we saved data to in read()
   std::vector<hardware_interface::StateInterface> state_interfaces;
@@ -345,7 +345,7 @@ std::vector<hardware_interface::StateInterface> ICM20948::export_state_interface
 // The angles and the pitch rate are judged TOGETHER (check_imu_snapshot): a bad rate is a failed
 // read and counts in the fault tracker exactly like a bad angle, because both come from the one
 // transaction.
-hardware_interface::return_type ICM20948::read(
+hardware_interface::return_type BNO055::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
   _seconds_since_good += period.seconds();
@@ -395,4 +395,4 @@ hardware_interface::return_type ICM20948::read(
 #include "pluginlib/class_list_macros.hpp"
 
 PLUGINLIB_EXPORT_CLASS(
-  rocko_env::ICM20948, hardware_interface::SensorInterface)
+  rocko_env::BNO055, hardware_interface::SensorInterface)

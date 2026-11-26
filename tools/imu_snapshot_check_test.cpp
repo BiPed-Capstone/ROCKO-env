@@ -3,7 +3,7 @@
 // H-3, H-6). No ROS, no I2C; it runs on a laptop.
 //
 // Build and run (from the repo root):
-//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include \
 //       tools/imu_snapshot_check_test.cpp -o /tmp/imu_snapshot_check_test && /tmp/imu_snapshot_check_test
 // Exit status 0 and "all ImuSnapshotCheck tests passed" mean success. This proves the decision on
 // made-up bytes only: not the I2C transaction, the BNO055's register map, or anything on the robot.

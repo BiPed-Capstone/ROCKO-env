@@ -24,7 +24,7 @@ Honest list of gaps, so nobody assumes a missing page means a missing subsystem:
 
 - **Hardware wiring** — GPIO pins, I²C bus and address, motor driver, battery. Partly recorded in
   `rocko_env/rocko_env/description/ros2_control/*.xacro`; not yet written up.
-- **Sensor calibration** — the fitted part is a BNO055 despite the `ICM20948` naming. How it is read and
+- **Sensor calibration** — the fitted part is a BNO055, read by the `BNO055` plugin. How it is read and
   what the exported interfaces mean is in [`imu-i2c-read.md`](imu-i2c-read.md); the BNO055's own
   calibration procedure is not written up (see
   [`../claude-analysis/bno055-improvements.md`](../claude-analysis/bno055-improvements.md)).

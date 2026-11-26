@@ -46,7 +46,7 @@ add_library(
   rocko_env
   SHARED
   # Hardware .cpp files (the WiringPi motor plugin is added below, once we know WiringPi exists)
-  rocko_env/hardware/sensors/icm20948/ICM20948.cpp
+  rocko_env/hardware/sensors/bno055/BNO055.cpp
   rocko_env/hardware/WiringPi/wiringPi.h
   # The simulated robot (Tier 3). Always built: it needs no WiringPi and drives no hardware.
   rocko_env/hardware/sim/SimPlant.cpp
@@ -64,7 +64,7 @@ ament_target_dependencies(
 target_include_directories(rocko_env PUBLIC
 # paths to hardware include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
+$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/bno055/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sim/include>
 # Paths to controller include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/include>
@@ -115,7 +115,7 @@ pluginlib_export_plugin_description_file(controller_interface rocko_env_controll
 # HARDWARE INSTALL BLOCK BELOW
 install(
   DIRECTORY rocko_env/hardware/motors/include/ 
-            rocko_env/hardware/sensors/icm20948/include/ 
+            rocko_env/hardware/sensors/bno055/include/ 
             rocko_env/hardware/sim/include/
             rocko_env/controllers/add_feedforward/include/
   DESTINATION include

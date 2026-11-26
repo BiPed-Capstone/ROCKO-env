@@ -2,7 +2,7 @@
 // No ROS needed; it runs on a laptop or in the container.
 //
 // Build and run (from the repo root):
-//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include -I rocko_env/rocko_env/hardware/sensors/icm20948/include tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test
+//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include -I rocko_env/rocko_env/hardware/sensors/bno055/include tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test
 // (One line: a backslash at the end of a // comment line makes the compiler warn.)
 // Exit status 0 and the line "all SimPlantModel tests passed" mean success; every failed check is
 // printed with what was expected, and the exit status is 1.

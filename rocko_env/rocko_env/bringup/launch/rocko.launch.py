@@ -167,7 +167,7 @@ def generate_launch_description():
         condition=IfCondition(supervised),
     )
 
-    # No sensor nodes: the ICM20948 hardware plugin reads the BNO055 over I2C and the motor plugins count
+    # No sensor nodes: the BNO055 hardware plugin reads the BNO055 over I2C and the motor plugins count
     # their encoders' edges themselves (finding C-1; docs/architecture/imu-i2c-read.md and
     # docs/architecture/encoders-in-cpp.md). The pins are hardware parameters in the ros2_control xacro.
 

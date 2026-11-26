@@ -128,7 +128,7 @@ for model in rocko rocko_tank_mode; do
     fi
 
     real_motors=$(count "$urdf" "<plugin>rocko_env/Motor12VoltQuadEncoder</plugin>")
-    real_imus=$(count "$urdf" "<plugin>rocko_env/ICM20948</plugin>")
+    real_imus=$(count "$urdf" "<plugin>rocko_env/BNO055</plugin>")
     mocks=$(count "$urdf" "<plugin>mock_components/GenericSystem</plugin>")
     named=$(count "$urdf" 'name="MockRocko"')
     plugins=$(count "$urdf" "<plugin>")   # every plugin of any kind: catches one we did not think to name
@@ -191,7 +191,7 @@ for sim_mock in false true; do
     sims=$(count "$urdf" "<plugin>rocko_env/SimPlant</plugin>")
     named=$(count "$urdf" 'name="SimRocko"')
     real_motors=$(count "$urdf" "<plugin>rocko_env/Motor12VoltQuadEncoder</plugin>")
-    real_imus=$(count "$urdf" "<plugin>rocko_env/ICM20948</plugin>")
+    real_imus=$(count "$urdf" "<plugin>rocko_env/BNO055</plugin>")
     mocks=$(count "$urdf" "<plugin>mock_components/GenericSystem</plugin>")
     plugins=$(count "$urdf" "<plugin>")
     if [ "$sims" -ne 1 ] || [ "$named" -ne 1 ] || [ "$real_motors" -ne 0 ] || [ "$real_imus" -ne 0 ] || [ "$mocks" -ne 0 ] || [ "$plugins" -ne 1 ]; then

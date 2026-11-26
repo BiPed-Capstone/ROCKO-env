@@ -16,7 +16,7 @@ namespace rocko_env
 //      This catches a sensor that alternates (for example 4 bad reads, 1 good, repeat), which
 //      never reaches the consecutive limit but is still mostly blind.
 //
-// What the caller does with it: ICM20948::read() turns tripped() into a return code and returns
+// What the caller does with it: BNO055::read() turns tripped() into a return code and returns
 // ERROR. What ros2_control does after read() returns ERROR (whether it keeps calling read(), and what
 // happens to the other components) has not been observed here. Nothing in this class stops a controller, and the class itself is not
 // latched: tripped() goes back to false as soon as the counts fall below the limits.

@@ -158,7 +158,7 @@
     </ros2_control>
     <ros2_control name="Gyro" type="sensor">
       <hardware>
-        <plugin>rocko_env/ICM20948</plugin>
+        <plugin>rocko_env/BNO055</plugin>
         <!-- The plugin reads the BNO055 itself over I2C (finding C-1; docs/architecture/imu-i2c-read.md). -->
         <param name="i2c_device">/dev/i2c-1</param>
         <param name="i2c_address">0x28</param>
@@ -172,7 +172,7 @@
         <param name="pitch_rate_axis">0</param>
         <param name="pitch_rate_sign">-1</param>
       </hardware>
-      <!-- <sensor name="icm20948">
+      <!-- <sensor name="bno055">
         <state_interface name="yaw"/>
         <state_interface name="pitch"/>
         <state_interface name="roll"/>

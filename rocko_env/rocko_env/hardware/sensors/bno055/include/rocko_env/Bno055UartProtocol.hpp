@@ -7,7 +7,7 @@
 // UART; this header is the part of that work that can be checked without a robot.
 //
 // STATUS (2026-11-24): the IMU plugin reads over I2C, not UART (the owner's choice; no rewiring).
-// ICM20948.cpp uses only the BUS-INDEPENDENT part of this file: the register constants
+// BNO055.cpp uses only the BUS-INDEPENDENT part of this file: the register constants
 // (kBurstFirstRegister, kBurstLength) and decode_gyro_euler(), because the 12 register bytes are the
 // same whichever bus carries them. The "uart" in the file and namespace name is historical. The UART
 // framing (requests, replies, status codes) is still unused and waits on

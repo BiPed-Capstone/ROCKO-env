@@ -30,9 +30,9 @@ verify_urdf.sh runs it. It fails when two files that must agree have drifted apa
      and each tag's text must be exactly `$(arg <its own name>)`, so a value cannot be wired to
      the wrong arg or hard-coded. A setting that is an `int` in the header must be written as an
      integer literal in the xacro and the launch file.
-  4. IMU FAULT LIMIT. SimImuOutput copies kMaxConsecutiveImuFailures from ICM20948.hpp (a private
+  4. IMU FAULT LIMIT. SimImuOutput copies kMaxConsecutiveImuFailures from BNO055.hpp (a private
      member of a class that needs ROS headers, so the sim cannot use it directly), and relies on the
-     tracker's default window limit, as ICM20948.hpp does.
+     tracker's default window limit, as BNO055.hpp does.
   5. TELEOP TIMEOUT. The watchdog timeout (finding C-3) is written in three places that must be
      equal: the launch argument command_timeout_s, DEFAULT_COMMAND_TIMEOUT_S in
      DiffDriveController.py, and TELEOP_TIMEOUT_S in verify_sim.sh.
@@ -74,7 +74,7 @@ LAUNCH = "rocko_env/rocko_env/bringup/launch/rocko_sim.launch.py"
 DIFFDRIVE = "rocko_env/rocko_env/controllers/diffdrive/DiffDriveController.py"
 VERIFY_SIM = "verify_sim.sh"
 FF_HEADER = "rocko_env/rocko_env/controllers/add_feedforward/include/rocko_env/AddFeedforwardController.hpp"
-ICM_HEADER = "rocko_env/rocko_env/hardware/sensors/icm20948/include/rocko_env/ICM20948.hpp"
+IMU_HEADER = "rocko_env/rocko_env/hardware/sensors/bno055/include/rocko_env/BNO055.hpp"
 
 
 def read(root, relative):
@@ -360,20 +360,20 @@ def check_defaults(root):
 
 # ---- 4. IMU fault limit --------------------------------------------------------------------------
 def check_imu_limit(root):
-    icm = read(root, ICM_HEADER)
+    icm = read(root, IMU_HEADER)
     sim = read(root, HEADER)
     problems = []
     icm_limit = re.search(r"kMaxConsecutiveImuFailures\s*=\s*(\d+)", icm)
     sim_limit = re.search(r"kMaxConsecutiveFailures\s*=\s*(\d+)", sim)
     if not icm_limit or not sim_limit:
-        problems.append("could not find the consecutive-failure limit in ICM20948.hpp or SimPlantModel.hpp")
+        problems.append("could not find the consecutive-failure limit in BNO055.hpp or SimPlantModel.hpp")
     elif icm_limit.group(1) != sim_limit.group(1):
-        problems.append(f"consecutive IMU failures that trip the fault: ICM20948.hpp says "
+        problems.append(f"consecutive IMU failures that trip the fault: BNO055.hpp says "
                         f"{icm_limit.group(1)}, SimPlantModel.hpp says {sim_limit.group(1)}")
     if not re.search(r"kMaxWindowImuFailures\s*=\s*ImuFaultTracker::kMaxWindowFailures", icm):
-        problems.append("ICM20948.hpp no longer uses the tracker's default window limit, which "
+        problems.append("BNO055.hpp no longer uses the tracker's default window limit, which "
                         "SimImuOutput relies on")
-    return problems, "IMU fault limit equal in ICM20948.hpp and SimPlantModel.hpp"
+    return problems, "IMU fault limit equal in BNO055.hpp and SimPlantModel.hpp"
 
 
 # ---- 5. teleop timeout ---------------------------------------------------------------------------

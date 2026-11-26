@@ -131,7 +131,7 @@ It expands balancing and tank mode, each with the mock off and on, plus balancin
 `use_sim_plant:=true`, without and with `use_mock_hardware:=true`, plus tank mode asked for
 `use_sim_plant:=true` (seven expansions), runs `check_urdf` on every
 result, **and asserts what is inside**: `mock=false` holds the real plugins
-(`<plugin>rocko_env/Motor12VoltQuadEncoder</plugin>`, and `rocko_env/ICM20948` in balancing mode) and
+(`<plugin>rocko_env/Motor12VoltQuadEncoder</plugin>`, and `rocko_env/BNO055` in balancing mode) and
 no `mock_components`; `mock=true` holds exactly one `MockRocko` system and no real motor plugin;
 `sim=true` holds exactly one `SimPlant` (`SimRocko`) and nothing else, with the mock on or off; tank
 mode ignores `use_sim_plant` by design and must still hold the two real motor plugins and no `SimPlant`.
@@ -214,7 +214,7 @@ compiler, the plant's unit test (not a tier, no script runs it):
 
 ```bash
 g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sim/include \
-    -I rocko_env/rocko_env/hardware/sensors/icm20948/include \
+    -I rocko_env/rocko_env/hardware/sensors/bno055/include \
     tools/sim_plant_model_test.cpp -o /tmp/sim_plant_model_test && /tmp/sim_plant_model_test
 ```
 

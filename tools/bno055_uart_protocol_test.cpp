@@ -3,7 +3,7 @@
 //
 // Build and run (from the repo root; one line, because a backslash ending a // comment line makes
 // GCC warn under -Wall):
-//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/icm20948/include tools/bno055_uart_protocol_test.cpp -o /tmp/bno055_uart_protocol_test && /tmp/bno055_uart_protocol_test
+//   g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/hardware/sensors/bno055/include tools/bno055_uart_protocol_test.cpp -o /tmp/bno055_uart_protocol_test && /tmp/bno055_uart_protocol_test
 // Exit status 0 and the line "all Bno055UartProtocol tests passed" mean success. Each failed check
 // prints "FAIL <line>: <expression>" and the run exits 1 at the end.
 //

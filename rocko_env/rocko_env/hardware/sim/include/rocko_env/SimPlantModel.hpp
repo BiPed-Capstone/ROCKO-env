@@ -451,14 +451,14 @@ private:
   double right_velocity_m_s_;
 };
 
-// ---- The simulated IMU read, with the finding C-2 policy of ICM20948::read() (spec §5) -----------
+// ---- The simulated IMU read, with the finding C-2 policy of BNO055::read() (spec §5) -----------
 // A failed read keeps the last good pitch and pitch rate (never 0.0; NaN only if there was never a
 // good read) and is counted; once ImuFaultTracker trips, read() must return ERROR. A good read always
-// returns OK, as in ICM20948::read(), where one read gives both values.
+// returns OK, as in BNO055::read(), where one read gives both values.
 class SimImuOutput
 {
 public:
-  // Same value as kMaxConsecutiveImuFailures in ICM20948.hpp. That constant is private to a class
+  // Same value as kMaxConsecutiveImuFailures in BNO055.hpp. That constant is private to a class
   // that needs ROS headers, so it cannot be used here; sim/check_sim_config.py (run by
   // verify_urdf.sh) fails if the two numbers differ.
   static constexpr int kMaxConsecutiveFailures = 5;  // [reads]

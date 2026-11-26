@@ -99,3 +99,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-24 | [Prepare the gyro D term for the robot: handle finding L-8 and propose the YAML change](2026-11-24-pitch-d-term-from-the-gyro.md) |
 | 2026-11-25 | [Make level read 0 (pitch offset), and propose a clamp on the target lean after the first floor test](2026-11-25-level-pitch-offset-and-lean-clamp.md) |
 | 2026-11-26 | [Cleanup while the robot is away: remove dead code and files, bring stale docs up to date](2026-11-26-cleanup.md) |
+| 2026-11-26 | [Rename the IMU plugin from `ICM20948` to `BNO055` (finding L-2)](2026-11-26-rename-imu-plugin-bno055.md) |

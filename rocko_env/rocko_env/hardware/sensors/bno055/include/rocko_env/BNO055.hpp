@@ -1,10 +1,9 @@
-#ifndef ROCKO_ENV_ICM20948
-#define ROCKO_ENV_ICM20948
+#ifndef ROCKO_ENV_BNO055
+#define ROCKO_ENV_BNO055
 
-// The IMU hardware plugin. The part fitted is a BNO055 (the ICM20948 name is historical, see
-// CLAUDE.md section 10). Since 2026-11-24 the plugin reads the sensor itself, over I2C, with one
-// bounded 12-byte burst per control cycle (finding C-1; it used to wait with no time limit on a
-// Python service, ICM20948.py, now removed). How it works: docs/architecture/imu-i2c-read.md.
+// The IMU hardware plugin for the BNO055. Since 2026-11-24 it reads the sensor itself, over I2C,
+// with one bounded 12-byte burst per control cycle (finding C-1; it used to wait with no time limit
+// on a Python service, now removed). How it works: docs/architecture/imu-i2c-read.md.
 
 #include <array>
 #include <cstdint>
@@ -27,12 +26,12 @@
 
 namespace rocko_env
 {
-class ICM20948 : public hardware_interface::SensorInterface
+class BNO055 : public hardware_interface::SensorInterface
 {
 public:
-  RCLCPP_SHARED_PTR_DEFINITIONS(ICM20948);
+  RCLCPP_SHARED_PTR_DEFINITIONS(BNO055);
 
-  ~ICM20948() override;
+  ~BNO055() override;
 
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareInfo & info) override;
@@ -135,11 +134,11 @@ private:
   // The 12 burst bytes (registers 0x14..0x1F). A member, so read() allocates nothing.
   std::array<std::uint8_t, bno055_uart::kBurstLength> _burst{};
 
-  rclcpp::Logger _logger = rclcpp::get_logger("ICM20948");
+  rclcpp::Logger _logger = rclcpp::get_logger("BNO055");
   // Steady clock for the throttled logs: no ROS time, no node needed.
   rclcpp::Clock _log_clock{RCL_STEADY_TIME};
 };
 
 }  // namespace rocko_env
 
-#endif  // ROCKO_ENV_ICM20948
+#endif  // ROCKO_ENV_BNO055
