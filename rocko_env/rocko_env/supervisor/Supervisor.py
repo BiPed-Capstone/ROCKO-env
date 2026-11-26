@@ -397,7 +397,7 @@ class Supervisor(Node):
         if (self.proc is None or self.stopping or not self.controllers_known
                 or now_s - self.started_at_s < IGNORE_POLL_AFTER_START_S):
             return
-        missing_nodes = [n for n in modes.expected_nodes(self.sm.mode, self.use_mock)
+        missing_nodes = [n for n in modes.expected_nodes(self.sm.mode)
                          if n not in self.alive_nodes]
         self.sm.observe_stack(self.controller_states, missing_nodes, now_s <= self.switch_grace_until_s)
         self.after_change()
@@ -411,7 +411,7 @@ class Supervisor(Node):
         msg.mode, msg.enabled, msg.phase = sm.mode, sm.enabled, sm.phase
         msg.requested_mode, msg.last_source, msg.message = sm.requested_mode, sm.last_source, sm.message
         msg.available_modes = modes.mode_names()
-        for name in modes.expected_nodes(sm.mode, self.use_mock):
+        for name in modes.expected_nodes(sm.mode):
             msg.nodes.append(NodeStatus(name=name, group=sm.mode, alive=name in self.alive_nodes))
         for name in modes.BASE_NODES:
             msg.nodes.append(NodeStatus(name=name, group="base", alive=name in self.alive_nodes or name == "supervisor"))

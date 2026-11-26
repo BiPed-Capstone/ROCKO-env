@@ -247,10 +247,10 @@ def test_modes_table():
     check(modes.motion_controllers("tank") == ["diffbot_base_controller"], "tank motion")
     check(len(modes.motion_controllers("balance")) == 4, "balance has four cascade controllers")
     # No IMU node since the C-1 fix (2026-11-24): the IMU plugin reads the sensor inside controller_manager.
-    check("icm20948_node" not in modes.expected_nodes("balance", False), "real: no IMU node any more")
+    check("icm20948_node" not in modes.expected_nodes("balance"), "no IMU node any more")
     # No encoder node either since the C-1 encoder fix (2026-11-24): the motor plugins count the edges.
     for mode in ("tank", "balance"):
-        check("node" not in modes.expected_nodes(mode, False), f"real {mode}: no encoder node any more")
+        check("node" not in modes.expected_nodes(mode), f"{mode}: no encoder node any more")
 
 
 def test_speed_caps_reach_the_mode_launch():

@@ -3,17 +3,10 @@
 Plain Python, no ROS, so the state machine and its test can import it on a laptop.
 """
 
-# Nodes (by ROS node name) that every mode's launch starts. real_only=True: the node talks to real
-# sensors (I2C/GPIO), so it is not started, and not expected, with use_mock_hardware:=true.
-# No node needs it since 2026-11-24: the IMU and the encoders are read inside the hardware plugins
-# (finding C-1), so a dead sensor shows up as a hardware error in controller_manager, not a missing node.
-# Kept for the next sensor that has to be a separate node.
-# Each name is the one the node gives itself in its source (see the comments in MODES below).
-
-
-def _node(name, real_only=False):
-    return {"name": name, "real_only": real_only}
-
+# "nodes": the ROS nodes (by the name each gives itself in its source) that a mode's stack must have running to be
+# ready. The same list with real hardware and with the mock: since 2026-11-24 no sensor is a separate node (the IMU
+# and the encoders are read inside the hardware plugins, finding C-1), so a dead sensor shows up as a hardware error
+# in controller_manager, not as a missing node.
 
 MODES = {
     "tank": {
@@ -25,9 +18,9 @@ MODES = {
         # Disabling tank mode just stops the wheels, so losing the game controller disables it.
         "falls_when_disabled": False,
         "nodes": [
-            _node("controller_manager"),
-            _node("robot_state_publisher"),
-            _node("tank_teleop"),                   # TankTeleop.py
+            "controller_manager",
+            "robot_state_publisher",
+            "tank_teleop",                          # TankTeleop.py
         ],
     },
     "balance": {
@@ -46,10 +39,10 @@ MODES = {
         # The supervisor still disables when a cascade controller itself is gone (nothing is holding it up).
         "falls_when_disabled": True,
         "nodes": [
-            _node("controller_manager"),
-            _node("robot_state_publisher"),
-            _node("diff_drive_controller"),          # DiffDriveController.py
-            _node("balance_teleop"),                 # the name BalanceTeleop.py gives itself
+            "controller_manager",
+            "robot_state_publisher",
+            "diff_drive_controller",                # DiffDriveController.py
+            "balance_teleop",                       # the name BalanceTeleop.py gives itself
         ],
     },
 }
@@ -133,7 +126,6 @@ def launch_command(mode, use_mock_hardware, log_root="", caps=None):
     return cmd
 
 
-def expected_nodes(mode, use_mock_hardware):
+def expected_nodes(mode):
     """Names of the nodes that must be alive for this mode's stack to be 'ready'."""
-    return [n["name"] for n in MODES[mode]["nodes"]
-            if not (use_mock_hardware and n["real_only"])]
+    return list(MODES[mode]["nodes"])
