@@ -220,7 +220,7 @@ and [§3](sim-plant.md#3-the-model).
 - **What is missing:** every topic and service crossing between processes. Three matter. The IMU
   and encoder service calls were on the **sensor** path of both loops (C-1: blocking, with no
   deadline; both replaced on 2026-11-24 by reads inside the plugins, not yet measured on the Pi). The velocity reference and the feedforward travel from `DiffDriveController.py` by
-  topic. The gamepad travels over TCP and then a topic.
+  topic. The gamepad travels over USB to joy's `game_controller_node`, then `/joy` to `BalanceTeleop.py`, which publishes the command topic.
 - **Hits:** the sensor path adds delay to the measurement of both loops (reduces margins, as in
   3.4). The reference path sits **outside** the loops: delay there does not change stability, it
   only slows the response to a command. The gamepad path matters for the 0.2 s teleop watchdog

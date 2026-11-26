@@ -79,7 +79,8 @@ The recording holds these signals (the list is `RECORDED_TOPICS` in
 | --- | --- |
 | `/dynamic_joint_states` | pitch [deg], pitch rate [deg/s], wheel position and velocity, and the wheel velocity commands, every control cycle |
 | `/pitch_pid_controller/controller_state`, `/velocity_pid_controller/controller_state` | each loop's reference, feedback, error and output |
-| `/diffbot_base_controller/cmd_vel`, `/velocity_pid_controller/reference`, `/left_feedforward`, `/right_feedforward`, `/joystick` | what the operator asked for and what was passed to the cascade |
+| `/diffbot_base_controller/cmd_vel`, `/velocity_pid_controller/reference`, `/left_feedforward`, `/right_feedforward`, `/joy` | what the operator asked for and what was passed to the cascade |
+| `/rocko/state`, `/balance_teleop/enabled`, `/tank_teleop/enabled` | the supervisor's mode and enabled flag, and whether that mode's teleop node is passing the sticks on |
 | `/diff_drive_controller/command_timed_out`, `/tipover_rearm` | the teleop watchdog's state and tipover re-arm requests |
 | `/rosout` | every node's log lines, including the tipover and time-out messages |
 | `/controller_manager/statistics/full`, `/controller_manager/activity`, `/diagnostics` | how long each control cycle took, and controller state changes |
@@ -115,7 +116,7 @@ Then free the Pi's disk: `ssh <user>@<robot-ip> 'rm -r ~/rocko_logs/<run folder>
 | No `bag/metadata.yaml` | The power was cut, or the process was killed, before the recording closed | `ros2 bag reindex <run folder>/bag` on a machine with ROS is the tool meant for this (not tried here) |
 | `run.yaml` says `commit: "unknown"` | The code is not running from a git checkout (it was copied, not cloned) | Note the commit by hand |
 | `run.yaml` says `tree: "dirty"` | There were uncommitted changes, so the commit alone does not say what ran | Commit, or note what differed |
-| A topic you wanted has no messages | It does not exist in that mode, or nothing published on it (`/joystick` needs a connected sender) | `ros2 topic list` while the robot runs |
+| A topic you wanted has no messages | It does not exist in that mode, or nothing published on it (the simulation has no `/joy` and no supervisor) | `ros2 topic list` while the robot runs |
 
 ## What is not known
 

@@ -238,7 +238,7 @@ docker/compose.yml restart ros2` and try again).
 | Bullet | Usually |
 | --- | --- |
 | `controller 'X' is not active` plus `state interface 'Y' is not exported` | A name in `rocko_controllers.yaml` that the hardware layer does not export. Compare it with the `MockRocko` block in the `ros2_control` xacro |
-| `node Joystick.py crashed` | A Python script that is not executable (`ls -l`), or a missing import. Re-run the launch by hand to read the full traceback (below) |
+| `node BalanceTeleop.py crashed` (or another node's name) | A Python script that is not executable (`ls -l`), or a missing import. Re-run the launch by hand to read the full traceback (below) |
 | `<no answer within 8 s ...>` in place of the controller list | The launch died before the controller manager came up; the launch log below it says why |
 
 `verify_mock.sh` always launches with the mock on. If you launch by hand **without**

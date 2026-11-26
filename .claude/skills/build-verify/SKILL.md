@@ -170,7 +170,7 @@ already running).
 What a pass means: every controller the launch file spawns (the four cascade controllers in
 balancing mode; the diff-drive controller and the joint-state broadcaster in tank mode) loaded,
 claimed interfaces the hardware layer exports, chained, activated and *stayed* active for a few
-seconds, and `Joystick.py` / `DiffDriveController.py` had not crashed. It does not start every
+seconds, and `DiffDriveController.py`, `BalanceTeleop.py` / `TankTeleop.py` had not crashed. It does not start every
 controller named in the YAML: `joint_state_broadcaster` is declared there but only tank mode spawns
 it. In the mock, pitch reads `0.0` (measured: the pitch controller's `feedback` is `0.0`, not NaN,
 and it computes every cycle). What a pass does **not** mean: the

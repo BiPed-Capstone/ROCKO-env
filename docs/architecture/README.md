@@ -12,8 +12,8 @@ How ROCKO's subsystems work and why they are built this way. These pages explain
 | [`sim-to-real-gap.md`](sim-to-real-gap.md) | What the simulated robot leaves out and what each omission would do to a gain (reasoning, not measurement) |
 | [`verification-ladder.md`](verification-ladder.md) | The five tiers of checking a change, what each proves and cannot show, and which exist today |
 
-The [root README](../../README.md) holds the end-to-end signal path diagram (laptop gamepad → TCP →
-Pi → controller chain → motors) and the repository folder map. It is the canonical version of both —
+The [root README](../../README.md) holds the end-to-end signal path diagram (USB gamepad on the Pi → joy →
+teleop node → controller chain → motors) and the repository folder map. It is the canonical version of both —
 these pages link to it rather than repeating it.
 
 ## Still to write

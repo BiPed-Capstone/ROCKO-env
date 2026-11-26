@@ -159,10 +159,8 @@ ROCKO-env
 │       ├── controllers/
 │       │   ├── add_feedforward/        C++ controller that adds a feedforward term
 │       │   ├── diffdrive/              Turns steering commands into per-wheel targets
-│       │   ├── joystick/               Joystick.py: TCP server for a laptop gamepad (no sender left in the repo); only the simulation launch still uses it
 │       │   ├── tank_teleop/            Tank mode: TankTeleop.py, the USB controller on the Pi drives (when enabled)
-│       │   ├── balance_teleop/         Balancing mode: BalanceTeleop.py, the same pad with its own lower speeds (untested)
-│       │   └── utils/                  RateLimiter.py (not used by any node)
+│       │   └── balance_teleop/         Balancing mode: BalanceTeleop.py, the same pad with its own lower speeds (untested)
 │       ├── supervisor/                 Supervisor.py: owns mode (tank/balance), enabled and phase; starts each mode's launch as a child (state_machine.py has the rules, modes.py the mode table)
 │       ├── teleop/gamepad.py           Shared by the teleop nodes, the supervisor and the dashboard: the controller layout, deadzone/expo/mixing, the LB+RB and LT+RT+RB combos, stick re-centre
 │       ├── description/
@@ -268,7 +266,7 @@ Nothing runs on your laptop. Needs `sudo apt install ros-jazzy-joy` on the Pi on
 [Drive ROCKO with a USB game controller](docs/guides/drive-with-usb-controller.md). The web [dashboard](docs/guides/use-the-dashboard.md)
 (port 8080) shows the state and has the same buttons, with **no login**. Checked with fake controller messages and on the mock only.
 **Balancing mode has never balanced on the robot**: it can now be reached and driven from the controller, untested; see
-[next-steps.md](docs/next-steps.md). `rocko.launch.py` run by hand no longer starts `Joystick.py`, and without a supervisor its teleop node
+[next-steps.md](docs/next-steps.md). `rocko.launch.py` run by hand starts the joy node and `BalanceTeleop.py`, but without a supervisor the teleop node
 never enables, so drive balancing through `pi/launch.sh robot`.
 
 To keep a recording of a test, add `record:=true` to any of the launches above

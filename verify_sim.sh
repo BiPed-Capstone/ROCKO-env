@@ -43,9 +43,8 @@
 #        does not deactivate them).
 #        (The re-arm hysteresis, refusing a re-arm inside the trip limit but outside
 #        rearm_max_pitch_deg, is checked by the host test tools/tipover_latch_test.cpp, not here.)
-#   C3   teleop watchdog. teleop:=true (the real DiffDriveController.py; Joystick.py is started too
-#        but runs idle, because no gamepad connects to its TCP port: that path is covered by the host
-#        test tools/teleop_watchdog_test.py). A fake gamepad publishes TwistStamped messages
+#   C3   teleop watchdog. teleop:=true (the real DiffDriveController.py; the robot's BalanceTeleop.py
+#        needs /joy and a pad, so the sim does not start it). A fake gamepad publishes TwistStamped messages
 #        straight to diffbot_base_controller/cmd_vel at 20 Hz for 2 s, then stops. command_timed_out must go False while it
 #        drives and True TELEOP_TIMEOUT_S to TELEOP_TIMEOUT_S + TELEOP_MARGIN_S after the last
 #        command; the velocity reference must be exactly [0, 0] after that; the controllers must
@@ -106,9 +105,8 @@
 #   V    follow a velocity step: teleop:=true, a fake gamepad (the C3 path) sends linear.x = 0, then
 #        V_STEP_M_S. PASS if the mean measured wheel velocity reaches V_RISE_FRACTION of the step
 #        within V_RISE_S, overshoots by at most V_OVERSHOOT_PCT, and |pitch| stays under V_PITCH_DEG.
-#   K    a key press: V again with a step of K_STEP_M_S, the smallest non-zero command the gamepad
-#        path can produce (Joystick.py: 0.05 deadband x linear_scale 10). Finding H-13: sent as a bare
-#        step it leans the model 21 deg. Same limits as V except the rise time (K_RISE_S).
+#   K    a full stick: V again with a step of K_STEP_M_S, five times V's. Finding H-13: sent as a
+#        bare step it leans the model 21 deg, so K checks the command ramp. Same limits as V except the rise time (K_RISE_S).
 #   S2b  the verifier's own check: U again with pitch_sign:=+1 (the pitch loop's sign flipped). U must
 #        FAIL, and for the right reason: the wiring is up and |pitch| reaches TIPOVER_DEG within
 #        S2B_FALL_S of release. S2b is "ok" only then.
@@ -318,9 +316,10 @@ STEP_WATCHDOG_S=1.0    # [s] the teleop watchdog's timeout for the launches of V
                        #   ~50 % (3 of 10 runs, 2026-11-16). 1 s rides through such a stall. If the
                        #   watchdog fires anyway, the scenario exits 2 (could not judge)
 # --- K ---
-K_STEP_M_S=0.5         # [m/s] the smallest non-zero gamepad command: Joystick.py zeroes anything under
-                       #   its 0.05 deadband and multiplies by linear_scale (10). A key press or a
-                       #   nudged stick asks for at least this (finding H-13)
+K_STEP_M_S=0.5         # [m/s] the largest command balancing mode sends today: BalanceTeleop.py's
+                       #   full stick at its default cap (max_speed 0.05 x 10 m/s). Unchanged since
+                       #   2026-11-16, when it was the old laptop node's smallest non-zero command;
+                       #   either way it is the step that leaned the model 21 deg (finding H-13)
 K_RISE_S=5.0           # [s after the step] to reach 90 % of K_STEP_M_S. Longer than V_RISE_S because
                        #   DiffDriveController ramps the command, and five times the step needs more
                        #   lean time. Set on 2026-11-16 BEFORE the ramp was written or tuned; the

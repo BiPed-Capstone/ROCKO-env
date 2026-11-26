@@ -177,9 +177,8 @@ def generate_launch_description():
     )
 
     # TELEOP: a game controller plugged into the Pi's USB. joy's game_controller_node reads it and
-    # publishes /joy; BalanceTeleop.py turns /joy into cmd_vel for DiffDriveController.py (Joystick.py,
-    # the old TCP input, is still installed but no longer started here). deadzone 0.0 here because
-    # BalanceTeleop.py applies its own; autorepeat_rate is the joy node's republish rate, which the teleop's
+    # publishes /joy; BalanceTeleop.py turns /joy into cmd_vel for DiffDriveController.py. deadzone 0.0
+    # here because BalanceTeleop.py applies its own; autorepeat_rate is the joy node's republish rate, which the teleop's
     # silence timeout is counted in. The supervisor's base launch runs the joy node when supervised.
     game_controller = Node(
         package="joy",

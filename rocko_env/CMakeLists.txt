@@ -143,11 +143,9 @@ install(TARGETS rocko_env add_feedforward_controller_parameters
 ament_python_install_package(${PROJECT_NAME})
 
 # With --symlink-install these are run in place, not copied, so each source file must be
-# executable (git mode 100755) and start with a shebang. RateLimiter.py is only imported, not run.
+# executable (git mode 100755) and start with a shebang.
 install(PROGRAMS
   rocko_env/controllers/diffdrive/DiffDriveController.py
-  rocko_env/controllers/utils/RateLimiter.py
-  rocko_env/controllers/joystick/Joystick.py
   rocko_env/controllers/tank_teleop/TankTeleop.py
   rocko_env/controllers/balance_teleop/BalanceTeleop.py
   rocko_env/supervisor/Supervisor.py

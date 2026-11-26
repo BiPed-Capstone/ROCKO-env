@@ -1,6 +1,6 @@
 # Launch the SIMULATED robot (Tier 3): the real controllers against rocko_env/SimPlant.
 #
-#   ros2 launch rocko_env rocko_sim.launch.py                         # stand still, teleop nodes on
+#   ros2 launch rocko_env rocko_sim.launch.py                         # stand still, DiffDriveController.py on
 #   ros2 launch rocko_env rocko_sim.launch.py initial_pitch_deg:=2.0  # start leaning 2 deg
 #   ros2 launch rocko_env rocko_sim.launch.py teleop:=false           # a script publishes references
 #
@@ -62,9 +62,11 @@ def generate_launch_description():
             "teleop",
             default_value="true",
             description=(
-                "true: start Joystick.py and DiffDriveController.py as on the robot (with no gamepad "
-                "connected, DiffDriveController keeps sending a zero velocity reference). false: "
-                "start neither; whoever runs the scenario publishes the references."
+                "true: start DiffDriveController.py as on the robot. Nothing publishes a velocity "
+                "command until a scenario does (the checks publish cmd_vel themselves; the "
+                "robot's BalanceTeleop.py needs /joy and a pad, so the sim does not start it), "
+                "and until then the reference is zero. false: leave it out; whoever runs the "
+                "scenario publishes the references."
             ),
         ),
         # The teleop watchdog's timeout (finding C-3), passed to DiffDriveController.py. The default
@@ -172,11 +174,6 @@ def generate_launch_description():
         }],
         condition=IfCondition(teleop),
     )
-    joystick = Node(
-        package="rocko_env",
-        executable="Joystick.py",
-        condition=IfCondition(teleop),
-    )
 
     # Printed first, so nobody mistakes a simulation for the robot.
     sim_banner = LogInfo(
@@ -190,7 +187,6 @@ def generate_launch_description():
         robot_state_pub_node,
         joint_state_broadcaster_spawner,
         cascade_after_broadcaster,
-        joystick,
         diffdrive_controller,
     ]
 

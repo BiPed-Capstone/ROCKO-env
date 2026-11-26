@@ -6,7 +6,7 @@ Run from the repo root:  python3 -I tools/balance_teleop_test.py
 Reuses the stand-ins of tools/tank_teleop_test.py (fake rclpy, messages, clock) and runs the SAME gate
 checks against BalanceTeleop: zero with no /rocko/state, a stale one, a disabled one or another mode's; zero
 until the sticks have been centred since the last enable; zero after JOY_TIMEOUT_S of silence; NaN is zero.
-Then the parts that are balancing's own: the full-scale numbers (the old Joystick.py's 10 m/s and 35 rad/s),
+Then the parts that are balancing's own: the full-scale numbers (10 m/s and 35 rad/s, kept from the old laptop teleop node),
 the default caps (0.05 forward, 0.2 turn), the topic DiffDriveController.py subscribes to, and that it shares nothing with tank mode.
 What it cannot show: the joy node, ROS timing, DiffDriveController, the balance loop, the robot. Not a tier.
 """
@@ -47,20 +47,12 @@ def test_full_scale_and_caps():
     check(linear == 0.0 and close(angular, 35.0 * 0.2 * 0.05), f"full left turn at the default caps, got {angular}")
     node = armed_node(lambda: make_balance({"max_speed": 1.0, "max_turn": 1.0}), "balance")
     joy(node, left_y=1.0)
-    check(close(node.command()[0], 10.0), "max_speed 1.0: full stick = 10 m/s (Joystick.py's linear_scale)")
+    check(close(node.command()[0], 10.0), "max_speed 1.0: full stick = 10 m/s (FULL_LINEAR_M_S)")
     joy(node, right_x=1.0)
-    check(close(node.command()[1], 35.0), "max_turn 1.0: full left = +35 rad/s (Joystick.py's angular_scale)")
+    check(close(node.command()[1], 35.0), "max_turn 1.0: full left = +35 rad/s (FULL_TURN_RAD_S)")
     joy(node, left_y=1.0, right_x=1.0)
     linear, angular, _ = node.command()
     check(close(linear / 10.0 + angular / 35.0, 1.0), "both sticks over share the budget (gamepad.mix)")
-
-
-def test_the_numbers_come_from_the_old_joystick_node():
-    text = (PACKAGE / "rocko_env/controllers/joystick/Joystick.py").read_text()
-    linear = float(re.search(r"self\.linear_scale = (-?[0-9.]+)", text).group(1))
-    angular = float(re.search(r"self\.angular_scale = (-?[0-9.]+)", text).group(1))
-    check(abs(linear) == bt.FULL_LINEAR_M_S and abs(angular) == bt.FULL_TURN_RAD_S,
-          f"Joystick.py scales {linear}, {angular} != {bt.FULL_LINEAR_M_S}, {bt.FULL_TURN_RAD_S}")
 
 
 def test_publishes_on_the_topic_diffdrive_listens_to():

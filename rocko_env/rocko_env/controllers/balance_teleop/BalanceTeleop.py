@@ -39,12 +39,13 @@ from std_msgs.msg import Bool
 
 from rocko_env.teleop import gamepad
 
-# FULL-RANGE SCALES: what a full command (1.0) means. They are the full-stick values the old TCP
-# Joystick.py used (linear_scale and angular_scale there), so this change invents no speed. Joystick.py's
-# are negative because its source (pygame) reads stick UP as -1; joy's game_controller_node reads UP as +1
-# (gamepad.py), so the same sign rule here is positive: stick up = +x forward, stick left = +z left turn.
-FULL_LINEAR_M_S = 10.0   # [m/s] linear.x for a full stick, forward positive (Joystick.py linear_scale = -10.0)
-FULL_TURN_RAD_S = 35.0   # [rad/s] angular.z for a full stick, + = left (CCW) (Joystick.py angular_scale = -35.0)
+# FULL-RANGE SCALES: what a full command (1.0) means. Historical, not derived: they are the old laptop
+# teleop node's full-stick values (Joystick.py, removed 2026-11-26), kept so no speed changed. A full
+# stick at these scales is far beyond anything safe; what really limits speed is max_speed and
+# max_turn below. Change those, not these. joy's game_controller_node reads stick UP as +1
+# (gamepad.py): stick up = +x forward, stick left = +z left turn.
+FULL_LINEAR_M_S = 10.0   # [m/s] linear.x for a full stick, forward positive
+FULL_TURN_RAD_S = 35.0   # [rad/s] angular.z for a full stick, + = left (CCW)
 # With both sticks over, gamepad.mix() divides the two so that forward + turn (as fractions of these) stays
 # within 1. Tank mode needs that so no wheel saturates; here it just keeps a corner from asking for both at once.
 

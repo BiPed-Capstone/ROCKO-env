@@ -41,7 +41,7 @@ DISK_CHECK_PERIOD_S = 5.0
 # What is recorded. ONE list, here, so every way of starting a recording records the same thing.
 # Edit this list to change what is recorded; run.yaml copies it.
 # A topic that does not exist in the running mode is simply never written (tank mode has no PID
-# controllers; the simulation has no /joystick until a sender connects, and no /joy at all).
+# controllers; the simulation has no /joy, no supervisor and no teleop node).
 RECORDED_TOPICS = [
     # The robot's state, as the controllers see it: pitch [deg], pitch_rate [deg/s], wheel position
     # and velocity, and the wheel velocity commands. 100 Hz.
@@ -50,11 +50,12 @@ RECORDED_TOPICS = [
     # Each PID loop's reference, feedback, error and output.
     "/pitch_pid_controller/controller_state",
     "/velocity_pid_controller/controller_state",
-    # What the operator asked for, and what DiffDriveController made of it. /joystick is balancing
-    # mode's gamepad input; /joy and /tank_teleop/enabled are tank mode's USB controller and its
-    # hold-LB-to-drive state.
-    "/joystick",
+    # What the operator asked for, and what DiffDriveController made of it. /joy is the USB
+    # controller (both modes); /rocko/state is the supervisor's mode and enabled flag;
+    # /<mode>_teleop/enabled says whether that mode's teleop node is passing the sticks on.
     "/joy",
+    "/rocko/state",
+    "/balance_teleop/enabled",
     "/tank_teleop/enabled",
     "/diffbot_base_controller/cmd_vel",
     "/velocity_pid_controller/reference",

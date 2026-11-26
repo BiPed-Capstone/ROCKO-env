@@ -155,8 +155,7 @@ Rest 5 seconds between levels. Write down, for each wheel separately: the lowest
 velocity it settled at. The duty is `6.5957 x + 2` (truncated), or read it from the table.
 
 The first time `ros2 topic pub` sends a message with a zero timestamp, the controller may print a
-one-time warning that it is substituting the current time. That is expected; it is the same message
-`Joystick.py` sends. (Not checked on this robot.)
+one-time warning that it is substituting the current time. That is expected. (Not checked on this robot.)
 
 ### 4. Direction and the other direction
 
@@ -175,11 +174,7 @@ timeout 5 ros2 topic pub -r 10 /diffbot_base_controller/cmd_vel geometry_msgs/ms
 
 `angular.z` is in rad/s and the wheels are 0.32 m apart, so each wheel gets 4.0 x 0.16 = 0.64 m/s in
 opposite directions. Write down whether the wheels turn opposite to each other. This is the number to
-compare with the keyboard's turn. With precise mode on, a full `a` or `d` was `angular.z` = 0.3
-(`Joystick.py:233`, `DEFAULT_PRECISE_ANGULAR_SCALE_M_S`), 0.048 m/s per wheel, about 2 % duty. Since
-`df91b9e` the gamepad mapping applies instead (scale -35, `Joystick.py:239-248`), and the turn depends on
-the turn level. The comment at `Joystick.py:49` says the precise scale is "NOT rad/s"; that holds when
-`DiffDriveController.py` (balance mode) reads it. Tank mode does not launch that node, so there
+compare with the controller's turn. Tank mode does not launch `DiffDriveController.py`, so
 `diff_drive_controller` reads `angular.z` as rad/s, which is what the arithmetic above uses.
 
 ### 6. Stop

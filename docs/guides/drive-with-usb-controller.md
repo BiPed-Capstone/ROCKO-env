@@ -241,10 +241,10 @@ What exists, so you know what a press does:
   `teleop:=`).
 - Disabling in balance mode means the robot **falls**. Never disable it unless it is held.
 
-**Driving by hand without the supervisor.** `rocko.launch.py` run by hand (`supervised:=false`) no longer starts
-`Joystick.py` (the old laptop TCP path). It starts `game_controller_node` and `BalanceTeleop.py` instead, but with no
+**Driving by hand without the supervisor.** `rocko.launch.py` run by hand (`supervised:=false`) starts
+`game_controller_node` and `BalanceTeleop.py`, but with no
 supervisor publishing `/rocko/state` the teleop node never enables. To drive, run `pi/launch.sh robot` and switch to
-balance mode. The simulation launch (`rocko_sim.launch.py`) still uses `Joystick.py`.
+balance mode. The simulation launch (`rocko_sim.launch.py`) starts neither: its checks publish the velocity command themselves.
 
 ## What goes wrong
 

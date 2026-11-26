@@ -17,7 +17,7 @@ clock, and feeds it /joy messages:
     bad parameters fall back to the defaults; step() publishes a stamped command and the enabled flag.
     The same gate checks run against BalanceTeleop in tools/balance_teleop_test.py;
   * wiring: WHEEL_SEPARATION_M equals the tank YAML's; the tank launch starts game_controller_node and
-    TankTeleop.py (not Joystick.py) with the joy node's rate taken from gamepad.py; the balancing launch
+    TankTeleop.py with the joy node's rate taken from gamepad.py; the balancing launch
     starts neither, and balancing's nodes do not import the tank node.
 What it cannot show: the joy node, SDL, the 8BitDo, ROS timing, diff_drive_controller, the robot.
 Not a tier.
@@ -380,7 +380,6 @@ def test_launch_files_wire_the_teleops_and_the_supervised_flag():
     tank = (LAUNCH / "rocko_tank_mode.launch.py").read_text()
     check('executable="game_controller_node"' in tank and 'executable="TankTeleop.py"' in tank,
           "tank mode starts game_controller_node and TankTeleop.py")
-    check("Joystick.py" not in tank, "tank mode does not start balancing's Joystick.py")
     check("gamepad.JOY_AUTOREPEAT_RATE_HZ" in tank, "the joy node's rate comes from gamepad.py")
     check('IfCondition(LaunchConfiguration("teleop"))' in tank
           and 'IfCondition(AndSubstitution(LaunchConfiguration("teleop"), NotSubstitution(supervised)))' in tank,
@@ -393,7 +392,7 @@ def test_launch_files_wire_the_teleops_and_the_supervised_flag():
     check(re.search(r"GroupAction\(\s*\[\s*foxglove_bridge,\s*dashboard_node\(.*?condition=UnlessCondition\(supervised\)",
                     tank, re.S), "supervised leaves out the dashboard and foxglove (the base launch runs them)")
     balance = (LAUNCH / "rocko.launch.py").read_text()
-    check("TankTeleop" not in balance and 'executable="Joystick.py"' not in balance, "rocko.launch.py starts neither TankTeleop nor Joystick.py")
+    check("TankTeleop" not in balance, "rocko.launch.py does not start TankTeleop")
     check('executable="BalanceTeleop.py"' in balance and 'executable="game_controller_node"' in balance,
           "rocko.launch.py starts game_controller_node and BalanceTeleop.py")
     check('"supervised", default_value="false"' in balance and balance.count('"--inactive"') == 1,
@@ -402,7 +401,7 @@ def test_launch_files_wire_the_teleops_and_the_supervised_flag():
     sim = (LAUNCH / "rocko_sim.launch.py").read_text()
     check("TankTeleop" not in sim and "game_controller_node" not in sim and "BalanceTeleop" not in sim,
           "rocko_sim.launch.py is untouched by the teleop split")
-    for path in ("controllers/joystick/Joystick.py", "controllers/diffdrive/DiffDriveController.py",
+    for path in ("controllers/diffdrive/DiffDriveController.py",
                  "controllers/balance_teleop/BalanceTeleop.py"):
         check("tank_teleop" not in (PACKAGE / "rocko_env" / path).read_text(), f"{path} must not use the tank node")
 

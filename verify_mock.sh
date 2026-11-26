@@ -132,7 +132,9 @@ inspect() {
   done
   # The ROCKO nodes that run under the mock (the ones that need no real sensor) must not crash:
   # a stack with a dead teleop node is not a working stack, even if the controllers are fine.
-  for n in Joystick DiffDriveController TankTeleop; do
+  # Each mode starts only some of them (balance: DiffDriveController and BalanceTeleop; tank:
+  # TankTeleop); a node that was not started never matches, so one list serves both modes.
+  for n in DiffDriveController BalanceTeleop TankTeleop; do
     grep -Eq "\[$n\.py-[0-9]+\]: (exception occurred|process has died)" "$log" \
       && problems+=("node $n.py crashed (see the launch log below)")
   done

@@ -3,26 +3,21 @@
 
 Run from the repo root:  python3 -I tools/teleop_watchdog_test.py
 
-It loads DiffDriveController.py and Joystick.py with small stand-ins for rclpy and the
-message types, injects a fake clock, and checks:
+It loads DiffDriveController.py with small stand-ins for rclpy and the message types, injects
+a fake clock, and checks:
   * CommandWatchdog: age is measured from the last command's ARRIVAL, on a monotonic clock;
   * DiffDriveController: when the command is stale the velocity reference and feedforward
     are published as ZERO, publishing never stops, and logs / the Bool topic change only on
     a transition;
-  * Joystick: only commands that really arrived are published, a clean disconnect does
-    not crash it, a second TCP connection cannot replace a client that is still sending (only one
-    silent for longer than CLIENT_SILENT_REPLACE_S), accept() errors are survived, and no more than
-    MAX_BYTES_PER_TICK bytes are read per tick;
-  * Joystick's gamepad mapping (expo, deadband, scales), the only one since 2026-11-22.
-Joystick.py and DiffDriveController.py are balancing mode's nodes; tank mode's teleop is tested by
-tools/tank_teleop_test.py.
+  * the command ramp (finding H-13): a forward command is ramped, a turn is not, a bad
+    command or parameter is refused.
+DiffDriveController.py is balancing mode's; the gamepad side is tested by tools/balance_teleop_test.py
+(balancing) and tools/tank_teleop_test.py (tank).
 What it cannot show: anything about ROS timing, DDS, or a robot. Tier 0 only.
 """
 import importlib.util
 import math
 import pathlib
-import socket
-import struct
 import sys
 import time
 import types
@@ -32,7 +27,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 CONTROLLERS = REPO / "rocko_env" / "rocko_env" / "controllers"
 
 
-# --- stand-ins for the ROS modules the two nodes import ---------------------------------
+# --- stand-ins for the ROS modules the node imports ---------------------------------
 class FakeLogger:
     def __init__(self):
         self.lines = []  # (level, text)
@@ -88,8 +83,6 @@ class Msg:  # a message that accepts any attribute, like ROS messages do
     def __init__(self, **fields):
         self.twist = SimpleNamespace(linear=SimpleNamespace(x=0.0), angular=SimpleNamespace(z=0.0))
         self.data = 0.0
-        self.axes = []
-        self.buttons = []
         self.__dict__.update(fields)
 
 
@@ -108,11 +101,6 @@ def install_stubs():
     module("control_msgs.msg", MultiDOFCommand=Msg)
     module("std_msgs")
     module("std_msgs.msg", Bool=Msg, Float64=Msg)
-    module("sensor_msgs")
-    module("sensor_msgs.msg", Joy=Msg)
-    module("rocko_env")
-    module("rocko_env.controllers")
-    module("rocko_env.controllers.utils")
 
 
 def load(name, path):
@@ -124,7 +112,6 @@ def load(name, path):
 
 install_stubs()
 diffdrive = load("DiffDriveController", CONTROLLERS / "diffdrive" / "DiffDriveController.py")
-joystick = load("Joystick", CONTROLLERS / "joystick" / "Joystick.py")
 
 TIMED_OUT_LOG = "teleop command timed out: zeroing the velocity reference, balance loop keeps running"
 RESUMED_LOG = "teleop commands resumed"
@@ -294,185 +281,10 @@ def test_custom_timeout_parameter_is_used():
     check(node.command_watchdog.timeout_s == 0.5, "the parameter must set the timeout")
 
 
-# --- Joystick ---------------------------------------------------------------------------
-def make_joystick_with_socket():
-    """A Joystick without its TCP server: only the receive path, over a socketpair."""
-    js = joystick.Joystick.__new__(joystick.Joystick)
-    js.logger = FakeLogger()
-    js.get_logger = lambda: js.logger
-    js.message_size = struct.calcsize(f"{js.NUM_AXES}f {js.NUM_BUTTONS}B")
-    js.rx_buffer = b""
-    js.clock = Clock()
-    js.now = js.clock
-    js.last_rx_s = js.clock.t
-    gamepad, robot_side = socket.socketpair()
-    robot_side.setblocking(False)
-    js.client_sock = robot_side
-    return js, gamepad
-
-
-def packet(axis1):
-    return struct.pack("6f 16B", 0.0, axis1, 0.0, 0.0, 0.0, 0.0, *([0] * 16))
-
-
-def test_joystick_returns_none_when_nothing_arrived():
-    js, gamepad = make_joystick_with_socket()
-    check(js.read_newest_message() is None, "no data: no message, so nothing is published")
-
-
-def test_joystick_reads_newest_of_several_and_handles_split_packets():
-    js, gamepad = make_joystick_with_socket()
-    gamepad.sendall(packet(0.1) + packet(0.2) + packet(0.3)[:10])  # 2 whole + a partial one
-    message = js.read_newest_message()
-    check(abs(message.axes[1] - 0.2) < 1e-6, "must return the newest COMPLETE message")
-    check(js.read_newest_message() is None, "the partial message is not complete yet")
-    gamepad.sendall(packet(0.3)[10:])
-    message = js.read_newest_message()
-    check(abs(message.axes[1] - 0.3) < 1e-6, "the split message completes on the next read")
-
-
 def test_default_timeout_is_used_without_a_parameter():
     node, _ = make_controller()
     check(node.command_watchdog.timeout_s == diffdrive.DEFAULT_COMMAND_TIMEOUT_S,
           "with no parameter the node must use DEFAULT_COMMAND_TIMEOUT_S")
-
-
-def raw_packet(axes, buttons):
-    return struct.pack("6f 16B", *axes, *buttons)
-
-
-def test_joystick_accepts_full_scale_axes():
-    js, gamepad = make_joystick_with_socket()
-    gamepad.sendall(raw_packet([1.0, -1.0, 1.005, 0.0, 0.0, 0.0], [1] + [0] * 15))
-    message = js.read_newest_message()
-    check(message is not None, "axes at +/-1 (and float rounding just past) must be accepted")
-    check(js.client_sock is not None, "a good message must not drop the connection")
-
-
-def test_joystick_rejects_garbage_and_drops_the_connection():
-    bad_messages = {
-        "NaN axis": raw_packet([0.0, math.nan, 0.0, 0.0, 0.0, 0.0], [0] * 16),
-        "infinite axis": raw_packet([math.inf, 0.0, 0.0, 0.0, 0.0, 0.0], [0] * 16),
-        "axis above 1": raw_packet([0.0, 1.5, 0.0, 0.0, 0.0, 0.0], [0] * 16),
-        "axis below -1": raw_packet([0.0, 0.0, -2.0, 0.0, 0.0, 0.0], [0] * 16),
-        "button 2": raw_packet([0.0] * 6, [2] + [0] * 15),
-        "button 255": raw_packet([0.0] * 6, [0] * 15 + [255]),
-    }
-    for what, data in bad_messages.items():
-        js, gamepad = make_joystick_with_socket()
-        gamepad.sendall(data)
-        check(js.read_newest_message() is None, f"{what}: the message must be rejected (nothing published)")
-        check(js.client_sock is None, f"{what}: the connection must be dropped")
-        check(any(level == "warning" and "Rejected" in text for level, text in js.logger.lines),
-              f"{what}: the rejection must be logged")
-
-
-def test_joystick_survives_a_clean_disconnect():
-    js, gamepad = make_joystick_with_socket()
-    gamepad.close()
-    check(js.read_newest_message() is None, "a closed connection gives no message")
-    check(js.client_sock is None, "the dead socket must be dropped so a new gamepad can connect")
-    check(any(level == "warning" for level, _ in js.logger.lines), "the disconnect must be logged")
-    check(js.read_newest_message() is None, "reading with no client must not raise")
-
-
-class FakeServer:
-    """Stands in for the listening socket: accept() returns the next queued socket, or raises."""
-
-    def __init__(self, *outcomes):
-        self.outcomes = list(outcomes)  # a socket to hand over, or an Exception instance to raise
-
-    def accept(self):
-        outcome = self.outcomes.pop(0)
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome, ("127.0.0.1", 9999)
-
-
-def test_new_connection_does_not_replace_a_live_client():
-    js, gamepad = make_joystick_with_socket()
-    original = js.client_sock
-    newcomer, newcomer_far_end = socket.socketpair()
-    js.server_sock = FakeServer(newcomer)
-    js.clock.t += 0.3  # the client sent 0.3 s ago: a heartbeat is 0.05 s, so it is alive
-    js.accept_new_client()
-    check(js.client_sock is original, "a live client must keep its place")
-    check(newcomer.fileno() == -1, "the newcomer's socket must be closed")
-    check(any(level == "warning" and "Refused" in text for level, text in js.logger.lines),
-          "the refusal must be logged")
-    gamepad.sendall(packet(0.4))
-    check(abs(js.read_newest_message().axes[1] - 0.4) < 1e-6, "the original client must still be read")
-
-
-def test_new_connection_replaces_a_silent_client_only_after_the_limit():
-    js, gamepad = make_joystick_with_socket()
-    original = js.client_sock
-    js.rx_buffer = b"stale"
-    newcomer, _ = socket.socketpair()
-    js.server_sock = FakeServer(newcomer, newcomer)
-    js.clock.t += js.CLIENT_SILENT_REPLACE_S  # 0.5 is exact in binary floating point
-    js.accept_new_client()
-    check(js.client_sock is original, "silent for exactly the limit is not LONGER than it: no replacement")
-    newcomer, _ = socket.socketpair()
-    js.server_sock = FakeServer(newcomer)
-    js.clock.t += 0.001
-    js.accept_new_client()
-    check(js.client_sock is newcomer, "a client silent for longer than the limit must be replaced")
-    check(original.fileno() == -1, "the old client's socket must be closed")
-    check(js.rx_buffer == b"", "the old client's partial bytes must be dropped with it")
-    check(js.last_rx_s == js.clock.t, "the new client starts its silence timer at the connection")
-
-
-def test_first_connection_is_accepted():
-    js, gamepad = make_joystick_with_socket()
-    js.client_sock = None
-    newcomer, _ = socket.socketpair()
-    js.server_sock = FakeServer(newcomer)
-    js.accept_new_client()
-    check(js.client_sock is newcomer, "with no client the connection must be accepted")
-
-
-def test_data_refreshes_the_silence_timer():
-    js, gamepad = make_joystick_with_socket()
-    js.clock.t += 0.4
-    js.read_newest_message()  # nothing arrived
-    check(js.last_rx_s == 1000.0, "reading nothing must not refresh the timer")
-    gamepad.sendall(packet(0.1)[:7])  # even a fragment shows the client is alive
-    js.read_newest_message()
-    check(js.last_rx_s == js.clock.t, "bytes arriving must refresh the timer")
-
-
-def test_accept_errors_do_not_crash_the_node():
-    js, gamepad = make_joystick_with_socket()
-    original = js.client_sock
-    js.server_sock = FakeServer(ConnectionAbortedError("ECONNABORTED"), BlockingIOError())
-    js.accept_new_client()  # must not raise
-    js.accept_new_client()
-    check(js.client_sock is original, "a failed accept() must leave the current client alone")
-    check(any(level == "warning" and "accept() failed" in text for level, text in js.logger.lines),
-          "an accept() error must be logged")
-
-
-def test_bytes_read_per_tick_are_capped():
-    js, gamepad = make_joystick_with_socket()
-    gamepad.setblocking(False)
-    sent = 0
-    while sent < 3 * js.MAX_BYTES_PER_TICK:  # as much as the socket will take, up to three ticks' worth
-        try:
-            sent += gamepad.send(bytes(4096))  # zeros are a valid gamepad stream at any byte offset
-        except BlockingIOError:
-            break
-    check(sent > js.MAX_BYTES_PER_TICK, f"the test could only queue {sent} bytes: too few to show the cap")
-    js.read_newest_message()
-    waiting = 0
-    js.client_sock.setblocking(False)
-    while True:  # count what is still waiting in the socket
-        try:
-            waiting += len(js.client_sock.recv(65536))
-        except BlockingIOError:
-            break
-    check(sent - waiting == js.MAX_BYTES_PER_TICK,
-          f"one tick must read exactly MAX_BYTES_PER_TICK bytes from a flood, it read {sent - waiting}")
 
 
 # --- the command ramp (finding H-13) --------------------------------------------------------------
@@ -560,29 +372,6 @@ def test_bad_ramp_parameter_falls_back_to_default():
         check(node.max_linear_accel_m_s2 == diffdrive.DEFAULT_MAX_LINEAR_ACCEL_M_S2,
               f"bad ramp limit {bad} must fall back to DEFAULT_MAX_LINEAR_ACCEL_M_S2")
         check(any(level == "error" for level, _ in node.logger.lines), f"bad ramp limit {bad} must log an error")
-
-
-# --- Joystick: the gamepad mapping (balancing mode) -----------------------------------------------
-def twist_for(axes, buttons):
-    """What Joystick.convert_to_twist publishes for one gamepad message: (linear.x, angular.z)."""
-    js, gamepad = make_joystick_with_socket()
-    gamepad.close()
-    js.linear_scale, js.angular_scale, js.deadband = -10.0, -35.0, 0.05  # as Joystick.__init__ sets them
-    js.robot_body_vector_updated_topic = FakePublisher("cmd_vel")
-    js.convert_to_twist(Msg(axes=axes, buttons=buttons))
-    sent = js.robot_body_vector_updated_topic.sent[-1].twist
-    return sent.linear.x, sent.angular.z
-
-
-def test_gamepad_mapping_expo_deadband_and_scales():
-    linear, angular = twist_for([0.0, -1.0, 0, 0, 0, 0], [0] * 16)
-    check(abs(linear - 10.0) < 1e-9 and angular == 0.0, "full stick is 10 'm/s' for a gamepad")
-    linear, _ = twist_for([0.0, -0.05, 0, 0, 0, 0], [0] * 16)
-    check(linear == 0.0, "the gamepad's deadband applies")
-    # No button changes the mapping any more (precise and shaped modes were removed 2026-11-22).
-    linear, _ = twist_for([0.0, -0.5, 0, 0, 0, 0], [1] * 16)
-    check(abs(linear - 10.0 * joystick.expo_curve(0.5)) < 1e-6,
-          f"buttons must not change the expo mapping, got {linear}")
 
 
 # --- runner -----------------------------------------------------------------------------
