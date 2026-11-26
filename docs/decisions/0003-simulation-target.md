@@ -105,6 +105,6 @@ cascade untouched. That is the payoff for the layering in [ADR 0002](0002-cascad
   lives (the parameter was ignored at line 4 when this ADR was written)
 - `rocko_env/CMakeLists.txt`, the `ROCKO_SKIP_WIRINGPI` block — replaced the unconditional WiringPi
   link that was at lines 75-80
-- [Root README, "Working on a laptop instead of the robot"](../../README.md)
+- [Getting started](../guides/getting-started.md) and [Verify a change without the robot](../guides/verify-in-container.md): the dev container
 - [issue #10 — `use_mock_hardware` does nothing](https://github.com/BiPed-Capstone/ROCKO-env/issues/10)
 - [gz_ros2_control docs](https://control.ros.org/jazzy/doc/gz_ros2_control/doc/index.html)

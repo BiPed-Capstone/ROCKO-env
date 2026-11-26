@@ -1,32 +1,55 @@
 # ROCKO-env
 
-This is the ROS 2 code for **ROCKO**, a two-wheeled self-balancing robot. Everything here runs on a Raspberry Pi mounted on the robot.
+This is the ROS 2 code for **ROCKO**, a two-wheeled self-balancing robot built as an educational capstone platform.
+Everything here runs on a Raspberry Pi mounted on the robot. All of it except the motor plugin can be built and checked
+on a laptop (the motor plugin needs the Pi's GPIO library, so off the Pi it is only type-checked).
 
-This README is the main documentation: what the robot is, how the pieces connect, and how to build and run
-it. More material lives in **[`docs/`](docs/)**. This includes subsystem explanations, procedures, architecture
-decision records, and code audits. See [Documentation](#documentation) at the bottom for the map.
+**Where it stands** (details in the handoff box of [next-steps.md](docs/next-steps.md)):
+
+- **Tank mode drives** on the robot from a USB gamepad. It is plain differential drive, with no balancing.
+- **Balance mode has never balanced.** It can be enabled on the robot, and the first floor test (2026-11-25) did not
+  balance: [journal](docs/journal/2026-11-25-level-pitch-offset-and-lean-clamp.md).
+- **Off the robot**, the code builds and is checked on wiring, on a mock and against a simulated robot. What those
+  checks can and cannot show is in [the verification ladder](docs/architecture/verification-ladder.md).
 
 ---
 
-## Getting Started
+## Start here
+
+| You want to | Go to |
+| --- | --- |
+| Get set up on a laptop and run every check, with no robot | [Getting started: your first hour](docs/guides/getting-started.md) |
+| Understand how it balances | [How the pieces connect](#how-the-pieces-connect), then [the control cascade](docs/architecture/control-cascade.md) |
+| Look up a word | [The glossary](docs/glossary.md) |
+| Run or drive the real robot | [Run ROCKO on the Pi](docs/guides/run-on-the-pi.md), [Drive with a USB controller](docs/guides/drive-with-usb-controller.md) |
+| Find something to work on | [next-steps.md](docs/next-steps.md), the work queue |
+| Decide what the AI left for a human | [Proposals waiting on you](docs/proposals/README.md#waiting-on-you) |
+| Work on it with an AI agent | [Working with AI agents](#working-with-ai-agents-in-this-repo) below, and [CLAUDE.md](CLAUDE.md) |
+
+---
+
+## How the pieces connect
 
 The project is built on **ROS 2**, a framework for robot software. The two ideas you need on day one:
 
-- A **node** is just a program that does one job (read the IMU, talk to the gamepad, run a PID loop).
-- Nodes talk to each other over **topics**, which are named message channels. One node publishes to `left_feedforward`, another subscribes to it. Nobody calls anybody directly.
+- A **node** is a program that does one job (read the gamepad, run a PID loop).
+- Nodes talk to each other over **topics**, which are named message channels. One node publishes to `/joy`, others
+  subscribe to it. Nobody calls anybody directly.
 
-On top of that we use **ros2_control**, which is a standard way to separate *"how do I physically talk to this motor"* from *"what should the motor do right now."* That split explains the whole folder layout:
+On top of that we use **ros2_control**, a standard way to separate *"how do I physically talk to this motor"* from
+*"what should the motor do right now."* That split explains the folder layout:
 
-- A **hardware interface** is a C++ plugin that owns a real device. `Motor12VoltQuadEncoder` writes PWM to a motor pin; `BNO055` reads the IMU (a Bosch BNO055, over I²C). These are the only files that touch GPIO.
-- A **controller** reads sensor values and decides what to command. Controllers can be *chained*, meaning one controller's output becomes the next one's input. That chaining is exactly how the balancing works.
-- The **controller_manager** is the process that loads both of the above and runs them on a fixed clock (100 Hz for us).
+- A **hardware interface** is a C++ plugin that owns a real device. `Motor12VoltQuadEncoder` sets a motor's power
+  (PWM) and counts its wheel encoder; `BNO055` reads the IMU, the sensor that measures lean (a Bosch BNO055). These are the only files that touch the
+  Pi's pins.
+- A **controller** reads sensor values and decides what to command. Controllers can be *chained*: one controller's
+  output becomes the next one's input. That chaining is how the balancing works.
+- The **controller_manager** loads both and runs them on a fixed clock (100 Hz).
 
-If none of that is familiar yet, the [official ros2_control docs](https://control.ros.org/jazzy/index.html) are the best background reading, and the templates in `examples/example_hardware/` show the minimum skeleton for a new hardware plugin.
+The [official ros2_control docs](https://control.ros.org/jazzy/index.html) are the best background reading.
 
-### How the pieces actually connect
-
-Here's the real signal path when you drive the robot in balancing mode, from game controller to spinning wheel. The
-controller is plugged into the Pi's USB; nothing runs on your laptop:
+Here is the signal path in balance mode, from gamepad to spinning wheel. The gamepad is plugged into the Pi's USB;
+nothing runs on your laptop:
 
 ```
  the Raspberry Pi
@@ -66,65 +89,35 @@ controller is plugged into the Pi's USB; nothing runs on your laptop:
                               └────────────────────────────────────────────────┘
 ```
 
-In tank mode the same pad drives `TankTeleop.py` straight into `diff_drive_controller`, with no cascade. The **supervisor** (`Supervisor.py`) decides which mode's stack runs and whether it is enabled: [the robot supervisor](docs/architecture/robot-supervisor.md).
+To go *faster*, the robot first has to *lean* further forward. So the velocity loop does not command wheel speed
+directly: it commands a target lean angle, and the pitch loop underneath works out the wheel speed needed to hold that
+lean. The IMU supplies the actual pitch, and the wheel encoders the actual speed.
 
-To control the robot to go *faster*, the robot first has to *lean* further forward. So the velocity loop doesn't command wheel speed directly. It commands a target lean angle, and the pitch loop underneath it works out the wheel speed needed to hold that lean. The IMU supplies the actual pitch, and the wheel encoders supply the actual velocity.
+**Two modes, one supervisor.** `Supervisor.py` starts at boot, owns which mode runs and whether the robot is
+**enabled**, and starts and stops each mode's programs. The Pi boots into **tank mode, disabled**. Press **LB + RB** on the gamepad to
+enable or disable, and **LT + RT + RB** to switch mode (only while disabled); the web dashboard has the same buttons.
+[The robot supervisor](docs/architecture/robot-supervisor.md).
 
-There are two modes. A **supervisor** node starts at boot, owns which one runs and whether the robot is **enabled** (the motion controllers active), and starts and stops each mode's stack. The Pi boots into **tank mode, disabled**; press **LB + RB** on the controller (or Enable on the dashboard) to enable; **LT + RT + RB** (or the dashboard's Tank/Balance buttons) switches mode, only while disabled. On the robot since 2026-11-24 (boot, both combos, the switch to balance): [the robot supervisor](docs/architecture/robot-supervisor.md), [Drive ROCKO with a USB controller](docs/guides/drive-with-usb-controller.md).
-
-- **Balancing mode**: the cascade above. This is the real robot, **which has never balanced yet** (the first floor test, 2026-11-25, did not balance: [journal](docs/journal/2026-11-25-level-pitch-offset-and-lean-clamp.md)). Uses `rocko.urdf.xacro` + `rocko_controllers.yaml`. Driven by `BalanceTeleop.py`; enabling it has run on the robot, driving it from the pad has not been recorded.
-- **Tank mode**: balancing disabled, plain differential drive, for when you just want it to move without fighting the control loop. Uses `rocko_tank_mode.urdf.xacro` + `rocko_tank_mode_controllers.yaml`.
+- **Balance mode**: the cascade above. `rocko.launch.py`, `rocko.urdf.xacro`, `rocko_controllers.yaml`.
+- **Tank mode**: plain differential drive, no balancing: `TankTeleop.py` feeds `diff_drive_controller` directly.
+  `rocko_tank_mode.launch.py`, `rocko_tank_mode.urdf.xacro`, `rocko_tank_mode_controllers.yaml`.
 
 ---
 
-## What you need installed
+## What you need
 
-### Which ROS 2 version you need
+**ROS 2 Jazzy on Ubuntu 24.04**, on the Pi. This is not a preference: `rocko_env/CMakeLists.txt` stops the build if
+`controller_manager` is older than 4.0.0, and Humble and Iron ship older ones.
+[ADR 0001](docs/decisions/0001-version-lock.md) has the full version lock (ros2_control ≥ 4.0.0, C++17, CMake ≥ 3.16)
+and why.
 
-You need **ROS 2 Jazzy Jalisco** on **Ubuntu 24.04**. This is not a preference. `rocko_env/CMakeLists.txt` explicitly checks for `controller_manager >= 4.0.0` and stops the build with a hard error if it doesn't find it:
-
-```
-FATAL_ERROR: ros2_control version 4.0.0 or higher is required.
-```
-
-Humble ships ros2_control 2.x and Iron ships 3.x, so **both will fail this check**. Our `pid_controller` settings also use a newer config format that older distros don't understand. If you see that error, you have the wrong distro.
-
-| What | Version |
-| --- | --- |
-| ROS 2 | Jazzy Jalisco |
-| Ubuntu | 24.04 (Noble) |
-| Python | 3.12 (comes with Ubuntu 24.04) |
-| ros2_control | 4.0.0 or newer |
-| CMake | 3.16+ |
-| C++ | C++17 |
-
-### ROS packages
-
-These are all listed in the `package.xml` files, and `rosdep` (step 2 of the build below) installs them for you, so you shouldn't need to install any by hand. Listed here so you know what's in play:
-
-**Used to build:** `hardware_interface`, `controller_interface`, `pluginlib`, `rclcpp`, `rclcpp_lifecycle`, `rclpy`, `generate_parameter_library`, `parameter_traits`, `backward_ros`, `rosidl_default_generators`
-
-**Used at runtime:** `controller_manager`, `diff_drive_controller`, `forward_command_controller`, `joint_state_broadcaster`, `pid_controller`, `joint_state_publisher_gui`, `robot_state_publisher`, `ros2controlcli`, `ros2launch`, `rviz2`, `xacro`, `std_msgs`, `control_msgs`, `geometry_msgs`, `sensor_msgs`, `foxglove_bridge` (used by `rocko.launch.py`)
-
-### WiringPi (Raspberry Pi only)
-
-The motor code uses [WiringPi](https://github.com/WiringPi/WiringPi) for GPIO and software PWM. There's a copy of `wiringPi.h` checked into `rocko_env/hardware/WiringPi/` for reference, but that header alone isn't enough. The actual compiled library has to be installed on the Pi, or CMake stops with "WiringPi not found".
-
-This is also why a laptop build has to leave the motor plugin out (`-DROCKO_SKIP_WIRINGPI=ON`). More on that below.
-
-### Python libraries
-
-The robot's own code needs no `pip` packages: the IMU and the encoders are read in C++
-([IMU](docs/architecture/imu-i2c-read.md), [encoders](docs/architecture/encoders-in-cpp.md)), and every Python node
-uses only ROS and the standard library. The three below are for one optional bench tool,
-`tools/imu_tilt_log.py`. They are not pinned (there is no `requirements.txt`;
-[#14](https://github.com/BiPed-Capstone/ROCKO-env/issues/14)).
-
-| Library | What uses it | Needs real Pi hardware? |
-| --- | --- | --- |
-| `Adafruit-Blinka` (imported as `board`) | `tools/imu_tilt_log.py` | **yes**, needs real I²C |
-| `gpiod` (`gpiod>=2.2.2,<3`) | needed by `board` on a Raspberry Pi 5 | **yes** |
-| `adafruit-circuitpython-bno055` | `tools/imu_tilt_log.py` | **yes** |
+- **ROS packages**: listed in the two `package.xml` files; `./build_ros.sh` installs them with `rosdep`.
+- **WiringPi** (Pi only): the motor plugin uses it for GPIO and PWM, and the build stops with "WiringPi not found"
+  without it. A laptop build leaves the motor plugin out instead (`-DROCKO_SKIP_WIRINGPI=ON`).
+- **Python packages**: none for the robot's own code. One optional bench tool, `tools/imu_tilt_log.py`, needs
+  `Adafruit-Blinka`, `gpiod` and `adafruit-circuitpython-bno055` (not pinned:
+  [#14](https://github.com/BiPed-Capstone/ROCKO-env/issues/14)).
+- **A laptop** (macOS, or Windows with WSL2) needs only Docker Desktop: the dev container in `docker/` has the rest.
 
 ---
 
@@ -132,250 +125,89 @@ uses only ROS and the standard library. The three below are for one optional ben
 
 ```
 ROCKO-env
-├── CLAUDE.md                       How AI agents work in this repo (read this branch's rules first)
-├── build_ros.sh                    Installs dependencies and builds, in the container or on the Pi
-├── check_container_mount.sh        Checks the dev container is mounting THIS checkout, so the verify scripts test your files (laptop)
-├── verify_urdf.sh                  Checks the robot description expands and holds the right hardware: real, mock and simulated; and that the sim config has not drifted (container)
-├── verify_mock.sh                  Checks the controllers load and chain on mock hardware (container)
-├── verify_sim.sh                   Runs the controllers against the simulated robot (SimPlant): S1, S2a and the checks of the tipover cutoff, the teleop watchdog, an IMU outage, the gyro pitch rate and the feedforward age limit (H4, C3, C2, H6, FF); 7 checks in 9 launches, about 2.5 minutes (157 s on 2026-11-03). `verify_sim.sh scenarios` is a separate mode: the balance scenarios U, I and V (hold upright, recover from a push, follow a velocity step) plus S2b and AB; U, I and V exist and **fail with the current gains**. A model with estimated parameters (container)
-├── check_motor_plugin_compiles.sh  Type-checks the motor plugin off the Pi, syntax and types only (container). Stub headers in tools/compile_check/stubs/
-├── .githooks/                      Git hooks: no commit on main, no push but a fast-forward of ai-forward to origin. Inactive until copied into .git/hooks/ (proposal 0002, item E)
-├── pi/                             Runs on the Pi: launch.sh, rocko_shell.sh and rocko_run.sh run ros2 as root with the right environment (WiringPi needs root); rocko_env.sh is the environment they share
-├── docker/                         Dev container for laptops (compose files + Dockerfile)
-├── docs/                           Architecture, guides, decisions, run journal, proposals, audits
-├── examples/example_hardware/      Skeleton templates. Copy when adding new hardware
-├── sim/sim_probe.py                Records the simulated pitch for verify_sim.sh (container)
-├── sim/scenario_checks.py          The H4, C3, C2, H6 and FF checks of verify_sim.sh, and its balance scenarios: `check_upright`, `check_impulse`, `check_velocity_step` (container)
-├── sim/cascade_linearisation.py    Laptop, standard library only: linearises the cascade and the plant model to explain the slow drift (finding H-12); not run by any verify script
-├── sim/check_sim_config.py         Fails if the sim controller YAML's wiring, an untuned gain or the sim settings' defaults drift from the hardware YAML / the physics header (run by verify_urdf.sh)
-├── rocko_env/                      The main package
-│   ├── CMakeLists.txt, package.xml     Build config and dependency list
-│   ├── rocko_env_hardware.xml          Registers the hardware plugins with ROS
-│   ├── rocko_env_controllers.xml       Registers the controller plugin with ROS
-│   └── rocko_env/
-│       ├── bringup/
-│       │   ├── config/                 PID gains and controller settings. Tune here (rocko_sim_controllers.yaml holds the simulator's gains only)
-│       │   └── launch/                 rocko_robot.launch.py (what boots: supervisor, joy, dashboard, Foxglove), the two mode launches rocko.launch.py and rocko_tank_mode.launch.py, plus rocko_sim.launch.py for the simulated robot
-│       ├── controllers/
-│       │   ├── add_feedforward/        C++ controller that adds a feedforward term
-│       │   ├── diffdrive/              Turns steering commands into per-wheel targets
-│       │   ├── tank_teleop/            Tank mode: TankTeleop.py, the USB controller on the Pi drives (when enabled)
-│       │   └── balance_teleop/         Balancing mode: BalanceTeleop.py, the same pad with its own lower speeds (untested)
-│       ├── supervisor/                 Supervisor.py: owns mode (tank/balance), enabled and phase; starts each mode's launch as a child (state_machine.py has the rules, modes.py the mode table)
-│       ├── teleop/gamepad.py           Shared by the teleop nodes, the supervisor and the dashboard: the controller layout, deadzone/expo/mixing, the LB+RB and LT+RT+RB combos, stick re-centre
-│       ├── description/
-│       │   ├── urdf/                   The robot's physical shape and joints (xacro files)
-│       │   ├── ros2_control/           Which hardware plugin drives which joint, and GPIO pins; also the mock
-│       │   ├── rviz/                   Saved RViz visualization layouts
-│       │   └── launch/                 view_robot.launch.py shows the model, no hardware
-│       ├── hardware/
-│       │   ├── WiringPi/               Reference copy of wiringPi.h
-│       │   ├── motors/                 Motor driver, the only file writing motor PWM; also counts the wheel encoders (WheelEncoder.hpp)
-│       │   ├── sim/                    SimPlant: the simulated robot (a physics model with estimated parameters), not hardware
-│       │   └── sensors/
-│       │       └── bno055/             IMU driver (the BNO055, read over I²C)
-│       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
-│       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
-├── rocko_interfaces/                   Custom messages and services, including the supervisor's RobotState and SetEnabled/SetMode
-└── tools/                              Off-Pi checks: stub headers for the motor plugin compile-check (compile_check/stubs/) and host tests of the IMU fault counter (imu_fault_tracker_test.cpp), the simulated robot's physics (sim_plant_model_test.cpp), the tipover latch (tipover_latch_test.cpp), the teleop watchdog (teleop_watchdog_test.py), tank mode's USB-controller teleop (tank_teleop_test.py), balancing mode's (balance_teleop_test.py), the supervisor's rules (supervisor_state_machine_test.py, supervisor_flow_check.py), the IMU plugin's sample check (imu_snapshot_check_test.cpp), the feedforward controller's zero-on-deactivate (zero_commands_test.cpp), the motor plugin's encoder decoding and speed filter (wheel_encoder_test.cpp), the loop-timing summary (loop_timing_test.py, for `loop_timing.py`, which measures the control loop on the Pi from controller_manager's statistics), the feedforward age limit (feedforward_timeout_test.cpp) and the BNO055 UART framing for finding C-1 (bno055_uart_protocol_test.cpp; the IMU plugin uses only its register decoding, since it reads over I²C). Helper scripts for running the loop: `run_ladder.sh` (the whole ladder, one table), `repeat_check.sh` (one sim check N times), `check_doc_links.py` (Markdown links and anchors), `pi_scripts_test.sh` (the scripts in `pi/` and `build_ros.sh`'s workspace choice, against a fake ROS and a fake `sudo`) and `session_usage.py` (tokens per agent and model from a session transcript; see [the cost analysis](docs/claude-analysis/agent-loop-efficiency.md))
+├── CLAUDE.md                 The working agreement every AI agent loads (and the rules for people too)
+├── build_ros.sh              Installs dependencies and builds (container or Pi)
+├── check_container_mount.sh  Laptop: is the dev container showing THIS checkout?
+├── verify_*.sh               The verification ladder's checks, run in the container (tools/run_ladder.sh runs them all)
+├── check_motor_plugin_compiles.sh  Type-checks the motor plugin off the Pi (container)
+├── pi/                       Runs on the Pi: launch.sh, rocko_shell.sh, rocko_run.sh (ros2 as root), the boot service
+├── docker/                   The laptop dev container
+├── docs/                     Everything that is not on this page (map below)
+├── examples/example_hardware/  Skeleton to copy when adding a hardware plugin
+├── sim/                      The simulator's checks, scenarios and parameter sweeps (container)
+├── tools/                    run_ladder.sh, host tests (C++ and Python, no ROS needed), Pi helpers, link and cost tools
+├── rocko_interfaces/         Custom messages and services (the supervisor's RobotState, SetEnabled, SetMode)
+└── rocko_env/                The main package
+    ├── CMakeLists.txt, package.xml, rocko_env_hardware.xml, rocko_env_controllers.xml
+    └── rocko_env/
+        ├── bringup/config/   Controller settings and PID gains (a human changes the hardware gains: CLAUDE.md §3)
+        ├── bringup/launch/   rocko_robot.launch.py (what boots), rocko.launch.py, rocko_tank_mode.launch.py, rocko_sim.launch.py
+        ├── controllers/      add_feedforward (C++), diffdrive, tank_teleop, balance_teleop
+        ├── supervisor/       Supervisor.py, with its rules in state_machine.py and the mode table in modes.py
+        ├── teleop/gamepad.py The controller layout, stick shaping and button combos, shared by everything that reads /joy
+        ├── description/      The robot's URDF/xacro, which plugin drives which joint, RViz layouts
+        ├── hardware/         motors/ (PWM and encoders), sensors/bno055/ (the IMU), sim/ (SimPlant, the simulated robot)
+        ├── recording/        RecordRun.py: record:=true writes a rosbag and a run.yaml
+        └── webserver/        Dashboard.py: live values and buttons in a browser, port 8080, no login
 ```
-
-A note on the `.xacro` files: xacro is "XML with macros." It's a templating layer that expands into a URDF, which is the file format ROS uses to describe a robot's links and joints. You edit the xacro; the launch file expands it for you at startup.
 
 ---
 
-## Building it
+## Build and run
 
-First, some vocabulary that trips people up:
+**On a laptop:** follow [Getting started](docs/guides/getting-started.md). In short, `docker compose -f
+docker/compose.yml up -d`, then `tools/run_ladder.sh` builds everything in the container and runs every check.
 
-- A **colcon workspace** is the folder `colcon` builds in: it ends up holding `build/`, `install/` and `log/`, and `colcon` finds the packages by looking inside it. `colcon` is the build tool. **On the Pi the workspace is the repo checkout itself, `~/ROCKO-env`** (there is no `~/ros2_ws` and no `src/` folder). The Docker dev container is the exception: there the checkout sits inside a workspace, `/ros2_ws/src/ROCKO-env` (see "Working on a laptop" below).
-- **Sourcing** a setup file (`source .../setup.bash`) is what tells your terminal where the ROS packages are. You have to do it in every new terminal window.
+**On the Pi:** build as yourself, run as root through the scripts in `pi/` (the motor plugin needs root).
+[Run ROCKO on the Pi](docs/guides/run-on-the-pi.md) explains why and covers the boot service.
 
 ```bash
-# 1. Clone this repo. The checkout is the workspace
-cd ~
-git clone https://github.com/BiPed-Capstone/ROCKO-env ROCKO-env
-
-# 2. Install dependencies
 cd ~/ROCKO-env
-source /opt/ros/jazzy/setup.bash
-sudo apt update
-rosdep install --from-paths rocko_env rocko_interfaces --ignore-src -r -y
-
-# 3. On the Pi only: install WiringPi first, or step 4 stops with "WiringPi not found"
-#    https://github.com/WiringPi/WiringPi
-#    (Not on a Pi? Skip this and add --cmake-args -DROCKO_SKIP_WIRINGPI=ON to step 4.
-#     See "Working on a laptop" below for what that build can and cannot do.)
-
-# 4. Build (run this from ~/ROCKO-env)
-colcon build --symlink-install
-
-# 5. Tell this terminal about what you just built
-source ~/ROCKO-env/install/setup.bash
+./build_ros.sh                                   # build (as yourself, not root)
+pi/launch.sh robot                               # the whole robot, as at boot: supervisor, tank mode disabled, dashboard
+pi/launch.sh robot tank_max_speed:=0.3 balance_max_speed:=0.02   # the same, with speed caps for a first test
+pi/launch.sh tank                                # one mode by hand, no supervisor (bench tests)
 ```
 
-`./build_ros.sh` (repo root) does steps 2 and 4 in one go, as your own user: build as yourself, not as root. **Running** the robot is different: that needs root, and `pi/launch.sh` and `pi/rocko_shell.sh` set everything up for it ([Run ROCKO on the Pi](docs/guides/run-on-the-pi.md)).
+If the boot service (`rocko.service`) is installed, the robot is already running after power-on, and `pi/launch.sh`
+refuses to start a second launch until `sudo systemctl stop rocko.service`.
 
-**Why `--symlink-install`?** It links your Python files, launch files, and YAML configs into the build output instead of copying them. Practical upshot: you can edit a Python node or tweak PID gains and just re-run, with no rebuild. Changing C++ or anything in `rocko_interfaces` still needs a rebuild.
+**Driving:** plug the gamepad into the Pi's USB, press **LB + RB** to enable; left stick is speed, right stick
+is turn. [Drive ROCKO with a USB controller](docs/guides/drive-with-usb-controller.md). Add `record:=true` to keep a
+recording ([Record a run](docs/guides/record-a-run.md)); open `http://<robot-ip>:8080` for
+[the dashboard](docs/guides/use-the-dashboard.md).
 
-Rebuilding one package instead of everything:
-
-```bash
-colcon build --packages-select rocko_env --symlink-install
-```
-
----
-
-## Running it
-
-**If the boot service is installed** (`rocko.service`, from `pi/install_boot_service.sh robot`; [guide](docs/guides/run-on-the-pi.md#the-boot-service-the-supervisor)), the robot is already running the supervisor after power-on: tank mode, **disabled** until you press LB + RB. `pi/launch.sh` then refuses to start another launch until you run `sudo systemctl stop rocko.service` (it comes back at the next boot). It replaces the older `rocko-tank.service` and `rocko-dashboard.service`; the install removes them. Installed and running on the robot since 2026-11-24.
-
-**On the Pi the robot's launches run as root** (the motor plugin uses WiringPi, which needs it), in a terminal with the right environment. The scripts in `pi/` do that: [Run ROCKO on the Pi](docs/guides/run-on-the-pi.md) explains why, and what each script does. Run from the repo root:
-
-```bash
-# The whole robot, as it starts at boot: supervisor, tank mode (disabled), controller, dashboard
-pi/launch.sh robot
-
-# The same, with speed caps for a first test (fractions in [0, 1]; see the USB controller guide)
-pi/launch.sh robot tank_max_speed:=0.3 balance_max_speed:=0.02
-
-# One mode by hand, with no supervisor (bench tests; the controller cannot enable these)
-pi/launch.sh balance
-pi/launch.sh tank
-
-# Just look at the robot model in RViz, no hardware needed (not on the robot; needs a display)
-ros2 launch rocko_env view_robot.launch.py
-```
-
-Anything after the mode goes to `ros2 launch`, so every launch argument below works: `pi/launch.sh tank gui:=true`. The plain commands `ros2 launch rocko_env rocko.launch.py` and `ros2 launch rocko_env rocko_tank_mode.launch.py` are what `pi/launch.sh` runs for you, as root and in the environment.
-
-`description_package:=rocko_env` still works as an explicit argument, but the default is now `rocko_env` too ([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)). That change has only been built, not run: `view_robot.launch.py` needs a display, and none of the checks in [the verification ladder](docs/architecture/verification-ladder.md) has one. If it fails to start, try the explicit argument and report it.
-
-Useful launch arguments: `gui:=true` opens RViz alongside in tank mode (`rocko.launch.py` declares it but does not use it). The saved RViz layouts are installed now (finding L-4 in [the audit](docs/claude-analysis/balance-loop-findings.md)); that RViz actually opens with them has not been checked, because that needs a display. `use_mock_hardware:=true` swaps the real motor and IMU plugins (which read the encoders and the IMU themselves) for ROS's `mock_components/GenericSystem`. It defaults to `false`, so a plain launch on the robot gets real hardware. **The mock is not a simulation**: it has no physics, each command is just echoed back as a state, and pitch stays at 0.0. It checks that the controllers *wire up*, and tells you nothing about whether the robot balances (see [the verification ladder](docs/architecture/verification-ladder.md)). With the mock on, ROS never loads the motor driver, so nothing launched by these files can move the wheels; with it off (the default), it does.
-
-You can also run individual nodes, which is handy when debugging one piece:
-
-```bash
-pi/rocko_run.sh ros2 run rocko_env DiffDriveController.py
-pi/rocko_run.sh ros2 run rocko_env BalanceTeleop.py # balancing mode's (needs joy's game_controller_node and a supervisor)
-pi/rocko_run.sh ros2 run rocko_env TankTeleop.py    # tank mode's (needs joy's game_controller_node and a supervisor)
-```
-
-**Driving:** plug a game controller (an 8BitDo in X-input mode) into the Pi's USB. The robot starts **disabled**; press
-**LB + RB** together to enable (and again to disable); then the left stick is speed and the right stick is turn, and both
-sticks must return to the centre once before it moves. **LT + RT + RB** together switches tank/balance while disabled.
-Letting go of a button does not stop the robot any more (the old hold-LB rule was replaced on 2026-11-23): press LB + RB.
-Nothing runs on your laptop. Needs `sudo apt install ros-jazzy-joy` on the Pi once:
-[Drive ROCKO with a USB game controller](docs/guides/drive-with-usb-controller.md). The web [dashboard](docs/guides/use-the-dashboard.md)
-(port 8080) shows the state and has the same buttons, with **no login**.
-**Balancing mode has never balanced on the robot**: it can be reached and enabled from the controller; see
-[next-steps.md](docs/next-steps.md). `rocko.launch.py` run by hand starts the joy node and `BalanceTeleop.py`, but without a supervisor the teleop node
-never enables, so drive balancing through `pi/launch.sh robot`.
-
-To keep a recording of a test, add `record:=true` to any of the launches above
-(`record_label:=`, `battery_v:=` and `surface:=` go into the file that describes the run):
-[Record a run](docs/guides/record-a-run.md). Checked in the simulation, and run once on the Pi through the dashboard's Record
-button ([journal](docs/journal/2026-11-24-loop-timing-on-the-pi.md)).
-
-To watch the robot's values from another machine, open `http://<robot-ip>:8080` in a browser:
-[the dashboard](docs/guides/use-the-dashboard.md). `pi/launch.sh robot` (and the boot service) runs it, in both
-modes: beside the balance loop it did not change the loop's timing measurably with the cascade inactive
-([journal](docs/journal/2026-11-24-loop-timing-on-the-pi.md)); with balancing enabled, not yet measured. A mode
-launched by hand starts it only in tank mode (`dashboard:=true` adds it to `pi/launch.sh balance`). There is no
-login: anyone on the network can open it. The owner reported it mostly working on the robot (2026-11-19).
-
-### Handy debugging commands
-
-On the Pi, run these in a terminal opened with `pi/rocko_shell.sh` (a terminal that is not root, or that uses another `ROS_DOMAIN_ID`, cannot see the launch and prints `waiting for service ...`):
-
-```bash
-ros2 topic list                          # what topics exist right now
-ros2 topic echo /left_feedforward        # watch values on a topic live
-ros2 control list_controllers            # which controllers loaded, and their state
-ros2 control list_hardware_interfaces    # what the hardware layer is exposing
-```
-
-If a controller shows as `inactive` or missing, that's usually a bad name or interface in `rocko_controllers.yaml`.
-
-### Working on a laptop instead of the robot
-
-macOS and Windows have no usable ROS 2 Jazzy install, so `docker/` at the repo root has a dev container: a single `ros:jazzy`-based image, used the same way on both OSes. The OS-specific bits (GUI display forwarding) live in small compose overrides, not in the image itself.
-
-```bash
-# From the ROCKO-env repo root
-
-# macOS
-docker compose -f docker/compose.yml -f docker/compose.mac.yml up -d
-docker compose -f docker/compose.yml -f docker/compose.mac.yml exec ros2 bash
-
-# Windows (run from inside a WSL2 distro, with Docker Desktop's WSL2 integration on)
-docker compose -f docker/compose.yml -f docker/compose.windows.yml up -d
-docker compose -f docker/compose.yml -f docker/compose.windows.yml exec ros2 bash
-```
-
-See the comments in `docker/compose.mac.yml` / `docker/compose.windows.yml` for the one-time XQuartz/WSLg setup each OS needs.
-
-Inside the container, it's the [Building it](#building-it) workflow above with one difference (the flag on the `colcon build` line, because there is no WiringPi off the Pi) — this repo is bind-mounted at `/ros2_ws/src/ROCKO-env` (no separate Docker copy of the packages to keep in sync), and `build/`/`install`/`log` live in a named Docker volume, not on your host:
-
-```bash
-cd /ros2_ws
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install --cmake-args -DROCKO_SKIP_WIRINGPI=ON
-source install/setup.bash
-```
-
-`./build_ros.sh` (repo root) runs these same steps, plus `sudo apt-get update` first, and exits 1 if the build fails. Inside the container run it as `cd /ros2_ws && src/ROCKO-env/build_ros.sh`: the `/ros2_ws/build_ros.sh` copy is a separate single-file mount that can go stale if the file is replaced while the container runs. In the container, compose sets `ROS2_WS=/ros2_ws` so the script builds in the right place, and `ROCKO_SKIP_WIRINGPI=ON` so it leaves out the motor plugin; on the Pi it defaults to the checkout itself (`~/ROCKO-env`, see "Building it") and requires WiringPi.
-
-There is one container per laptop, and it sees one folder: the *checkout* (a folder holding a copy of this repo) that last ran `docker compose ... up -d`. If you have more than one checkout (a second clone, or a git worktree: an extra working folder for the same repository, made with `git worktree add`), or you moved or re-cloned the repo, run `./check_container_mount.sh` **on the laptop, from that checkout's root**, before building. Otherwise the commands above can run, and pass, against the other checkout's files. [Verify a change without the robot](docs/guides/verify-in-container.md) has the details and what to do when it fails.
-
-**What the container can and cannot do.** The container runs on your laptop's CPU, not the Pi's, and the motor plugin needs WiringPi, which only exists on real Pi GPIO hardware — a hardware limit, not an OS one, so Docker can't route around it. So the container build:
-
-- **builds** `rocko_interfaces` and `rocko_env`, **without** `Motor12VoltQuadEncoder.cpp`. A green container build says nothing about that file; only a build on the Pi compiles it.
-- **type-checks the motor plugin** with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/check_motor_plugin_compiles.sh` (run it after the build above). It checks syntax and types only, against hand-written stand-ins for `wiringPi.h` and `softPwm.h`, so it can catch a typo or a misspelt ROS name, but not a wrong WiringPi signature, and it never links or runs anything. Exit 0 means it type-checks.
-- **can run the mock**: `verify_mock.sh` launches the controllers against `mock_components/GenericSystem` and checks they load, chain and stay active. Run it with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_mock.sh` (add `tank` for tank mode). The step-by-step version, with the expected output and what to do when it fails, is [Verify a change without the robot](docs/guides/verify-in-container.md).
-- **can run a simulated robot (Tier 3 is built, with limits)**: `verify_sim.sh` launches the same controllers against `rocko_env/SimPlant`, a physics *model* of the robot (an inverted pendulum on wheels with a DC-motor model), and checks that they go active (with all 14 interfaces), that pitch responds to the wheels, that the simulated robot falls when its motors give no torque, and, in the model, that the tipover cutoff, the teleop watchdog, an IMU outage and the gyro pitch rate behave as designed (`verify_sim.sh H4 C3` runs only some checks; `verify_sim.sh scenarios` runs the balance scenarios, which pass with the tuned sim gains, V narrowly). Run it after the build above with `docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_sim.sh`. **Every physical number in the model is an estimate; nothing was measured on ROCKO**, and the scenarios that ask whether the cascade holds the model upright (`verify_sim.sh scenarios`; the list is in [the ladder](docs/architecture/verification-ladder.md)) pass only with sim gains tuned against that same model (`rocko_sim_controllers.yaml`, which now differs from the hardware gains on purpose), which says the cascade balances in simulation under an estimated model, nothing about the robot; a pass of the default run says nothing about whether the real robot balances or whether any gain is good. Tier 3 is built: a model with ESTIMATED, unmeasured parameters (row 2.2, [proposal 0007](docs/proposals/0007-measure-robot-parameters.md), not done), the encoder and pitch signs measured on the robot ([proposal 0006](docs/proposals/0006-velocity-loop-sign-check.md), 2026-11-23/24), scenarios U, I and V pass with sim-tuned gains that differ from the hardware gains (a candidate only: [proposal 0008](docs/proposals/0008-candidate-gains-and-tethered-test.md)), S2b fails as it must; for the ±30 % sweep see the ladder's Tier 3 row; it says nothing about whether the robot balances. See [the verification ladder](docs/architecture/verification-ladder.md), [the model's specification](docs/architecture/sim-plant.md) and [ADR 0003](docs/decisions/0003-simulation-target.md). To see the simulated robot yourself, open a shell with `docker compose -f docker/compose.yml exec ros2 bash`, run `source /opt/ros/jazzy/setup.bash` and `source /ros2_ws/install/setup.bash`, then `ros2 launch rocko_env rocko_sim.launch.py`, which starts it with the sim gains from `rocko_sim_controllers.yaml`; it drives no motors and needs no robot. The simulator is its own launch file, `rocko_sim.launch.py`: `use_sim_plant` is an argument of the robot-description xacro only, and is **not** an argument of `rocko.launch.py` or `rocko_tank_mode.launch.py`, so those two can never start it. (The tank-mode xacro does not declare `use_sim_plant` at all and ignores it if given; `verify_urdf.sh` checks that tank mode asked for the simulator still holds the two real motor plugins and no `SimPlant`.)
-- **cannot drive motors or read the real IMU**, and its mock (`use_mock_hardware:=true`) has no physics.
-
-Without `-DROCKO_SKIP_WIRINGPI=ON` the build stops with "WiringPi not found", on purpose: a robot should never be built without its motor driver by accident. If a build directory was ever used for a skip build and you later build on a Pi, run `rm -rf build/rocko_env` first: CMake remembers the flag between builds (it stops with "WiringPi IS installed here" when that has happened). In a skip build, launching **without** `use_mock_hardware:=true` fails with `Could not create class of type rocko_env::Motor12VoltQuadEncoder`, because that plugin is not in it.
+`use_mock_hardware:=true` on any launch swaps the motor and IMU plugins for a mock that echoes commands back. **The mock
+is not a simulation**: it has no physics and pitch stays 0.0, so it shows that controllers wire up and nothing about
+balancing. With it, ROS never loads the motor driver, so nothing launched can move the wheels. It defaults to `false`,
+so a plain launch on the robot gets real hardware.
 
 ---
 
 ## Documentation
 
-[`docs/`](docs/) holds everything that doesn't belong on the front page.
+[`docs/`](docs/README.md) holds everything that doesn't belong on the front page.
 
 | Where | What's in it |
 | --- | --- |
-| [`docs/architecture/`](docs/architecture/) | How a subsystem works and **why** — start with [the control cascade](docs/architecture/control-cascade.md); [what the simulator leaves out](docs/architecture/sim-to-real-gap.md) |
-| [`docs/guides/`](docs/guides/) | Procedures — including [how to record a result so it reproduces](docs/guides/reproducing-results.md) and [how to measure the robot](docs/guides/measure-inertia.md) (the simulator's numbers are estimates until someone does) |
+| [`docs/guides/`](docs/guides/README.md) | Procedures: do this, get that, on which machine |
+| [`docs/architecture/`](docs/architecture/README.md) | How a subsystem works and **why**; start with [the control cascade](docs/architecture/control-cascade.md) |
 | [`docs/decisions/`](docs/decisions/) | Architecture Decision Records: a choice, its alternatives, its cost |
-| [`docs/journal/`](docs/journal/README.md) | One entry per AI-written change: what was asked, what changed, which checks actually ran |
+| [`docs/glossary.md`](docs/glossary.md) | The words of the first week |
+| [`docs/next-steps.md`](docs/next-steps.md) | The work queue, and the current handoff |
 | [`docs/proposals/`](docs/proposals/README.md) | Changes waiting on a human decision (gains, version pins, safety behavior) |
+| [`docs/journal/`](docs/journal/README.md) | One entry per AI-written change: what was asked, what changed, which checks actually ran |
 | [`docs/claude-analysis/`](docs/claude-analysis/) | Code audits with findings and severities, and the measured cost of the agent loop |
-
-**If you are new**, read this README, then
-[`docs/architecture/control-cascade.md`](docs/architecture/control-cascade.md) for why "go faster"
-means "lean further", then
-[`docs/claude-analysis/balance-loop-findings.md`](docs/claude-analysis/balance-loop-findings.md) for
-an honest account of what is wrong with the balance loop today and in what order to fix it.
-
-**If you are about to change something**, the relevant ADRs are
-[0001 — the version lock](docs/decisions/0001-version-lock.md) (Jazzy and ros2_control 4.x are
-pinned, and the build enforces it) and
-[0002 — the cascade](docs/decisions/0002-cascaded-balance-control.md).
 
 ### Working with AI agents in this repo
 
-This is the **`ai-forward` branch**. The code here is meant to be written by AI under human
-direction; `main` uses a human-gated workflow instead. Why they differ:
-[ADR 0005](docs/decisions/0005-ai-forward-development.md).
+This is the **`ai-forward` branch**. The code here is written by AI under human direction; `main` uses a human-gated
+workflow instead. Why they differ: [ADR 0005](docs/decisions/0005-ai-forward-development.md).
 
-[`CLAUDE.md`](CLAUDE.md) is the working agreement every Claude Code session loads automatically. The
-short version: an agent takes a goal, plans, implements, **checks its own work** against the
-[verification ladder](docs/architecture/verification-ladder.md), has reviewer agents inspect it, and
-iterates — without asking permission along the way. It still keeps the code simple, explains every
-change in [`docs/journal/`](docs/journal/README.md), and stops for a human on the things it cannot
-verify: PID gains, version pins, and weakening a safety behavior (it writes a
-[proposal](docs/proposals/README.md) instead). It cannot claim that balancing works — it has no
-robot. Repeatable workflows live in [`.claude/skills/`](.claude/skills/) and review agents in
-[`.claude/agents/`](.claude/agents/).
+[`CLAUDE.md`](CLAUDE.md) is the working agreement every Claude Code session loads automatically. An agent takes a goal,
+plans, implements, **checks its own work** against the [verification ladder](docs/architecture/verification-ladder.md),
+has reviewer agents inspect it, and iterates without asking permission along the way. It explains every change in
+[`docs/journal/`](docs/journal/README.md), and stops for a human on what it cannot verify: PID gains, version pins and
+weakening a safety behavior (it writes a [proposal](docs/proposals/README.md) instead). It cannot claim that
+balancing works: it has no robot. Repeatable workflows live in [`.claude/skills/`](.claude/skills/) and review agents
+in [`.claude/agents/`](.claude/agents/).

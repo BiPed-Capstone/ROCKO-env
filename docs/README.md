@@ -14,12 +14,14 @@ wheel, the folder map, and the build and run instructions. This directory is the
 
 ## If you are new
 
-1. [Root README](../README.md) — the signal path diagram is the fastest way to understand the robot.
-2. [`architecture/control-cascade.md`](architecture/control-cascade.md) — why "go faster" means
+1. [Getting started](guides/getting-started.md) — clone to a laptop that builds and runs every check, in an hour.
+   Keep the [glossary](glossary.md) open.
+2. [Root README](../README.md) — the signal path diagram is the fastest way to understand the robot.
+3. [`architecture/control-cascade.md`](architecture/control-cascade.md) — why "go faster" means
    "lean further", and why the loops are nested in that order.
-3. [`decisions/0001-version-lock.md`](decisions/0001-version-lock.md) — why the ROS 2 version is not
+4. [`decisions/0001-version-lock.md`](decisions/0001-version-lock.md) — why the ROS 2 version is not
    negotiable, and what breaks if you use the wrong one.
-4. [`claude-analysis/balance-loop-findings.md`](claude-analysis/balance-loop-findings.md) — the honest
+5. [`claude-analysis/balance-loop-findings.md`](claude-analysis/balance-loop-findings.md) — the honest
    current state: what is wrong with the balance loop today and in what order to fix it.
 
 ## If you are reviewing AI-written changes

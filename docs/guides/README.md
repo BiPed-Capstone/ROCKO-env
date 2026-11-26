@@ -5,6 +5,7 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 
 | Guide | For |
 | --- | --- |
+| [`getting-started.md`](getting-started.md) | **Start here.** Your first hour on a laptop: clone, the dev container, every check, the simulated robot, what to read, how to pick a task, working with Claude Code |
 | [`reproducing-results.md`](reproducing-results.md) | Recording a result so someone else gets the same number |
 | [`verify-in-container.md`](verify-in-container.md) | Building and checking a change on your laptop with no robot: build, static checks, the mock, and the simulated robot (`verify_sim.sh`) |
 | [`drive-with-usb-controller.md`](drive-with-usb-controller.md) | Driving with a game controller (8BitDo) plugged into the Pi: enable with LB+RB, split arcade, switching tank/balance, starting at boot, what stops the robot. The only way to drive since 2026-11-22 |
@@ -14,10 +15,9 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 | [`use-the-dashboard.md`](use-the-dashboard.md) | Watching the robot's state and values in a browser on another machine, enabling/disabling and switching mode from the page (no login), and recording from it |
 | [`measure-inertia.md`](measure-inertia.md) | Measuring the robot (mass, centre of mass, inertia, wheel radius, motor constants, IMU delay, encoder scale) to replace the simulator's estimates |
 
-Building and running the robot code, and the Docker dev container, are in the
-[root README](../../README.md) — the canonical copy, deliberately not duplicated here.
-[`verify-in-container.md`](verify-in-container.md) is the narrower walk-through for checking a change
-without the robot; it repeats only the commands and what to expect.
+Where each procedure lives, once: the laptop and dev container in [`getting-started.md`](getting-started.md) (the
+short path) and [`verify-in-container.md`](verify-in-container.md) (each check, with expected output); building and
+running on the Pi in [`run-on-the-pi.md`](run-on-the-pi.md). The root README only points here.
 
 ## What a guide in here must have
 

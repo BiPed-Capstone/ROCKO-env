@@ -13,7 +13,8 @@ change without its docs is not finished.
 
 | Directory | Holds | Test for "does it belong here" |
 | --- | --- | --- |
-| `README.md` (root) | Start here: what ROCKO is, the signal path, quick build/run | Would a stranger's first 15 minutes need it? |
+| `README.md` (root) | Start here: what ROCKO is, where it stands, the signal path, a "you want to... go to" table, the folder map | Would a stranger's first 15 minutes need it? Procedures go in a guide |
+| `docs/glossary.md` | One or two sentences per word a newcomer meets, linking to the page that explains it | A new term appears in a page a student reads first |
 | `docs/architecture/` | How a subsystem works and **why it is that way** | Explains, doesn't instruct |
 | `docs/guides/` | Do-this-get-that procedures | Has numbered steps and a success check |
 | `docs/decisions/` | ADRs — a choice, its alternatives, its consequences | Someone will later ask "why on earth did they…" |

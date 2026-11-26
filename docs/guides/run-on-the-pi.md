@@ -150,6 +150,10 @@ pi/install_boot_service.sh robot remove
 
 ## Building
 
+Once, before the first build: install [WiringPi](https://github.com/WiringPi/WiringPi), the library the motor plugin
+uses for the Pi's pins. Without it the build stops with "WiringPi not found", on purpose: a robot must never be
+built without its motor driver by accident.
+
 Build as yourself, not as root (a root-owned `build/` and `install/` in your checkout is a nuisance):
 
 ```bash
@@ -159,6 +163,29 @@ cd ~/ROCKO-env
 
 `build_ros.sh` uses the checkout as the workspace by default on the Pi. After a build, open a new
 `pi/rocko_shell.sh` so the root shell sees it.
+
+The build uses `--symlink-install`: Python nodes, launch files and YAML are linked, not copied, so editing one needs
+no rebuild. C++ and anything in `rocko_interfaces` do. After a `git pull` that removed or renamed files, build from
+clean (`rm -rf build install log`, then `./build_ros.sh`): links to removed files stay behind in `install/`.
+To rebuild one package only: `colcon build --packages-select rocko_env --symlink-install`.
+
+## Handy debugging commands
+
+In a terminal opened with `pi/rocko_shell.sh` (an ordinary terminal cannot see the launch):
+
+```bash
+ros2 topic list                          # what topics exist right now
+ros2 topic echo /left_feedforward        # watch values on a topic live
+ros2 control list_controllers            # which controllers loaded, and their state
+ros2 control list_hardware_interfaces    # what the hardware plugins expose
+```
+
+A controller shown as `inactive`, or missing, is usually a wrong name or interface in the controllers YAML. The
+supervisor keeps the cascade `inactive` on purpose while the robot is disabled.
+
+To look at the robot model in RViz with no hardware (needs a display, so not over plain SSH):
+`ros2 launch rocko_env view_robot.launch.py`. Not run since its default `description_package` changed
+([#11](https://github.com/BiPed-Capstone/ROCKO-env/issues/11)); if it fails, add `description_package:=rocko_env`.
 
 ## What commonly goes wrong
 
@@ -170,4 +197,5 @@ cd ~/ROCKO-env
 | `sudo: a terminal is required` or no password prompt when you run a script through `ssh pi 'pi/launch.sh tank'` | `sudo` needs a terminal to ask for the password, and a one-command `ssh` has none (not checked on this Pi) | `ssh -t pi ...`, or log in first and run the script there |
 | A WiringPi or GPIO error as the motor plugin starts | The launch was probably not run as root | Use `pi/launch.sh`, not a bare `ros2 launch` |
 | `launch.sh: ROCKO is already running as the boot service (rocko.service)` | The launch guard: the supervisor already owns the motors | `sudo systemctl stop rocko.service`, as the message says |
+| CMake stops with `WiringPi IS installed here` | This build folder was once used for a laptop-style build that left the motor plugin out (`ROCKO_SKIP_WIRINGPI`), and CMake remembers the flag | `rm -rf build/rocko_env`, then `./build_ros.sh` |
 | A launch started with `sudo ros2 launch ...` by hand fails to find ROCKO | `sudo` resets the environment (ROS, the workspace overlay and the domain are lost) | Use `pi/launch.sh`; that is what it is for |

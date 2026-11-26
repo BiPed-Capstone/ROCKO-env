@@ -69,7 +69,7 @@ decision, not mine alone, so step 5 is a proposal. Steps 1–4 and 8 do not depe
   doc you write.
 - **Keep it simple.** One world, one robot, one launch file per mode. No plugin framework. A student
   should be able to read the whole sim setup in one sitting.
-- **Document as you go.** Each step updates the verification ladder, the README's laptop section,
+- **Document as you go.** Each step updates the verification ladder, the laptop guides (`getting-started.md`, `verify-in-container.md`),
   and ADR 0003's follow-on list in the same commit. ADR 0003 stays `Proposed` until the simulator
   actually runs, then becomes `Accepted` in the commit that makes it true.
 
