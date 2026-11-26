@@ -80,8 +80,7 @@ class TankTeleop(Node):
         super().__init__("tank_teleop")
         self.settings = {name: self.fraction_parameter(name, default) for name, default in DEFAULTS.items()}
         self.now = time.monotonic   # [s] monotonic clock; a parameter so the test can fake time
-        self.axes = []              # the newest /joy message's axes and buttons
-        self.buttons = []
+        self.axes = []              # the newest /joy message's axes (the buttons are read by the supervisor)
         self.last_joy_s = None      # [s] when the newest /joy arrived (None: never)
         self.rearm = gamepad.CentreRearm()
         self.state = None           # the newest /rocko/state (None: never heard)
@@ -113,7 +112,6 @@ class TankTeleop(Node):
 
     def on_joy(self, msg):
         self.axes = list(msg.axes)
-        self.buttons = list(msg.buttons)
         self.last_joy_s = self.now()
 
     def on_state(self, msg):

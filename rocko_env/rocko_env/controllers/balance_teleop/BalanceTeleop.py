@@ -39,9 +39,8 @@ from std_msgs.msg import Bool
 
 from rocko_env.teleop import gamepad
 
-# FULL-RANGE SCALES: what a full command (1.0) means. Historical, not derived: they are the old laptop
-# teleop node's full-stick values (Joystick.py, removed 2026-11-26), kept so no speed changed. A full
-# stick at these scales is far beyond anything safe; what really limits speed is max_speed and
+# FULL-RANGE SCALES: what a full command (1.0) means. Arbitrary, not derived (kept from an earlier
+# teleop node so no speed changed). A full stick at these scales is far beyond anything safe; what really limits speed is max_speed and
 # max_turn below. Change those, not these. joy's game_controller_node reads stick UP as +1
 # (gamepad.py): stick up = +x forward, stick left = +z left turn.
 FULL_LINEAR_M_S = 10.0   # [m/s] linear.x for a full stick, forward positive
@@ -74,8 +73,7 @@ class BalanceTeleop(Node):
         super().__init__("balance_teleop")
         self.settings = {name: self.fraction_parameter(name, default) for name, default in DEFAULTS.items()}
         self.now = time.monotonic   # [s] monotonic clock; a parameter so the test can fake time
-        self.axes = []              # the newest /joy message's axes and buttons
-        self.buttons = []
+        self.axes = []              # the newest /joy message's axes (the buttons are read by the supervisor)
         self.last_joy_s = None      # [s] when the newest /joy arrived (None: never)
         self.rearm = gamepad.CentreRearm()
         self.state = None           # the newest /rocko/state (None: never heard)
@@ -108,7 +106,6 @@ class BalanceTeleop(Node):
 
     def on_joy(self, msg):
         self.axes = list(msg.axes)
-        self.buttons = list(msg.buttons)
         self.last_joy_s = self.now()
 
     def on_state(self, msg):

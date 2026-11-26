@@ -149,7 +149,7 @@ loaded but not commanding until the supervisor's enable):
 
 ```
 tank:    rocko_tank_mode.launch.py
-           ├── ros2_control_node      motor plugins (the IMU is not used in tank mode)
+           ├── ros2_control_node      motor plugins (no IMU: the tank xacro has no IMU block)
            │     ├── joint_state_broadcaster   active
            │     └── diffbot_base_controller   inactive (diff_drive_controller)
            ├── robot_state_publisher
@@ -163,6 +163,10 @@ balance: rocko.launch.py
            ├── BalanceTeleop.py       /joy -> diffbot_base_controller/cmd_vel, only while enabled
            └── DiffDriveController.py cmd_vel -> velocity_pid_controller/reference and the feedforward topics
 ```
+
+Controllers are loaded by short-lived `spawner` processes; `joint_state_broadcaster` is spawned after the motion
+controllers' spawner exits, so two spawners never switch at once. With `use_mock_hardware:=true` the plugins are
+`mock_components/GenericSystem` instead, and the launch prints a "MOCK HARDWARE" line first.
 
 `rocko.service` replaced the older `rocko-tank.service` and `rocko-dashboard.service` (removed from the repo
 2026-11-26); installing it removes any copy still on the Pi, because two launches would fight over the motors. `pi/launch.sh` refuses any other launch

@@ -3,7 +3,7 @@
 import rclpy
 from rclpy.node import Node
 
-from geometry_msgs.msg import TwistStamped, Twist, Vector3
+from geometry_msgs.msg import TwistStamped
 from control_msgs.msg import MultiDOFCommand
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import Bool, Float64
@@ -12,9 +12,9 @@ import time
 
 # Teleop watchdog timeout (finding C-3) [s]. PROPOSED value; a human confirms it on the robot.
 # 0.2 s = 20 control cycles of 10 ms = 4 x the 0.05 s at which a teleop sender must resend its
-# command even while the stick is held still, or a steady stick looks like a dropped link. (The
-# laptop gamepad script that did so was removed on 2026-11-22; balancing mode has no sender now.) Overridable with the command_timeout_s
-# parameter; this one literal is the default and the fallback for a bad value.
+# command even while the stick is held still, or a steady stick looks like a dropped link (BalanceTeleop.py
+# publishes on a fixed timer, PUBLISH_PERIOD_S, faster than that). Overridable with the
+# command_timeout_s parameter; this one literal is the default and the fallback for a bad value.
 DEFAULT_COMMAND_TIMEOUT_S = 0.2
 
 # Command ramp (finding H-13) [m/s^2]: the most the drive command may change per second.
@@ -107,7 +107,7 @@ class DiffDriveController(Node):
         # The forward speed sent last cycle [m/s]; the ramp starts from here.
         self.ramped_linear_vel = 0.0
 
-        self.timer = self.create_timer(self.timer_period, self.command_controller)
+        self.create_timer(self.timer_period, self.command_controller)
         
         # Set up subscriber to get robot body vector
         self.robot_body_vector_updated_topic = self.create_subscription(
@@ -119,11 +119,10 @@ class DiffDriveController(Node):
         # Set up variables to hold data
         self.desired_robot_body_vector = TwistStamped()
         
-        # Robot character numbers
+        # Wheel radius [m], to turn a wheel speed in m/s into the feedforward's rad/s. NOT MEASURED: the repo holds
+        # four different values (0.127 in tank mode's YAML), and which is right waits on a measurement
+        # (issue #16, next-steps row 0.7; docs/architecture/sim-plant.md section 4.2).
         self.wheel_radius_meters = 0.06
-        
-        self.init = False # error-proofing for not importing an automatic 0
-        self.wheel_distance = 0.356 # meters
         
     def update_timed_out_state(self, timed_out):
         """Log and publish only when the state changes, not every 10 ms cycle."""
@@ -170,6 +169,8 @@ class DiffDriveController(Node):
                 self.max_linear_accel_m_s2 * self.timer_period)
             angular_vel = self.desired_robot_body_vector.twist.angular.z
         self.ramped_linear_vel = linear_vel
+        # angular_vel is used as a wheel-speed difference [m/s]: the teleop's angular.z (rad/s) is taken as m/s
+        # unchanged, because this node has no wheel separation in it.
         left_vel = linear_vel - angular_vel
         right_vel = linear_vel + angular_vel
         
@@ -206,7 +207,6 @@ class DiffDriveController(Node):
             return
         self.desired_robot_body_vector = msg
         self.command_watchdog.update()  # time of arrival, from a monotonic clock
-        self.init = True
 
 def main(args=None):
     rclpy.init(args=args)
