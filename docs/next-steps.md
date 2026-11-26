@@ -5,193 +5,65 @@ and check. It owns three things no other page does: the **order**, **who** can d
 **status**. It deliberately does not repeat what a flaw *is* or how to fix it; each row links to the
 page that does, so that fact has one home.
 
-Checked against the code on 2026-10-28 (commit `059e602`). Two GitHub issues that were already fixed
-(#15, #17) have been closed; others are only partly met, or fixed on this branch only. The
-[last section](#github-issues-against-the-code) says which. Rows 0.1 to 0.6, row 1.4 and the new rows 1.7 to
-1.11 were updated on 2026-10-31 for the work in the
-[stage 2 journal entry](journal/2026-10-31-sim-plant-and-critical-fixes.md), built on `3882790` plus
-the stage 2 commit, and again after its review rounds 1 and 2.
-Rows 2.1 and 2.3 and the #12 line were updated on 2026-10-31 for the
-[stage 3 entry](journal/2026-10-31-sim-plant-and-critical-fixes.md#stage-3--the-plant-simplant-tier-3-partly-built)
-(`SimPlant`, built on `1318f95`, committed as the stage 3 commit).
-Rows 1.2, 1.7, 1.8, 1.9, 2.3, 2.5 and 2.6 were updated, and rows 1.12, 1.13 and 2.7 added, on 2026-11-02 for the
-[stage 4 entry](journal/2026-10-31-sim-plant-and-critical-fixes.md#stage-4--safeguards-against-the-sim-h-4-c-3-c-2-downstream-h-6)
-(built on `85bdc31`; the stage 4 code was uncommitted when this was written). They were revised again on
-2026-11-02 for the code fixes made after that first pass (one shared re-arm topic with a re-arm band, the
-gyro rate judged separately, the watchdog's start-up log, input checks in `Joystick.py`, removed 2026-11-26), and row 1.14 was
-added. Stage 4's review rounds 1 and 2 are done; round 3 was dirty (2026-11-03). On 2026-11-03 a fourth round,
-authorised by the person, fixed its findings **in code**: rows 1.2, 2.3 and 2.5 were updated and row 1.15
-(finding H-11, the feedforward age limit) added; **round 4's review has not run yet** (the
-[journal](journal/2026-10-31-sim-plant-and-critical-fixes.md) has the table and the *Stage 4, review round 4*
-section). Row 2.7 was updated on 2026-11-03 for the
-[stage 5 entry](journal/2026-11-03-stage5-balance-in-sim.md) (built on `23c1117`): its cause is
-established under the model (finding H-12, proposal 0006).
+Each row's status says when it was last changed and links the journal entry with the evidence. What
+changed when, and why, is in the [journal](journal/README.md) and in this file's git history
+(`git log -p docs/next-steps.md`); this page keeps only the current state.
 
-> **HANDOFF, 2026-11-24 (updated 2026-11-25): start here. Next goal: get everything READY TO TUNE, before any candidate gains.** The owner
+> **HANDOFF, 2026-11-26: start here. Next goal: get everything READY TO TUNE, before any candidate gains.** The owner
 > chose this order on 2026-11-24: settle every measurement, signal and safeguard first, so that the first tuning data
 > can be trusted; candidate gains (proposal 0008) and the tethered test come after the list below.
-> **Where the robot is (seen 2026-11-23/24, agent over SSH with the owner present):** `rocko.service` is installed and
-> running: it boots into **tank, disabled**; LB+RB and LT+RT+RB worked from the 8BitDo; balance mode reaches `ready` on the
-> real hardware (left disabled; never enabled). The IMU node runs (the owner installed `gpiod` and
-> `adafruit-circuitpython-bno055`). Nothing has balanced, and **balance mode must not be enabled** until the list is done.
-> **Settled on the robot:** the gyro rate is gyro X with sign **-1**, unit correct ([journal](journal/2026-11-23-gyro-check.md));
-> pitch goes **down** when the robot leans forward; the encoder service then served each wheel its own encoder (since 2026-11-24 each motor plugin counts its own, row 1.3) over the
-> measured time step, checked by hand ([journal](journal/2026-11-23-encoder-service-u2.md)); the encoder reads **positive**
-> under a positive command ([journal](journal/2026-11-24-stand-sign-check.md)); so the owner flipped the velocity-loop gains'
-> signs (proposal 0006 option A: `p -2.0, i -5.0, d -0.2`, magnitudes still untuned). The simulation runs these measured
-> signs, retuned (outer `p -12.5`), every scenario passing ([journal](journal/2026-11-24-sim-measured-signs-retune.md)).
-> **Ready to tune: the list, in order** (who; what checks it):
-> 1. **Measure the wheel's outside diameter: required**, owner, ruler or calipers
->    ([proposal 0007](proposals/0007-measure-robot-parameters.md) step 5). The robot's code uses it directly:
->    the motor plugins turn counts into metres and m/s with it (`wheel_radius_m` in the ros2_control xacros), and `DiffDriveController.py` turns the speed command into
->    wheel rad/s for the feedforward with it. Five wheel turns read 0.360 m per turn, 4.4 % under the 60 mm radius in the
->    code: 114.7 mm means the radius is wrong, 120 mm means the encoder counts are. The agent then sets it in each place and
->    reruns the ladder.
->    **Centre-of-mass height: recommended** (about 5 minutes: the point where the robot balances across a straight edge,
->    [guide](guides/measure-inertia.md)). No controller uses it; the simulation does, and it sets how fast the robot falls
->    (time scale about sqrt(height / g)), so it decides whether the sim's starting gains are too slow or too aggressive.
->    **Mass and inertia: optional.** Only the simulation uses them, and they matter less; measure them only if the sim's
->    predictions turn out wrong on the tether. If the owner tunes by hand from low gains instead of starting from the sim,
->    the height can be skipped too, at the cost of starting from guesses.
-> 2. **A motor-driven speed check on the stand**, owner drives, agent logs over SSH: a steady stick hold of several seconds,
->    the encoder speed against a tape mark and a stopwatch, at two or three speeds (the 2026-11-24 bursts were too short).
->    Also gives the command-to-speed scale.
-> 3. **Fix finding C-1** (row 1.1, [proposal 0010](proposals/0010-c1-imu-uart-and-encoders-in-cpp.md)), agent writes, owner
->    tests. **IMU half done 2026-11-24 and checked on the robot (I2C from C++; signs unchanged, 0 failures, slowest read
->    about 3.6 ms; [journal](journal/2026-11-24-c1-imu-i2c-and-zero-on-deactivate.md)). Shutdown still SIGKILLed
->    `ros2_control_node` and `robot_state_publisher` then. Encoder half done 2026-11-24 and checked on the stand (row 1.3, [journal](journal/2026-11-24-c1-encoders-in-cpp.md)): signs right, wheels independent, and the shutdown no longer needs SIGKILL in either mode.** the IMU and encoder reads move into the C++ plugins, removing the unbounded service waits that hung shutdown
->    twice ([2026-11-22](journal/2026-11-22-tank-boot-service-and-handoff.md), [2026-11-23](journal/2026-11-23-encoder-service-u2.md#on-the-robot-2026-11-23-owner-at-the-robot-agent-over-ssh)) and that make loop timing unpredictable. Tuning data taken before this is not trustworthy
->    on timing.
-> 4. **Measure loop timing on the Pi**: **done 2026-11-24** ([journal](journal/2026-11-24-loop-timing-on-the-pi.md), numbers there): the cycle is IMU-bound and
->    well inside 10 ms; with the cascade controllers inactive and no client connected, the dashboard, Foxglove and
->    recording did not change it measurably, so the recommendation is that all three may run during tuning (re-check
->    on the first enabled run). *Was:* agent over SSH, balance stack running but **disabled** (the loop runs while the
->    controllers are inactive): cycle-time spread with and without the dashboard (row 4.3), `joint_state_broadcaster`
->    (row 4.15) and recording (row 4.2). Decide what may run during a tuning session.
-> 5. **Wire the gyro rate into the pitch loop**: **done in code 2026-11-24**: the owner accepted the one-line YAML
->    change, with no gain change, [proposal 0016](proposals/0016-pitch-d-term-from-the-gyro.md); L-8 is handled (C-1 rules
->    out a NaN reference; the supervisor now enables balance only while the robot is nearly still,
->    [journal](journal/2026-11-24-pitch-d-term-from-the-gyro.md)). **Left: proposal 0016's stand test on the robot.** The axis and
->    sign are measured, and the plugin reads the gyro every cycle in the same burst as the angles (a bad rate is a failed
->    read).
-> 6. **The motors' dead band** ([proposal 0013](proposals/0013-tank-mode-motor-breakaway.md), row 4.6), owner decides: the
->    balance loop lives on small corrections, and 21 to 28 % duty does nothing. Decide whether balancing gets a stiction
->    compensation before tuning.
-> 7. **Safety thresholds** ([proposal 0004](proposals/0004-safety-thresholds.md)), owner confirms: tipover 35 deg, re-arm
->    10 deg, the watchdog timeouts; then a stand test that the tipover cutoff zeroes the motors when tilted past it while
->    enabled. Row 4.14 (zero-on-deactivate can fail silently) is done in code (2026-11-24).
-> 8. **The tuning rig and records**: a tether, a way to read battery voltage, `record:=true` for every balance run
+>
+> **Where the robot is:** `rocko.service` boots into **tank, disabled**; LB+RB enables, LT+RT+RB switches modes
+> ([supervisor](architecture/robot-supervisor.md)). The IMU and the encoders are read in C++ (finding C-1, rows 1.1 and
+> 1.3). The pitch loop's D term comes from the gyro (proposal 0016). Nothing has balanced: the one floor test
+> (2026-11-25) spun one way until the tipover cutoff tripped (below).
+>
+> **Settled on the robot:** gyro rate = gyro X, sign **-1**, deg/s ([journal](journal/2026-11-23-gyro-check.md)); pitch
+> goes **down** when the robot leans forward; the encoders read **positive** under a positive command, so the velocity
+> gains' signs were flipped (proposal 0006 option A, magnitudes untuned;
+> [journal](journal/2026-11-24-stand-sign-check.md)); loop timing is IMU-bound and well inside 10 ms, and the dashboard,
+> Foxglove and recording may run during tuning (measured with the cascade inactive: re-check on the first enabled run) ([journal](journal/2026-11-24-loop-timing-on-the-pi.md)); level reads
+> 0 after the 2026-11-25 offset change **once it is pulled on the Pi**.
+>
+> **Before the next enable** (owner): on the Pi, `git pull && ./build_ros.sh`; check level reads about 0; read the pitch
+> at the balance point; decide [proposal 0017](proposals/0017-clamp-the-target-lean.md) (clamp the target lean to
+> ±5 deg). Why: the 2026-11-25 floor test locked in the first direction the wheels turned. An offline model shows the
+> velocity loop's integral doing exactly that with the hardware gains and the clamp curing it, and the simulation's
+> scenarios still pass with the clamp ([journal](journal/2026-11-25-offline-sim-work.md)). Nothing was recorded on the
+> robot.
+>
+> **Ready to tune: what is left, in order** (who; what checks it):
+> 1. **Wheel outside diameter: required**, owner, ruler or calipers ([proposal 0007](proposals/0007-measure-robot-parameters.md)
+>    step 5). The encoder's metres per turn disagree with the code's 60 mm radius, and the readings so far (through the old
+>    Python node, then the C++ plugin) disagree with each other: [proposal 0007](proposals/0007-measure-robot-parameters.md)
+>    and the [C-1 encoder journal](journal/2026-11-24-c1-encoders-in-cpp.md) have the numbers. Measure the diameter, and
+>    repeat the five-turn count on the C++ path. The agent then sets the radius in both copies, `wheel_radius_m` in the
+>    ros2_control xacros and `wheel_radius_meters` in `DiffDriveController.py`, and reruns the ladder. **Centre-of-mass height: recommended** (5 minutes, [guide](guides/measure-inertia.md)): only the
+>    simulation uses it, but it sets how fast the robot falls. Mass and inertia: optional.
+> 2. **A motor-driven speed check on the stand**, owner drives, agent logs: a steady stick hold of several seconds at two
+>    or three speeds, against a tape mark and a stopwatch. Gives the command-to-speed scale.
+> 3. **Proposal 0016's stand test** (the gyro D term), owner.
+> 4. **The motors' dead band** ([proposal 0013](proposals/0013-tank-mode-motor-breakaway.md), row 4.6), owner decides
+>    whether balancing gets a stiction compensation: below the measured breakaway duty the wheels do not turn
+>    ([bench guide](guides/bench-test-tank-mode.md)), and balance lives on small corrections.
+> 5. **Safety thresholds** ([proposal 0004](proposals/0004-safety-thresholds.md)), owner confirms (tipover 35 deg, re-arm
+>    10 deg, the watchdog timeouts), then a stand test that the tipover cutoff zeroes the motors while enabled.
+> 6. **The tuning rig and records**: a tether, battery voltage, `record:=true` for every balance run
 >    ([guide](guides/record-a-run.md)), the Foxglove layout (row 4.4), and the fields of
 >    [reproducing-results.md](guides/reproducing-results.md).
-> **2026-11-25, first floor test (owner):** balance enabled on a flat floor; the wheels spun one way whatever the lean,
-> until the tipover cutoff tripped (both directions). Likely cause: the velocity loop's integral winding the target lean
-> up in the direction the wheels first turned, so no later lean could reverse them, with the pitch zero 10 deg off so
-> they started turning at enable (proposal [0017](proposals/0017-clamp-the-target-lean.md), **open, the owner decides**).
-> Nothing was recorded on the robot. An offline model with estimated parameters (the clamps as `pid_controller`'s
-> parameter descriptions say) shows the same lock with the hardware gains, and the ±5 deg clamp reversing the wheels
-> with the lean; the simulation's scenarios still pass with the clamp (both in 0017's Evidence). The offset now makes
-> level read 0 ([journal](journal/2026-11-25-level-pitch-offset-and-lean-clamp.md); **not yet pulled on the robot**).
-> **Before the next enable:** on the Pi, `git pull && ./build_ros.sh`; level should read about 0; read the pitch at the
-> balance point (0017, test step 1); decide 0017.
-> **2026-11-25, without the robot** ([journal](journal/2026-11-25-offline-sim-work.md)): the one red ladder check (S2a) was a
-> container stall, now reported as "could not judge"; the offline model's encoder follows the C++ filter; proposal
-> [0008](proposals/0008-candidate-gains-and-tethered-test.md)'s candidates are brought up to date (the sim YAML's gains, the
-> measured signs, the ±30 % sweep re-run).
-> **Then:** the first tethered test with 0008's candidates (its procedure, after its preconditions); tuning
-> ([tune-gains](../.claude/skills/tune-gains/SKILL.md) skill, row 3.3).
-> **Smaller open items:** the supervisor does not pass `max_speed:=`/`max_turn:=` through to the mode stacks; the dashboard's
-> history check failed twice inside full ladder runs (38 points) but passes alone and passed in the last ladder. **Every robot step is the
-> owner's** (CLAUDE.md section 3); in these sessions the owner let the agent run commands on the Pi over SSH (`ssh rocko`)
-> while present; a new session asks again.
 >
-> **Superseded 2026-11-24, kept for the details:** the 2026-11-23 handoff.
+> **Then:** the first tethered test with [proposal 0008](proposals/0008-candidate-gains-and-tethered-test.md)'s
+> candidates (its procedure, after its preconditions); tuning ([tune-gains](../.claude/skills/tune-gains/SKILL.md),
+> row 3.3).
 >
-> **Handoff of 2026-11-23 (superseded by the box above).** Written for the robot supervisor change
-> ([journal](journal/2026-11-23-robot-supervisor.md), [design](architecture/robot-supervisor.md),
-> [ADR 0006](decisions/0006-robot-supervisor.md), row 4.13). **Nothing from this change has run on the Pi.**
-> **Where the robot is:** once the owner installs it (`pi/install_boot_service.sh robot`), the Pi boots `rocko.service`,
-> which runs the supervisor: tank mode, **disabled**. **Enable and disable are LB+RB** (a toggle; it replaces tank mode's
-> hold-LB deadman, the owner's decision); **LT+RT+RB switches tank/balance, only while disabled**; the dashboard has the same
-> buttons and a state card ([guide](guides/drive-with-usb-controller.md), [dashboard](guides/use-the-dashboard.md)). After enable
-> the sticks must return to centre before the robot moves. Installing it removes `rocko-tank.service` and
-> `rocko-dashboard.service`. The robot as the 2026-11-22 box describes it (tank mode and the dashboard as two services, hold LB)
-> is what is **still installed on the Pi** until then. Tank drive acceleration is 160 m/s² (proposal 0015; floor test
-> pending). Open: proposal 0013 (motor breakaway, row 4.6), proposal 0014 (100 % duty, owner to confirm). Nothing about balancing
-> has been run on the robot.
-> **Before any balancing work on the robot:**
-> (a) **The supervisor owns the motor stack.** Switch to balance with LT+RT+RB or the dashboard's Balance button; for a hand
-> launch (`pi/launch.sh balance`, a bench test) stop it first: `sudo systemctl stop rocko.service` (until the next boot), check with
-> `pi/install_boot_service.sh robot status` (`running now: inactive`). `pi/launch.sh` refuses to start a launch while the service
-> runs. A hand launch has no supervisor, so the controller cannot enable it.
-> (b) **The dashboard cost beside the 100 Hz loop is still unmeasured** (row 4.3), and the boot launch now starts it: use
-> `pi/launch.sh robot dashboard:=false` (service stopped) for a balancing test until it is measured. Supervised balance also spawns
-> `joint_state_broadcaster` so the supervisor can read pitch: its cost is row 4.15.
-> (c) **The encoder service** gives both wheels the left encoder's position and has unknown velocity timing (row 4.10);
-> balancing's velocity loop uses that velocity, so fix or measure it before the sign check (row 2.7, proposal 0006).
-> (d) **Balancing now has a driving input, untested:** `BalanceTeleop.py` (left stick Y forward, right stick X turn; defaults
-> `max_speed` 0.05 = 0.5 m/s and `max_turn` 0.2 are starting points, not tuned; row 4.8). Not needed to stand still on a tether.
-> Disabling in balance mode means the robot **falls**.
-> (e) **The motors' dead band** (no motion below 21 to 28 % duty; proposal 0013, row 4.6) is unresolved, and it matters
-> more for balancing than for tank mode: the balance loop lives on small corrections around zero, and tank mode's
-> `min_output` workaround does not apply to it.
-> (f) **Shutdown relies on every node getting the stop signal at once**: signalled through `ros2 launch` alone,
-> `ros2_control_node` hung (likely C-1, the encoder call with no timeout) and was SIGKILLed ([journal](journal/2026-11-22-tank-boot-service-and-handoff.md)).
-> The supervisor stops each stack's whole process group for this reason, and kills it if a disable is not confirmed.
-> Also from the realtime audit: row 4.14.
-> **Then the queue,** as in the 2026-11-22 box below: the velocity-loop sign on a stand (proposal 0006, row 2.7); measure the
-> robot and settle the wheel radius (0.7, 2.2, proposal 0007); gyro axis, sign and unit and the `read_pitch_rate` wiring (0008,
-> preconditions 3 and 4); the safety thresholds (proposal 0004); the first tethered test (0008); retune last (3.3). The C-1
-> IMU/encoder read in C++ (row 1.1, proposal 0010) is recommended before trusting balance timing. **Every robot step is the
-> owner's** (CLAUDE.md section 3); an agent writes the code and the procedure.
+> **Smaller open items:** the supervisor does not pass `max_speed:=`/`max_turn:=` through to the mode stacks; one red
+> run in the ±30 % sweep (`m-h-k-d+`, scenario V, 3.107 s against 3.0 s; cause not found;
+> [results](../sim/results/2026-11-25-measured-signs-sweep.md)). The dashboard's history check in `verify_tools.sh` failed
+> twice inside full ladder runs (38 points) and passes alone; cause not found. **Every robot step is the owner's** (CLAUDE.md §3); in
+> past sessions the owner let the agent run commands on the Pi over SSH (`ssh rocko`) while present; a new session asks
+> again.
 >
-> **Superseded 2026-11-23, kept for the details:** the 2026-11-22 handoff.
->
-> **Handoff of 2026-11-22 (superseded by the box above; it describes the Pi before `rocko.service` is installed). Next goal: balance mode.** Full account and how this session worked with the robot:
-> [the handoff journal](journal/2026-11-22-tank-boot-service-and-handoff.md).
-> **Where the robot is:** tank mode works, driven by an 8BitDo **plugged into the Pi** (hold LB; [guide](guides/drive-with-usb-controller.md)),
-> and **it starts at boot** (`rocko-tank.service`), as does the web dashboard (`rocko-dashboard.service`). Keyboard and
-> laptop driving were removed. Tank drive acceleration is 160 m/s², raised by the owner to match turning
-> ([proposal 0015](proposals/0015-tank-mode-faster-reversal.md); floor test pending). Open: proposal 0013 (motor
-> breakaway, row 4.6), proposal 0014 (100 % duty, owner to confirm). Nothing about balancing has been run on the robot.
-> **Before any balancing work on the robot:**
-> (a) **stop the tank service**: `sudo systemctl stop rocko-tank.service` (until the next boot), check with
-> `pi/install_boot_service.sh tank status` (`running now: inactive`), restore with `sudo systemctl start rocko-tank.service`.
-> `pi/install_boot_service.sh tank remove` stops it starting at boot until reinstalled (`pi/install_boot_service.sh tank`).
-> `pi/launch.sh` refuses to start a launch while the service runs.
-> (b) **Stop the dashboard service** for balancing tests until its CPU cost beside the 100 Hz loop is measured:
-> `sudo systemctl stop rocko-dashboard.service` (until the next boot) or `pi/install_boot_service.sh dashboard remove`.
-> `rocko.launch.py` starts no dashboard of its own (`dashboard:=false` by default), so the service is the only one.
-> (c) **The encoder service** gives both wheels the left encoder's position and has unknown velocity timing (row 4.10);
-> balancing's velocity loop uses that velocity, so fix or measure it before the sign check (row 2.7, proposal 0006).
-> (d) **Balancing has no driving input** (row 4.8). The owner wants it **fully decoupled** from tank mode: its own
-> node and (lower) speeds, sharing only `rocko_env/teleop/gamepad.py`. Not needed to stand still on a tether; needed
-> before driving while balancing.
-> (f) **Shutdown relies on every node getting the stop signal at once**: signalled through `ros2 launch` alone,
-> `ros2_control_node` hung (likely C-1, the encoder call with no timeout) and was SIGKILLed ([journal](journal/2026-11-22-tank-boot-service-and-handoff.md)).
-> (e) **The motors' dead band** (no motion below 21 to 28 % duty; proposal 0013, row 4.6) is unresolved, and it matters
-> more for balancing than for tank mode: the balance loop lives on small corrections around zero, and tank mode's
-> `min_output` workaround does not apply to it.
-> **Then the queue,** in [proposal 0008](proposals/0008-candidate-gains-and-tethered-test.md)'s order: the velocity-loop
-> sign on a stand (proposal 0006, row 2.7); measure the robot and settle the wheel radius (0.7, 2.2, proposal 0007);
-> verify the gyro axis, sign and unit and build the `read_pitch_rate` wiring (0008, preconditions 3 and 4); confirm the
-> safety thresholds (proposal 0004); the first tethered test (0008); retune last (3.3). The C-1 IMU/encoder read in C++
-> (row 1.1, proposal 0010) is recommended before trusting balance timing, not a 0008 precondition.
-> **Every robot step is the owner's** (CLAUDE.md section 3); an agent writes the code and the procedure. In this session
-> the owner, present at the robot, let the agent run commands on the Pi over SSH; a new session asks first.
->
-> **Superseded 2026-11-22:** the 2026-11-19 handoff (first robot run, keyboard driving): [journal](journal/2026-11-19-first-robot-run-tank-mode.md).
->
-> **Superseded 2026-11-08:** stages 4 and 5 are pushed, Tier 3 is marked built with limits, stage 6 is
-> partly done (framing helper, host test, proposal 0010); see the final-report journal and row 1.1.
->
-> **Handoff (2026-11-03, replaces the 2026-11-02 one):** stages 1 to 3 are pushed; stage 4 (tipover cutoff, teleop
-> watchdog, gyro rate, four new sim checks) was pushed (`e35fe57`). Its review round 3 was dirty and round 4
-> (authorised by the person) fixed the findings in code, adding the feedforward age limit (H-11) and its check `FF`;
-> that code is uncommitted and **round 4's review (`realtime-auditor`, `ros2-control-reviewer`,
-> `explainability-reviewer`, `docs-reviewer`) has not run**. Stage 5 should wait for it. Stage 5 (scenarios,
-> tuning, sweep, sim-to-real-gap, measurement guide) and stage 6 (C-1) are next. Details and the first
-> question to ask are in the journal's last section,
-> [Where the run stands](journal/2026-10-31-sim-plant-and-critical-fixes.md#where-the-run-stands-handoff-written-2026-11-02-for-the-next-session).
+> Earlier handoffs (2026-11-03 to 2026-11-23) are in this file's git history and in the journals they link to.
 
 ## How to use it
 

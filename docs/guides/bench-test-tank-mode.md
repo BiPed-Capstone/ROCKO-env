@@ -3,16 +3,14 @@
 **Who this is for:** the person at the robot the first time `rocko_tank_mode.launch.py` runs, or
 anyone whose wheels hum and do not turn.
 
-**What has been checked:** nothing in this guide has been run. The numbers come from reading the
-code (they are worked out below so you can check them), not from a robot. Every step that touches the
+**What has been checked:** the owner ran this test on 2026-11-19; the breakaway of each wheel is marked
+in the table below ([journal](../journal/2026-11-19-first-robot-run-tank-mode.md)). The duty numbers below come from
+reading the code (worked out so you can check them). Every step that touches the
 robot is yours: an agent on this branch does not launch anything on the Pi
 ([CLAUDE.md](../../CLAUDE.md) section 3).
 
-**Why it exists:** with precise mode on, the keyboard script drove tank mode with a command so small that
-the motors got about 2 to 5 % of full power, which is not enough to start the wheels turning. (The owner's
-commit `df91b9e` has since turned precise mode off; the keys now reach 5 to 67 %, see
-the keyboard guide, removed on 2026-11-22.) This procedure
-confirms that, and measures the command at which each wheel *does* start. That measured number is
+**Why it exists:** the motors hum and do not turn at small commands. This procedure measures the
+command at which each wheel *does* start (its breakaway), on the stand. That measured number is
 the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) needs.
 
 ---
@@ -30,8 +28,7 @@ the evidence [proposal 0013](../proposals/0013-tank-mode-motor-breakaway.md) nee
   stopped the same way, if that is what your Pi still has.)
 - **Your laptop** is not needed for this guide. The launch below uses `teleop:=false`, which leaves out the
   USB controller nodes: `TankTeleop.py` would otherwise publish its own commands (zero, 50 times a second)
-  and they would fight the test commands below. (Until 2026-11-22 this said to stop the laptop's keyboard and
-  gamepad scripts; both were removed.)
+  and they would fight the test commands below.
 
 **Every terminal on the Pi runs as root, with the same `ROS_DOMAIN_ID`.** The motor plugin needs root
 (WiringPi), and a terminal that is not root cannot see the launch at all. The scripts in `pi/` do both,
@@ -64,14 +61,14 @@ duty % = 6.5957 x v + 2     (truncated; 6.6 is close but crosses a whole percent
 
 | `linear.x` | duty | what sends this |
 | --- | --- | --- |
-| 0.1 m/s | 2 % | keyboard in precise mode (off since `df91b9e`), one `w` press |
-| 0.5 m/s | 5 % | keyboard in precise mode, five presses (the most it could do) |
+| 0.1 m/s | 2 % | |
+| 0.5 m/s | 5 % | |
 | 1.0 m/s | 8 % | |
 | 2.0 m/s | 15 % | |
-| 3.0 m/s | 21 % | |
-| 4.0 m/s | 28 % | |
+| 3.0 m/s | 21 % | right wheel's breakaway, 2026-11-19 |
+| 4.0 m/s | 28 % | left wheel's breakaway, 2026-11-19 |
 | 5.0 m/s | 34 % | |
-| 10 m/s | 67 % | a full forward push on the gamepad |
+| 10 m/s | 67 % | |
 
 A software-PWM pulse repeats every 10 ms (100 steps of 100 microseconds: WiringPi's documented
 step, not measured here), so a low duty is a short
@@ -207,7 +204,7 @@ Anything else (heat, smell, noise, a wheel that stuck):
 | You see | Why | Do |
 | --- | --- | --- |
 | Nothing at any level up to 5.0 | Battery low, motor supply off, a driver not enabled, or a wiring fault | Measure the battery under no load; check the motor supply switch; swap to a known-good motor channel. This is a hardware finding, not a software one |
-| The wheels turn but a keyboard still seems to do nothing | The keyboard's low levels are below your breakaway (in precise mode the top level was 0.5 m/s, 5 %; since `df91b9e` levels 1 to 4 are 5 to 18 %) | Expected; that is proposal 0013 |
+| The wheels turn here but barely move under the controller at small stick | Small stick is below your breakaway | Expected; that is proposal 0013 |
 | The wheels jerk at each step instead of turning smoothly | Duty is just above breakaway; the wheel turns, sticks, turns | Go one level higher; note both levels |
 | Two sources of commands: the wheels twitch between values | The launch was started without `teleop:=false`, so `TankTeleop.py` is publishing too | Stop the launch and start it again with `teleop:=false` |
 | `Could not start the interrupt on encoder pin ...`, or a wheel's `position` never changes in `ros2 topic echo /joint_states` | The motor plugin counts its encoder itself since 2026-11-24 ([how](../architecture/encoders-in-cpp.md)): the interrupt could not start, or the pin numbers or wiring are wrong | Check the launch log for the motor plugin's error; compare `encoder_pin_a`/`encoder_pin_b` in the xacro with `gpio readall` |
