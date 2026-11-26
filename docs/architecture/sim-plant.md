@@ -33,7 +33,7 @@ measured on the robot and the sim's defaults match them (§2.4).
 **Code this page reads:** `bringup/config/rocko_controllers.yaml`, `DiffDriveController.py`,
 `Joystick.py`, `Motor12VoltQuadEncoder.cpp`/`.hpp`, `QuadEncoders.py` (removed 2026-11-24: the motor plugin counts the
 encoder itself with the same table, scale and filter, [how](encoders-in-cpp.md); the line references to it below are to
-the file as it was), `QuadEncoder.py`,
+the file as it was), `QuadEncoder.py` (never launched; removed 2026-11-26),
 `ICM20948.py`/`.cpp`/`.hpp`, `AddFeedforwardController.cpp`, `rocko.ros2_control.xacro` and
 `rocko_description.urdf.xacro`, in the `ai-forward` tree of 2026-10-31, which includes the finding
 **C-2** changes to the IMU files and the new `Motor12VoltQuadEncoder::write()` (findings H-2, M-1,
@@ -174,8 +174,8 @@ are a different list; where one of these is also a finding there, the entry says
   `DiffDriveController.command_controller()` computes the feedforward as wheel rad/s (`m/s ÷ wheel radius`).
   `write()` divides by the gearbox-output no-load speed. `QuadEncoders.py:35` says a 1.355 belt
   reduction sits between the gearbox output and the wheel. If it does, a feedforward of `x` wheel-rad/s
-  actually asks for `x / 1.355` wheel-rad/s. The older `QuadEncoder.py:28` (not launched;
-  `rocko.launch.py:128-148` comments it out) has no belt factor, so the repo disagrees with itself
+  actually asks for `x / 1.355` wheel-rad/s. The older `QuadEncoder.py:28` (never launched,
+  removed 2026-11-26) had no belt factor, so the repo disagrees with itself
   about whether the belt exists. **What the sim does:** model the belt at 1.355 as an estimate (§4).
 - **U-5 · The velocity reference asks for more than the wheels can give.** Full stick is ±10 "m/s"
   (`linear_scale` in `Joystick.py`). The wheels' no-load ground speed is about 5.3 m/s with the belt (7.2 m/s
@@ -606,7 +606,7 @@ that the gyro's real rate is as clean as this one, which is exact and undelayed.
 | Parameter | Symbol | Unit | Estimate | Basis |
 | --- | --- | --- | --- | --- |
 | `wheel_radius_m` | `r` | m | 0.06 | The value the balancing stack uses today; see §4.2. **Issue #16 stays open** |
-| `belt_ratio` | `N_b` | – | 1.355 | `QuadEncoders.py:35` comment ("1.355 reduction from belts"); the older `QuadEncoder.py:28` has none (U-4) |
+| `belt_ratio` | `N_b` | – | 1.355 | `QuadEncoders.py:35` comment ("1.355 reduction from belts"); the older `QuadEncoder.py:28` had none (U-4; removed 2026-11-26) |
 | `wheel_mass_kg` (each) | `m_w` | kg | 0.3 | `rocko_description.urdf.xacro:12`, marked "arbitrary" there. Plausible for a 120 mm wheel with hub and pulley |
 | wheel inertia (derived) | `I_w` | kg·m² | 1.08 × 10⁻³ (both) | Solid disc, `½·m_w·r²` each. Motor rotor inertia reflected through the gears is left out |
 | `body_mass_kg` | `m_b` | kg | 2.0 | **Invented** from a guessed parts list: two gearmotors ≈ 0.5 kg, 12 V pack ≈ 0.4 kg, Pi and boards ≈ 0.15 kg, frame ≈ 0.9 kg. The URDF's 0.3 kg (`:8`) is marked "arbitrary" and is lighter than the motors alone, so it is not used |
@@ -653,8 +653,8 @@ The repo holds four different wheel radii. This page does **not** pick the right
 
 | Value | Where | Used by |
 | --- | --- | --- |
-| 0.06 m | `wheel_radius_meters` in `DiffDriveController.__init__`; `QuadEncoders.py:34` ("60 mm radius"); `QuadEncoder.py:28` (as "120 mm wheel diameter") | Feedforward; encoder → metres in the launched node |
-| 0.0813 m (effective) | `QuadEncoder.py:28` vs `QuadEncoders.py:35` | The older node converts counts to metres without the 1.355 belt factor. If the belt is real, its numbers are what a 0.06 × 1.355 = 0.0813 m wheel would give |
+| 0.06 m | `wheel_radius_meters` in `DiffDriveController.__init__`; `QuadEncoders.py:34` ("60 mm radius"); `QuadEncoder.py:28` (as "120 mm wheel diameter"; removed 2026-11-26) | Feedforward; encoder → metres in the launched node |
+| 0.0813 m (effective) | `QuadEncoder.py:28` vs `QuadEncoders.py:35` (both removed; line numbers as the files were) | The older node converted counts to metres without the 1.355 belt factor. If the belt is real, its numbers are what a 0.06 × 1.355 = 0.0813 m wheel would give |
 | 0.127 m | `rocko_tank_mode_controllers.yaml:17` | Tank mode's `diff_drive_controller` (issue #16 suspects it is left over from a demo) |
 | 0.015 m | `rocko_description.urdf.xacro:14` | The URDF; what a Gazebo plant would use |
 

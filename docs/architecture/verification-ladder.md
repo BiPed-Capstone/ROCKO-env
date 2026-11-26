@@ -633,8 +633,6 @@ because they show what each tier is for.
   scalar, or an edit that moves a line out of its map. Closing that needs a YAML parser (PyYAML),
   which the host may not have; see the hook's docstring.
 - **`foxglove_bridge` starts but nothing checks it.**
-- **`rocko_gui.launch.py` looks stale.** It spawns `diffbot_base_controller`, which
-  `rocko_controllers.yaml` does not define, and is not covered by any tier.
 - **No tier opens RViz.** The RViz layouts are installed now (finding **L-4**; after a build,
   `install/rocko_env/share/rocko_env/rviz/` holds `rocko.rviz` and `rocko_view.rviz`), but that RViz
   starts with them needs a display, and `view_robot.launch.py` has not been run since its default

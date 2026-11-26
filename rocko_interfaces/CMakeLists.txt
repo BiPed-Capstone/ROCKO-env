@@ -28,9 +28,6 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/Icm20948Data.msg"
-  "srv/Icm20948Data.srv"
-  "srv/QuadEncoderData.srv"
   "msg/NodeStatus.msg"
   "msg/ControllerStatus.msg"
   "msg/RobotState.msg"

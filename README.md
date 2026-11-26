@@ -114,17 +114,17 @@ This is also why a laptop build has to leave the motor plugin out (`-DROCKO_SKIP
 
 ### Python libraries
 
-Heads up: **none of these are pinned**. There's no `requirements.txt` yet, so `pip` grabs the latest of each ([#14](https://github.com/BiPed-Capstone/ROCKO-env/issues/14)).
+The robot's own code needs no `pip` packages: the IMU and the encoders are read in C++
+([IMU](docs/architecture/imu-i2c-read.md), [encoders](docs/architecture/encoders-in-cpp.md)), and every Python node
+uses only ROS and the standard library. The three below are for one optional bench tool,
+`tools/imu_tilt_log.py`. They are not pinned (there is no `requirements.txt`;
+[#14](https://github.com/BiPed-Capstone/ROCKO-env/issues/14)).
 
 | Library | What uses it | Needs real Pi hardware? |
 | --- | --- | --- |
-| `numpy` | calibration scripts | no |
-| `pygame` | the laptop gamepad script | no |
-| `tqdm`, `ahrs` | IMU calibration scripts | no |
-| `Adafruit-Blinka` (imported as `board`) | only `tools/imu_tilt_log.py` now: the robot code reads the IMU from C++ since 2026-11-24 ([how](docs/architecture/imu-i2c-read.md)) | **yes**, needs real I²C |
-| `gpiod` (`gpiod>=2.2.2,<3`) | needed by `board` on a Raspberry Pi 5, so by `tools/imu_tilt_log.py` | **yes** |
-| `adafruit-circuitpython-bno055` | `tools/imu_tilt_log.py` only (the IMU node `ICM20948.py` that used it was removed 2026-11-24) | **yes** |
-| `Encoder` | only the older, unused `QuadEncoder.py`: the robot's encoders are counted in C++ since 2026-11-24 ([how](docs/architecture/encoders-in-cpp.md)) | **yes**, needs real GPIO |
+| `Adafruit-Blinka` (imported as `board`) | `tools/imu_tilt_log.py` | **yes**, needs real I²C |
+| `gpiod` (`gpiod>=2.2.2,<3`) | needed by `board` on a Raspberry Pi 5 | **yes** |
+| `adafruit-circuitpython-bno055` | `tools/imu_tilt_log.py` | **yes** |
 
 ---
 
@@ -172,11 +172,10 @@ ROCKO-env
 │       │   └── launch/                 view_robot.launch.py shows the model, no hardware
 │       ├── hardware/
 │       │   ├── WiringPi/               Reference copy of wiringPi.h
-│       │   ├── motors/                 Motor driver, the only file writing motor PWM
+│       │   ├── motors/                 Motor driver, the only file writing motor PWM; also counts the wheel encoders (WheelEncoder.hpp)
 │       │   ├── sim/                    SimPlant: the simulated robot (a physics model with estimated parameters), not hardware
 │       │   └── sensors/
-│       │       ├── icm20948/           IMU driver + calibration scripts
-│       │       └── quadEncoder/        Older encoder code, loaded by nothing (the robot's encoders: motors/, WheelEncoder.hpp)
+│       │       └── icm20948/           IMU driver (the BNO055, read over I²C; the name is historical)
 │       ├── recording/                  RecordRun.py: records a run (rosbag + run.yaml) for record:=true
 │       └── webserver/                  Dashboard.py: live values and Record/Stop in a browser (no Flask; standard library)
 ├── rocko_interfaces/                   Custom messages and services, including the supervisor's RobotState and SetEnabled/SetMode

@@ -171,28 +171,6 @@ def generate_launch_description():
     # their encoders' edges themselves (finding C-1; docs/architecture/imu-i2c-read.md and
     # docs/architecture/encoders-in-cpp.md). The pins are hardware parameters in the ros2_control xacro.
 
-    # left_relative_encoder = Node(
-    #     package="rocko_env",
-    #     executable="QuadEncoder.py",
-    #     name="left_wheel_joint_encoder",
-    #     parameters=[{
-    #         "service_name": "left_wheel_joint_encoder_data",
-    #         "a_pin": 26,
-    #         "b_pin": 20
-    #     }]
-    # )
-
-    # right_relative_encoder = Node(
-    #     package="rocko_env",
-    #     executable="QuadEncoder.py",
-    #     name="right_wheel_joint_encoder",
-    #     parameters=[{
-    #         "service_name": "right_wheel_joint_encoder_data",
-    #         "a_pin": 19,
-    #         "b_pin": 16
-    #     }]
-    # )
-    
     diffdrive_controller = Node(
         package="rocko_env",
         executable="DiffDriveController.py",

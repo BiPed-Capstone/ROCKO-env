@@ -17,8 +17,9 @@ Read this whole file before your first tool call.
 Read [`README.md`](README.md) first — it has the signal-path diagram, the folder map, and build
 instructions. In one paragraph:
 
-A gamepad on a laptop sends velocity over TCP to `Joystick.py` on the Pi. `DiffDriveController.py`
-turns that into per-wheel references. Then a **cascade**: `velocity_pid_controller` compares
+A USB gamepad plugged into the Pi is read by `joy`'s `game_controller_node`; `Supervisor.py` picks
+the mode and whether the robot is enabled, and in balancing mode `BalanceTeleop.py` turns the sticks
+into a velocity command. `DiffDriveController.py` turns that into per-wheel references. Then a **cascade**: `velocity_pid_controller` compares
 commanded vs. measured wheel velocity and outputs a *target lean angle*; `pitch_pid_controller`
 compares that target against measured pitch and outputs *wheel velocity*;
 `left/right_add_feedforward_controller` adds a feedforward term and drives the
@@ -234,10 +235,9 @@ balance loop, which reads as bad gains and wastes tuning days.
 
 **Critical path = these files.** Touching them makes `realtime-auditor` mandatory.
 
-- `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp` + `wheel.hpp`
-- `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.cpp`
-- `rocko_env/rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp`
-- `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp`
+- `rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp` + `wheel.hpp` + `WheelEncoder.hpp`
+- `rocko_env/rocko_env/hardware/sensors/icm20948/ICM20948.cpp` + its headers (`ImuFaultTracker.hpp`, `ImuSnapshotCheck.hpp`, `Bno055UartProtocol.hpp`)
+- `rocko_env/rocko_env/controllers/add_feedforward/AddFeedforwardController.cpp` + its headers (`TipoverLatch.hpp`, `FeedforwardTimeout.hpp`, `ZeroCommands.hpp`)
 - `rocko_env/rocko_env/bringup/config/*.yaml` (update_rate, gains, interface wiring)
 
 **`Motor12VoltQuadEncoder.cpp` is not compiled in the container**, so a green Tier 1 says nothing

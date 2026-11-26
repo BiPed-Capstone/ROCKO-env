@@ -39,7 +39,8 @@ authors intended): flip **one** sign. A human chooses which; do not do both, or 
   Keeps `/joint_states` velocity in the encoder's own sign, so a person reading it sees what the wheel
   did; the cost is that the YAML's gains no longer read as "positive means correcting", which needs the
   comment.
-- **Option B, the encoder.** In `rocko_env/rocko_env/hardware/sensors/quadEncoder/QuadEncoders.py`, negate
+- **Option B, the encoder** (not chosen; that file was removed 2026-11-24, and the encoder is now counted in
+  `WheelEncoder.hpp`). In `rocko_env/rocko_env/hardware/sensors/quadEncoder/QuadEncoders.py`, negate
   the reported velocity (and position, so they stay consistent) so that the velocity is negative when a
   positive command drives the robot. The gains stay positive. The cost: "positive velocity" then means
   the opposite of a positive wheel command, and positive `linear.x` from the gamepad drives the robot

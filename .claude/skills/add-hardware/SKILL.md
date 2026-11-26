@@ -24,11 +24,12 @@ A student will later ask why the code is shaped this way; these are the answers.
 
 ## Start from the templates
 
-`examples/example_hardware/` has the skeletons: `hardware_template.hpp` / `.cpp` for C++ and
-`hardware_template.py` for Python. Copy, don't write from scratch.
+`examples/example_hardware/` has the skeleton: `hardware_template.hpp` / `.cpp`. Copy, don't write
+from scratch. There is no Python template, on purpose (next paragraph).
 
-**New device drivers belong in C++**, not Python. They are called from the 100 Hz loop, and a
-Python node reached over DDS cannot meet that budget — see the `control-loop-change` skill.
+**Device drivers belong in C++, inside the plugin**, not in a Python node. They are called from the
+100 Hz loop, and a service call to a Python node over DDS blocks it and cannot meet that budget
+(ADR 0004, `docs/decisions/0004-device-io-in-cpp.md`; the `control-loop-change` skill).
 
 ## Wiring checklist — all five, or the plugin is invisible
 
@@ -40,7 +41,7 @@ A new plugin that compiles and still "isn't found" has missed one of these.
    - add the `.cpp` to `add_library(rocko_env SHARED ...)`
    - add the include dir to `target_include_directories`
    - add the include dir to the first `install(DIRECTORY ...)` block (the one under `# HARDWARE INSTALL BLOCK`)
-   - if it's a Python executable, add it to `install(PROGRAMS ...)`, give the source file a
+   - if it's a Python node (a teleop or tool node, never a device driver), add it to `install(PROGRAMS ...)`, give the source file a
      shebang, and make it executable in git (`git update-index --chmod=+x <file>`): under
      `--symlink-install` it is run in place
 

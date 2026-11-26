@@ -21,11 +21,4 @@
       exporting the same interfaces as the real motors and IMU. See docs/architecture/sim-plant.md.
     </description>
   </class>
-  <class name="rocko_env/QuadEncoder"
-         type="rocko_env::QuadEncoder"
-         base_class_type="hardware_interface::SensorInterface">
-    <description>
-      An incremental/relative encoder with an A and B channel.
-    </description>
-  </class>
 </library>

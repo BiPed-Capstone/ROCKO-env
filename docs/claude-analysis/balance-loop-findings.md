@@ -65,7 +65,7 @@ Severity reflects impact on the robot staying upright, not code quality.
 | L-3 | Low | Deprecated header include and invalid escape sequences, seen as warnings in the first off-Pi build — **fixed on `ai-forward`** (2026-10-31) |
 | L-4 | Low | The RViz configs are never installed, so three launch files cannot find them — **fixed on `ai-forward`** (2026-10-31); RViz opening with them not checked |
 | L-5 | Low | A D-term spike after cycles in which the IMU angle was held (found 2026-10-31, not fixed) |
-| L-6 | Low now, Critical once C-1 adds a timeout | `Motor12VoltQuadEncoder::read` and `QuadEncoder::read` return OK and keep the old position and velocity when the encoder call fails (found 2026-10-31, not fixed) |
+| L-6 | Low now, Critical once C-1 adds a timeout | `Motor12VoltQuadEncoder::read` and `QuadEncoder::read` return OK and keep the old position and velocity when the encoder call fails (found 2026-10-31). Since C-1 (2026-11-24) the motor plugin counts its own encoders and calls nothing that can fail; the `QuadEncoder` plugin was removed 2026-11-26. Left: an encoder that silently stops counting (next-steps row 1.10) |
 | L-7 | Low | `MAX_RAD_PER_SEC` is computed with integer division (found 2026-10-31, not fixed; a human confirms the change) |
 | L-8 | Low (matters when H-6 reaches the real YAML) | `pid_controller` sets the rate reference once, at activation, and never again (found 2026-11-02, not fixed) |
 
@@ -118,6 +118,8 @@ handler for the timeout branch — but the right answer is to remove the indirec
 the timeout branch must also remove the pending request. A client keeps each request it has sent
 until a reply arrives, so abandoning a request without removing it makes that list grow every time
 the timeout fires.
+
+**Status on `ai-forward` (2026-11-26): the leftovers the fix asks to delete are gone too: `Icm20948Data.srv`/`.msg`, `QuadEncoderData.srv` and the unlaunched `QuadEncoder` plugin and node (journal [2026-11-26](../journal/2026-11-26-cleanup.md)).**
 
 **Status on `ai-forward` (2026-11-24, encoder half): both halves fixed in code. The motor plugins count their encoders' edges themselves (WiringPi interrupts into an atomic count; `read()` never waits), with the same table, scale and speed filter as `QuadEncoders.py`, which is removed ([how](../architecture/encoders-in-cpp.md), [journal](../journal/2026-11-24-c1-encoders-in-cpp.md), next-steps row 1.3). Checked on the robot's stand the same day: counts and signs right, and the shutdown that needed SIGKILL no longer does.**
 
@@ -1169,7 +1171,7 @@ either, and `python3 -W error -m py_compile` on the host raises no `SyntaxWarnin
 ### L-4 — The RViz configs are never installed
 
 **Where** `rocko_env/CMakeLists.txt` (the `install(DIRECTORY ...)` blocks);
-`rocko_env/rocko_env/bringup/launch/rocko_tank_mode.launch.py:82`, `rocko_gui.launch.py:78`,
+`rocko_env/rocko_env/bringup/launch/rocko_tank_mode.launch.py:82`, `rocko_gui.launch.py:78` (removed 2026-11-26),
 `rocko_env/rocko_env/description/launch/view_robot.launch.py:82`
 
 `rocko_env/rocko_env/description/rviz/` holds `rocko.rviz` and `rocko_view.rviz`, but no
@@ -1226,7 +1228,7 @@ treat a glitch followed by a kick as this. Queue: [next-steps row 1.9](../next-s
 **Found** 2026-10-31. **Not fixed.** Read-only analysis; nobody has watched it fail.
 
 **Where** `Motor12VoltQuadEncoder::read` (`rocko_env/rocko_env/hardware/motors/Motor12VoltQuadEncoder.cpp`)
-and `QuadEncoder::read` (`rocko_env/rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp`)
+and `QuadEncoder::read` (`rocko_env/rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp`, removed 2026-11-26)
 
 **What**
 

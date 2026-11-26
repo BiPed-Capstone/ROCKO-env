@@ -261,7 +261,7 @@ axle" (sim-plant.md §2.1). `imu_pitch_bias_deg` is 0 in the sim.
 | Parameter (xacro / plugin name) | Estimate | Unit | Basis, shortened |
 | --- | --- | --- | --- |
 | `wheel_radius_m` | 0.06 | m | The value the Python nodes use. **Not verified; four values disagree, see §5** |
-| `belt_ratio` | 1.355 | – | A comment in `QuadEncoders.py`; the older `QuadEncoder.py` has none |
+| `belt_ratio` | 1.355 | – | A comment in `QuadEncoders.py`; the older `QuadEncoder.py` (removed 2026-11-26) had none |
 | `wheel_mass_kg` (each) | 0.3 | kg | URDF value marked "arbitrary" |
 | `body_mass_kg` | 2.0 | kg | **Invented** from a guessed parts list |
 | `com_height_m` | 0.20 | m | **Invented** |
@@ -282,7 +282,7 @@ the exported pitch go up) and `encoder_sign` (see §6).
 ## 5. The wheel radius: four values disagree (issue #16), none is picked here
 
 The repo holds 0.06 m (Python nodes, feedforward, encoder conversion), an effective 0.0813 m
-(`QuadEncoder.py` without the belt factor, if the belt is real), 0.127 m (tank mode's controller
+(the removed `QuadEncoder.py`, which had no belt factor, if the belt is real), 0.127 m (tank mode's controller
 YAML) and 0.015 m (the URDF). [Issue #16](https://github.com/BiPed-Capstone/ROCKO-env/issues/16) is
 open and next-steps row 0.7 waits on a human with a ruler. **This page does not choose one.** The
 sim uses 0.06 m as an estimate only because the balancing stack uses it. What a wrong radius does

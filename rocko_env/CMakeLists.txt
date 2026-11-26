@@ -33,7 +33,6 @@ endif()
 find_package(backward_ros REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
-find_package(Python REQUIRED Development)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
@@ -49,7 +48,6 @@ add_library(
   # Hardware .cpp files (the WiringPi motor plugin is added below, once we know WiringPi exists)
   rocko_env/hardware/sensors/icm20948/ICM20948.cpp
   rocko_env/hardware/WiringPi/wiringPi.h
-  rocko_env/hardware/sensors/quadEncoder/QuadEncoder.cpp
   # The simulated robot (Tier 3). Always built: it needs no WiringPi and drives no hardware.
   rocko_env/hardware/sim/SimPlant.cpp
   # Controller .cpp files
@@ -67,10 +65,8 @@ target_include_directories(rocko_env PUBLIC
 # paths to hardware include folders
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/motors/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/icm20948/include>
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sensors/quadEncoder/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/hardware/sim/include>
 # Paths to controller include folders
-$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/joystick/include>
 $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/rocko_env/controllers/add_feedforward/include>
 $<INSTALL_INTERFACE:include/rocko_env>
 )
@@ -109,9 +105,7 @@ else()
   target_link_libraries(rocko_env PUBLIC ${WIRINGPI_LIBRARIES})
 endif()
 
-target_link_libraries(rocko_env PUBLIC
-                        Python::Python
-                        add_feedforward_controller_parameters)
+target_link_libraries(rocko_env PUBLIC add_feedforward_controller_parameters)
 
 # Export plugins
 pluginlib_export_plugin_description_file(hardware_interface rocko_env_hardware.xml)
@@ -122,7 +116,6 @@ pluginlib_export_plugin_description_file(controller_interface rocko_env_controll
 install(
   DIRECTORY rocko_env/hardware/motors/include/ 
             rocko_env/hardware/sensors/icm20948/include/ 
-            rocko_env/hardware/sensors/quadEncoder/include/
             rocko_env/hardware/sim/include/
             rocko_env/controllers/add_feedforward/include/
   DESTINATION include
@@ -152,7 +145,6 @@ ament_python_install_package(${PROJECT_NAME})
 # With --symlink-install these are run in place, not copied, so each source file must be
 # executable (git mode 100755) and start with a shebang. RateLimiter.py is only imported, not run.
 install(PROGRAMS
-  rocko_env/hardware/sensors/quadEncoder/QuadEncoder.py
   rocko_env/controllers/diffdrive/DiffDriveController.py
   rocko_env/controllers/utils/RateLimiter.py
   rocko_env/controllers/joystick/Joystick.py
