@@ -137,11 +137,40 @@ ros = L.ros_page(view)
 check("ROS page: a missing node and a controller in the wrong state are red",
       any("balance_teleop: MISSING" in l.text and l.colour == L.RED for l in ros)
       and any("velocity_pid_controller: missing / inactive" in l.text and l.colour == L.RED for l in ros))
-check("buttons: thirds of the bottom bar, nothing above it",
-      [L.button_at(10, 300), L.button_at(240, 300), L.button_at(470, 300), L.button_at(240, 100)]
-      == ["prev", "mute", "next", None])
-check("buttons: labels name the neighbouring pages and the mute state",
-      L.button_labels(view, 0) == ["< ROS", "Muted", "System >"])
+check("buttons: quarters of the bottom bar, nothing above it",
+      [L.button_at(10, 300), L.button_at(150, 300), L.button_at(300, 300), L.button_at(470, 300), L.button_at(240, 100)]
+      == ["prev", "mute", "record", "next", None])
+check("buttons: labels name the neighbouring pages, the mute state, and no dashboard to record with",
+      [text for text, _ in L.button_labels(view, 0)] == ["< ROS", "Muted", "Rec ?", "System >"])
+idle = {"running": "false", "seconds_left": "", "folder": "", "log_root": "/home/u/rocko_logs", "free_gb": "41.2",
+        "low_space": "false", "port": "8080", "button_s": "60"}
+busy = {**idle, "running": "true", "seconds_left": "42.4", "folder": "20261127_101500_screen"}
+check("record button: 'Rec 1 min' when idle, red 'Stop 0:42' with the time left while recording",
+      L.record_label({"recording": idle}) == ("Rec 1 min", L.BUTTON)
+      and L.record_label({"recording": busy}) == ("Stop 0:42", L.RED)
+      and L.record_label({"recording": {**busy, "seconds_left": ""}}) == ("Stop", L.RED)
+      and L.record_label({"recording": {**idle, "button_s": "30"}})[0] == "Rec 30 s"
+      and L.record_label({"recording": {**idle, "button_s": ""}})[0] == "Rec")
+record = [line.text for line in L.record_page({**view, "recording": busy})]
+check("record page: recording, its folder, where runs are saved, the free space, the download address",
+      record[0] == "RECORDING  0:42 left" and "20261127_101500_screen" in record[1]
+      and any("/home/u/rocko_logs" in t for t in record) and any("41.2 GB" in t for t in record)
+      and any("http://192.168.1.42:8080" in t for t in record), record)
+check("record page: no dashboard says so", "No dashboard" in L.record_page(view)[0].text)
+check("record page: fits on the screen", L.fit_lines(L.record_page({**view, "recording": busy}), L.CONTENT_HEIGHT)
+      == L.record_page({**view, "recording": busy}))
+disk_view = {**view, "disk": {"used_gb": 12.34, "total_gb": 58.0, "free_gb": 45.66},
+             "ips": {"eth0": "10.0.0.5", "wlan0": "192.168.1.42"},
+             "extras": {e: {"state": "OK", "message": "fine", "values": {}} for e in health.EXTRAS}}
+check("system page: storage used, total and free",
+      L.system_page(disk_view)[2].text == "Storage: 12.3 of 58.0 GB used, 45.7 free"
+      and L.system_page(disk_view)[2].colour == L.WHITE, L.system_page(disk_view)[2].text)
+check("system page: storage red below the recorder's minimum free space",
+      L.storage_text({"disk": {"used_gb": 57.7, "total_gb": 58.0, "free_gb": 0.3}})[1] == L.RED
+      and L.storage_text({})[1] == L.GREY)
+check("system page: fits with two addresses and all three extras",
+      L.fit_lines(L.system_page(disk_view), L.CONTENT_HEIGHT) == L.system_page(disk_view))
+check("minutes:seconds", L.format_seconds(62.4) == "1:02" and L.format_seconds(-1) == "0:00")
 many = [L.Line(f"line {i}", L.WHITE, 16) for i in range(30)]
 cut = L.fit_lines(many, 200)
 check("fit_lines: cut to the height, with a count of what was left out",

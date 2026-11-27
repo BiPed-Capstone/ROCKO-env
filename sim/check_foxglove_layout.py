@@ -37,6 +37,9 @@ from rclpy.node import Node
 from rosidl_runtime_py.utilities import get_message
 
 
+DISCOVERY_DEADLINE_S = 15.0   # [s] the longest it waits for the layout's topics to appear
+
+
 def paths_in(layout):
     """Every message path in the layout: (panel id, path)."""
     found = []
@@ -93,9 +96,15 @@ def main():
 
     rclpy.init()
     node = Node("verify_tools_foxglove_layout_check")
-    end = time.monotonic() + 3.0  # discovery takes a moment
+    # Discovery takes a moment, and longer on a busy machine: wait until every topic the layout needs (the optional
+    # ones aside) has a publisher, up to DISCOVERY_DEADLINE_S, instead of judging after a fixed wait (a fixed 3 s
+    # once missed topics that were there, while the simulation was overloaded, 2026-11-27).
+    needed = {path.partition(".")[0] for _, path in paths} - set(optional_types)
+    end = time.monotonic() + DISCOVERY_DEADLINE_S
     while time.monotonic() < end:
         rclpy.spin_once(node, timeout_sec=0.1)
+        if all(node.count_publishers(topic) > 0 for topic in needed):
+            break
     topic_types = dict(node.get_topic_names_and_types())
     problems = []
     for panel, path in paths:

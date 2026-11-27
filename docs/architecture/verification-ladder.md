@@ -263,13 +263,24 @@ stop and kept recording after it (`FAIL: processes outlived the launch`; fixed i
 when: the page loads and names no outside address; `/api/state` has fresh values and says `sim`; every
 pitch point in the dashboard's history is within 0.5 deg of the pitch the checker itself heard on
 `/dynamic_joint_states` at that moment, and the history shows the start-up lean (at least 1 deg, or two
-flat lines at zero would prove nothing); the dashboard node publishes on no topic but ROS's own two, and
+flat lines at zero would prove nothing); the dashboard node publishes on no topic but ROS's own two and its recording
+report on `/diagnostics`, and
 has no service client but the supervisor's two and the buzzer's mute switch; a POST from another site's `Origin`, a second Record and a path that climbs out of
 the log folder are refused; and Record then Stop over HTTP make one closed run, listed and downloadable,
-that `check_recording.py` accepts. Seen to fail (2026-11-16), each for a real fault since fixed: `only 37
+that `check_recording.py` accepts. Since 2026-11-27 it also presses the status screen's record button as the screen
+does (`/rocko/record`, with `record_button_s` set to 5 s at runtime) and requires: a "rocko/recording" report saying it
+runs; the recording stopping **by itself**, not before 5 s and not later than the 25 s a bag may take to close after
+that; the run closed and listing `run.yaml`, `bag/metadata.yaml` and an `.mcap`; `run.yaml` downloaded through
+`/api/files/` byte for byte; and 404 for a path that climbs from that run into another run's real `run.yaml`, for a
+file not listed, and for a run that does not exist. Made red (2026-11-27): with the timed stop removed (`still running
+33 s after it started`), and with file paths joined without comparing them with the list (`..%2F..._dashboard%2Frun.yaml
+gave status 200`). Seen to fail (2026-11-16), each for a real fault since fixed: `only 37
 history points overlap the 6.0 s` (the node decoded every 100 Hz message in Python and fell behind: its
 history got about 6 points a second, not 20), and `/dynamic_joint_states has 122 messages` (a 4 s
-recording; the recorder needs about 3 s to find the topics). How the page looks is not checked here; it
+recording; the recorder needs about 3 s to find the topics). **A thin margin, seen 2026-11-27:** the history overlap swings between
+about 60 and 120 points from run to run in the container (old and new dashboard alike), and twice fell to 38 and 39,
+under the limit of 40, right after heavy runs ([journal](../journal/2026-11-27-screen-recording-storage.md)). The
+cause is not found; a FAIL there is not proof the dashboard is wrong, and not proof it is right. How the page looks is not checked here; it
 was looked at once in a browser with made-up data.
 
 It cannot show anything about the Pi: not that recording or the dashboard work there, and not what they
@@ -341,9 +352,9 @@ readings](../journal/2026-11-27-battery-50hz.md)).
 
 | Check | Checks | Cannot show |
 | --- | --- | --- |
-| `tools/extras_test.py` (host, no ROS) | `battery.py`: the INA226 register arithmetic, the charge table, the smoothing, the levels with their hysteresis, the enable rule (unknown allowed, at `CRITICAL_V` refused); `sounds.py`: each event plays once, on the change, and not while disabled for a silent gamepad; `health.py`: a report older than 5 s reads NOT RUNNING; `screen_layout.py`: the colours, unknown values shown as unknown, the main page fits, the touch thirds; the `/proc` parsers | The I²C, PWM, framebuffer and touch I/O; the panel driver on a Pi 5; the real battery's voltage curve |
+| `tools/extras_test.py` (host, no ROS) | `battery.py`: the INA226 register arithmetic, the charge table, the smoothing, the levels with their hysteresis, the enable rule (unknown allowed, at `CRITICAL_V` refused); `sounds.py`: each event plays once, on the change, and not while disabled for a silent gamepad; `health.py`: a report older than 5 s reads NOT RUNNING; `screen_layout.py`: the colours, unknown values shown as unknown, the main, System and Record pages fit, the storage line (red below the recorder's minimum), the record button's label and colour, the touch quarters; the `/proc` parsers | The I²C, PWM, framebuffer and touch I/O; the panel driver on a Pi 5; the real battery's voltage curve |
 | `tools/battery_monitor_check.py` (container, needs ROS) | The real `BatteryMonitor` node against a fake INA226: every reading goes out on `/rocko/battery_raw` at roughly the sample rate (at least 60 % of the nominal count), unsmoothed, with rising stamps; `/rocko/battery` still once a second; one failed and one implausible reading are skipped and counted, the monitor staying OK; a second with no good reading reports WARN and publishes no smoothed voltage; readings failing for `GIVE_UP_AFTER_S` turn it to ERROR with the cause; a TI chip with another die ID (an INA228's) is refused | The real chip and the software I²C bus; whether 50 Hz is reached on the Pi, and what it costs there |
-| `tools/screen_render_check.py` (container, where Pillow is) | Every page draws at 480 x 320 for an enabled, a disabled and an unknown robot, with the top strip green, red or grey; the RGB565 conversion matches the formula, low byte first. It writes the pictures for a person to look at | How the panel shows them (colour order, rotation), the touch, the CPU cost on the Pi |
+| `tools/screen_render_check.py` (container, where Pillow is) | Every page draws at 480 x 320 for an enabled, a disabled and an unknown robot, with the top strip green, red or grey, and the record button red while recording; the RGB565 conversion matches the formula, low byte first. It writes the pictures for a person to look at | How the panel shows them (colour order, rotation), the touch, the CPU cost on the Pi |
 
 The supervisor's flat-battery rule is also in `tools/supervisor_state_machine_test.py`.
 

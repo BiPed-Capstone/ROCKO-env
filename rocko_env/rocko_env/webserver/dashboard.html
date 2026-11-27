@@ -179,7 +179,9 @@
       <button class="stop" id="stop" disabled>Stop</button>
     </div>
     <div class="sub" id="record-status" style="margin:8px 0"></div>
-    <table><thead><tr><th>run</th><th>size</th><th></th></tr></thead><tbody id="runs"></tbody></table>
+    <div class="sub" id="record-where" style="margin:8px 0"></div>
+    <table><thead><tr><th>run</th><th>size</th><th>files (click one to download it to this computer)</th><th></th></tr></thead>
+      <tbody id="runs"></tbody></table>
   </div>
   <div class="card">
     <h2>Warnings and errors (newest first)</h2>
@@ -280,7 +282,14 @@ function showState(state) {
   showExtras(state.extras);
   $("record").disabled = state.recording.running;
   $("stop").disabled = !state.recording.running;
-  if (state.recording.running) $("record-status").textContent = `recording "${state.recording.label}" …`;
+  const rec = state.recording;
+  if (rec.running) $("record-status").textContent = `recording "${rec.label}"` +
+    (rec.seconds_left === null ? " …" : `, ${Math.round(rec.seconds_left)} s left (started from the robot's screen)`);
+  // Where runs are kept: on the ROBOT. A download below copies one to this computer (the browser's Downloads folder).
+  $("record-where").textContent = `Saved on the robot in ${rec.log_root}` +
+    (rec.free_gb === null ? "" : ` (${rec.free_gb.toFixed(1)} of ${rec.total_gb.toFixed(1)} GB free` +
+     (rec.low_space ? ": TOO FULL TO RECORD" : "") + ")") + ". Downloads go to this computer's Downloads folder.";
+  $("record-where").className = rec.low_space ? "bad-text" : "sub";
 }
 
 // What the teleop node is doing, WORST CASE FIRST: the first condition that holds decides.
@@ -471,10 +480,16 @@ async function pollHistory() {
 async function refreshRuns() {
   try {
     const runs = await (await fetch("/api/runs")).json();
+    // Each file is its own link (bag/bag_0.mcap is the one Foxglove opens); "all, as .tar" is the whole folder.
+    // Only a closed run's files can be downloaded: an open bag is still being written.
+    const fileLinks = run => run.files.map(f => run.closed
+      ? `<a href="/api/files/${encodeURIComponent(run.name)}/${f.path.split("/").map(encodeURIComponent).join("/")}">${escapeHtml(f.path)}</a> (${f.size_mb} MB)`
+      : `${escapeHtml(f.path)} (${f.size_mb} MB)`).join("<br>");
     $("runs").innerHTML = runs.map(run =>
       `<tr><td>${escapeHtml(run.name)}${run.closed ? "" : ' <span class="warn-text">(open or not closed)</span>'}</td>` +
-      `<td>${run.size_mb} MB</td><td>${run.closed ? `<a href="/api/runs/${encodeURIComponent(run.name)}.tar">download</a>` : ""}</td></tr>`
-    ).join("") || '<tr><td colspan="3" class="sub">no runs recorded yet</td></tr>';
+      `<td>${run.size_mb} MB</td><td>${fileLinks(run)}</td>` +
+      `<td>${run.closed ? `<a href="/api/runs/${encodeURIComponent(run.name)}.tar">all, as .tar</a>` : ""}</td></tr>`
+    ).join("") || '<tr><td colspan="4" class="sub">no runs recorded yet</td></tr>';
   } catch (error) { /* try again later */ }
 }
 

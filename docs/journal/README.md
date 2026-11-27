@@ -113,3 +113,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-26 | [Make the repo easier to start in: fewer files, a shorter path to the open decisions](2026-11-26-repo-tidy.md) |
 | 2026-11-27 | [Robot extras: a status screen, a buzzer and a battery monitor, none of which can stop the robot](2026-11-27-robot-extras.md) |
 | 2026-11-27 | [Battery voltage at 50 Hz, recorded and plotted beside the control effort](2026-11-27-battery-50hz.md) |
+| 2026-11-27 | [The status screen shows storage and records a minute; the dashboard lists and downloads each recorded file](2026-11-27-screen-recording-storage.md) |

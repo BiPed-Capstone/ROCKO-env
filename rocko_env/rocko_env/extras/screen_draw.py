@@ -35,12 +35,12 @@ def render(view, page):
         draw.text((L.MARGIN_X, y), line.text, fill=line.colour, font=font(line.size))
         y += line.size + L.LINE_GAP
 
-    # The three touch buttons.
-    third = L.WIDTH // len(L.BUTTONS)
+    # The touch buttons, one per L.BUTTONS entry, side by side.
+    width = L.WIDTH // len(L.BUTTONS)
     inset = L.BUTTON_INSET
-    for i, label in enumerate(L.button_labels(view, page)):
-        box = (i * third + inset, L.BAR_Y + inset, (i + 1) * third - inset, L.HEIGHT - inset)
-        draw.rounded_rectangle(box, radius=L.BUTTON_RADIUS, fill=L.BUTTON)
+    for i, (label, colour) in enumerate(L.button_labels(view, page)):
+        box = (i * width + inset, L.BAR_Y + inset, (i + 1) * width - inset, L.HEIGHT - inset)
+        draw.rounded_rectangle(box, radius=L.BUTTON_RADIUS, fill=colour)
         draw.text(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2), label, fill=L.WHITE, font=font(L.BUTTON_SIZE),
                   anchor="mm")
     return image

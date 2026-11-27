@@ -92,15 +92,23 @@ the wheel velocity is the encoder node's filtered figure ([sim-plant.md](../arch
 ## Record from the page
 
 Fill in a label, the battery voltage and the surface, and press **Record**. Press **Stop** when the
-test is over, and wait for "stopped". The run appears in the list with a **download** link (once it is
-closed), which gives you a `.tar` of the run folder (`run.yaml` and the bag). It is the same recording, with the same
-topics and the same `run.yaml`, as `record:=true` makes: see [Record a run](record-a-run.md). One
-recording at a time. A run marked "open or not closed" is still being written, or was cut off.
+test is over, and wait for "stopped". It is the same recording, with the same topics and the same `run.yaml`, as
+`record:=true` makes: see [Record a run](record-a-run.md). One recording at a time: the status screen's **Rec 1 min**
+button asks this dashboard to record, so a recording started there shows here too (with its seconds left, and Stop
+works on it), and Record is refused while it runs.
+
+**Where the runs are, and getting them onto your computer.** Recordings are saved **on the robot**; the line under
+the buttons says in which folder, and how much room is left there (in red, "too full to record", below the free space the
+recorder needs: [what commonly goes wrong](record-a-run.md#what-commonly-goes-wrong)). The table lists every run with its files and their sizes. Click a file to download it to the computer
+you are browsing from (the browser puts it in its Downloads folder): `bag/bag_0.mcap` is the recording itself, the
+file Foxglove opens; `run.yaml` says what was run. **all, as .tar** downloads the whole run folder in one file. A run
+marked "open or not closed" is still being written, or was cut off, and cannot be downloaded from here.
 
 ## What the page can and cannot do
 
-It can **ask the supervisor** to enable, disable or change mode, start and stop a recording, and hand recorded runs to
-the browser. It still cannot change a gain, re-arm the tipover cutoff by itself, or send a drive command: the sticks
+It can **ask the supervisor** to enable, disable or change mode, start and stop a recording (also when the status
+screen asks it to, through its service `/rocko/record`), and hand recorded runs to the browser. Its only publication
+is its recording report on `/diagnostics`. It still cannot change a gain, re-arm the tipover cutoff by itself, or send a drive command: the sticks
 are the controller's. Each button only *asks*; the supervisor decides and the card shows the answer (a refusal says why).
 
 | Button | Clickable when | What it does |

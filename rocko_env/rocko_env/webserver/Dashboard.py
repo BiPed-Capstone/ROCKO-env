@@ -11,11 +11,15 @@ install) that hands them to the page as JSON. The page is one file, dashboard.ht
 scripts, so it works on a network with no internet.
 
 What it can change: (1) it can start and stop a recording (it runs RecordRun.py, the same program
-record:=true runs) and hand recorded runs to the browser; (2) it can ASK the robot supervisor
-(Supervisor.py, docs/architecture/robot-supervisor.md) to enable or disable the motion controllers
+record:=true runs) and hand recorded runs, or single files of them, to the browser. The status screen's
+record button asks for a recording through this node's service /rocko/record (std_srvs/SetBool: true =
+record for record_button_s, then stop by itself; false = stop), so there is one recorder whoever asks;
+(2) it can ASK the robot supervisor (Supervisor.py, docs/architecture/robot-supervisor.md) to enable or disable the motion controllers
 and to switch between tank and balance mode, through the services /rocko/set_enabled and
 /rocko/set_mode; (3) it can ask the buzzer to mute or unmute (/rocko/set_buzzer_muted). That is ALL.
-It publishes on no topic and calls no other service, so it cannot drive the robot, re-arm the tipover cutoff or touch a controller itself: the supervisor decides, and
+It calls no other service, and its only publication is its recording report ("rocko/recording" on
+/diagnostics, once a second: whether a recording runs, its folder, the time left, where runs are saved and
+the free space), so it cannot drive the robot, re-arm the tipover cutoff or touch a controller itself: the supervisor decides, and
 refuses what its rules forbid (for example a mode change while enabled). It shows the supervisor's
 state (/rocko/state) at the top of the page, and what each optional extra (battery monitor, buzzer,
 status screen) reports on /diagnostics (docs/architecture/robot-extras.md).
@@ -36,10 +40,12 @@ import math
 import os
 import signal
 import socket
+import shutil
 import subprocess
 import tarfile
 import threading
 import time
+import urllib.parse
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -61,7 +67,7 @@ from std_srvs.srv import SetBool
 # The folder the recorder writes is the folder the run list reads: one constant, RecordRun.py's.
 from rocko_env.recording.RecordRun import DEFAULT_LOG_ROOT
 # The optional extras' reports, and the tipover cutoff's log phrases (shared with the screen and the buzzer).
-from rocko_env.extras import health, log_phrases
+from rocko_env.extras import health, log_phrases, sysinfo
 # The controller's layout (which /joy index is which stick or button): the shared teleop module.
 from rocko_env.teleop import gamepad
 
@@ -76,6 +82,9 @@ LOG_LINES_KEPT = 40      # newest warnings and errors kept for the page
 SUPERVISOR_STALE_S = 2.0   # [s] no /rocko/state for this long = "no supervisor" (it publishes at 2 Hz)
 SERVICE_TIMEOUT_S = 3.0    # [s] how long a button press waits for the supervisor's answer
 SOURCE = "dashboard"       # the `source` field of every request: shows in /rocko/state's last_source
+RECORD_BUTTON_S = 60.0     # [s] how long the status screen's record button records (parameter record_button_s)
+SCREEN_LABEL = "screen"    # the label of a run the screen's button started: it ends the run folder's name
+STOP_WAIT_S = 25.0         # [s] how long a stop waits for the recorder to close its bag
 WHEELS = ("left_wheel_joint", "right_wheel_joint")
 
 
@@ -89,6 +98,8 @@ class Dashboard(Node):
         self.launch_name = self.declare_parameter("launch", "").value
         self.hardware = self.declare_parameter("hardware", "").value
         self.config = self.declare_parameter("config", "").value
+        # Read at each button press (not only here), so a check can shorten it with `ros2 param set`.
+        self.declare_parameter("record_button_s", RECORD_BUTTON_S)
 
         # Everything the web threads read is guarded by this lock; ROS callbacks write under it.
         self.lock = threading.Lock()
@@ -103,6 +114,12 @@ class Dashboard(Node):
         self.robot_at_s = None  # time.monotonic() when it arrived
         self.recorder = None    # the running RecordRun.py process, or None
         self.recording_label = ""
+        self.record_until_s = None  # [monotonic s] when a timed recording (the screen's button) stops itself, or None
+        self.runs_before = set()    # the run folders that existed when the recording started: the new one is its own
+        self.stopping = False       # a stop is under way in its own thread
+        # Held for the whole of a stop (up to STOP_WAIT_S), so a second stop waits for the first instead of signalling
+        # the recorder again while it closes its bag. Not self.lock: that one must never be held while waiting.
+        self.stop_lock = threading.Lock()
         self.extra_reports = {}  # extra -> its newest health.report(), from /diagnostics
         self.extra_report_s = {} # extra -> time.monotonic() when it arrived
         self.battery_low_v = None  # the lowest battery reading since the last sample() [V], or None
@@ -145,6 +162,9 @@ class Dashboard(Node):
         self.set_mode_client = self.create_client(SetMode, "/rocko/set_mode")
         self.create_subscription(DiagnosticArray, "/diagnostics", self.on_diagnostics, 10)
         self.mute_client = self.create_client(SetBool, "/rocko/set_buzzer_muted")
+        self.create_service(SetBool, "/rocko/record", self.on_record_request)
+        self.recording_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
+        self.create_timer(health.REPORT_PERIOD_S, self.recording_tick)
         # Every battery reading (50 Hz, BatteryMonitor.py), so the plot can show the LOWEST one in each sample: a
         # brown-out shorter than SAMPLE_PERIOD_S would be missed by plotting only the newest. Decoded here: one
         # small message 50 times a second. Absent when the battery monitor is not fitted.
@@ -369,11 +389,84 @@ class Dashboard(Node):
 
     # --- recording: start and stop RecordRun.py --------------------------------------------------
     def recording_status(self):
+        """Whether a recording runs, and what the page and the screen show about it. folder: the new run's folder
+        name while recording ("" before RecordRun.py has made it); seconds_left: None when it has no end."""
         with self.lock:
             running = self.recorder is not None and self.recorder.poll() is None
-            return {"running": running, "label": self.recording_label if running else ""}
+            label, until, before = self.recording_label, self.record_until_s, self.runs_before
+        disk = sysinfo.read_disk_gb(self.log_root) if os.path.isdir(self.log_root) else None
+        new = sorted(set(self.run_names()) - before) if running else []
+        return {"running": running, "label": label if running else "",
+                "folder": new[-1] if new else "",
+                "seconds_left": max(0.0, until - time.monotonic()) if running and until is not None else None,
+                "log_root": self.log_root,
+                "free_gb": None if disk is None else disk["free_gb"],
+                "total_gb": None if disk is None else disk["total_gb"],
+                "low_space": disk is not None and sysinfo.disk_low(disk["free_gb"])}
 
-    def start_recording(self, label, battery_v, surface):
+    def battery_now(self):
+        """The battery monitor's smoothed voltage as text, for run.yaml, or "" when it has not reported lately."""
+        with self.lock:
+            status, at = self.extra_reports.get("battery"), self.extra_report_s.get("battery")
+        if status is None or at is None or time.monotonic() - at > health.STALE_AFTER_S:
+            return ""
+        return status["values"].get("voltage", "")
+
+    def on_record_request(self, request, response):
+        """/rocko/record, for the status screen's button: true = record for record_button_s, false = stop.
+        Runs in the ROS executor, so it must not wait: starting only launches a process, and a stop (which waits up
+        to STOP_WAIT_S for the bag to close) runs in its own thread."""
+        if request.data:
+            seconds = float(self.get_parameter("record_button_s").value)
+            response.success, response.message = self.start_recording(
+                SCREEN_LABEL, self.battery_now(), "", notes="started from the status screen", duration_s=seconds)
+        else:
+            response.success, response.message = self.stop_in_background()
+        return response
+
+    def stop_in_background(self):
+        with self.lock:
+            if self.stopping:
+                return True, "already stopping"
+            if self.recorder is None or self.recorder.poll() is not None:
+                return False, "no recording is running"
+            self.stopping = True
+
+        def stop():
+            try:
+                self.stop_recording()
+            finally:
+                with self.lock:
+                    self.stopping = False
+        threading.Thread(target=stop, daemon=True).start()
+        return True, "stopping"
+
+    def recording_tick(self):
+        """Once a second: stop a timed recording whose time is up, and publish the recording report."""
+        with self.lock:
+            due = (self.record_until_s is not None and time.monotonic() >= self.record_until_s
+                   and self.recorder is not None and self.recorder.poll() is None)
+        if due:
+            self.stop_in_background()
+        status = self.recording_status()
+        left = status["seconds_left"]
+        if status["running"]:
+            message = f"recording {status['folder'] or '(starting)'}" + (f", {left:.0f} s left" if left is not None else "")
+        else:
+            message = "not recording"
+        level = health.WARN if status["low_space"] else health.OK
+        self.recording_pub.publish(health.to_message(health.report("recording", level, message, {
+            "running": "true" if status["running"] else "false",
+            "seconds_left": "" if left is None else f"{left:.1f}",
+            "folder": status["folder"],
+            "log_root": status["log_root"],
+            "free_gb": "" if status["free_gb"] is None else f"{status['free_gb']:.2f}",
+            "low_space": "true" if status["low_space"] else "false",
+            "port": self.port,
+            "button_s": f"{self.get_parameter('record_button_s').value:g}",
+        })))
+
+    def start_recording(self, label, battery_v, surface, notes="started from the dashboard", duration_s=None):
         # Taken BEFORE the lock: launch_label() -> robot_snapshot() takes self.lock itself, and a
         # threading.Lock is not re-entrant. Asking for it while holding it froze this HTTP thread, then
         # every ROS callback and /api/state behind it, and made SIGINT hang (verify_tools.sh, 2026-11-23).
@@ -381,47 +474,64 @@ class Dashboard(Node):
         with self.lock:
             if self.recorder is not None and self.recorder.poll() is None:
                 return False, "a recording is already running"
+            self.runs_before = set(self.run_names())
             # start_new_session: the launch's Ctrl-C must not reach RecordRun.py twice (once from
             # the terminal, once from stop_recording below).
             self.recorder = subprocess.Popen(
                 ["ros2", "run", "rocko_env", "RecordRun.py", "--label", label, "--log-root", self.log_root,
                  "--launch", launch_label, "--hardware", self.hardware, "--config", self.config,
-                 "--battery-v", battery_v, "--surface", surface, "--notes", "started from the dashboard"],
+                 "--battery-v", battery_v, "--surface", surface, "--notes", notes],
                 start_new_session=True)
             self.recording_label = label
-        return True, "recording"
+            self.record_until_s = None if duration_s is None else time.monotonic() + duration_s
+        return True, "recording" + ("" if duration_s is None else f" for {duration_s:g} s")
 
     def stop_recording(self):
         with self.lock:
             recorder = self.recorder
         if recorder is None or recorder.poll() is not None:
             return False, "no recording is running"
-        # killpg signals every process in the recorder's group: `ros2 run` AND RecordRun.py, which
-        # closes the bag. (`ros2 run` alone would not pass the signal on; see launch_recording.py.)
+        # One stop at a time (the page's Stop while the screen's timed stop is closing the bag, or a shutdown): a
+        # second caller waits here, then finds the recorder gone and reports it stopped.
+        with self.stop_lock:
+            if recorder.poll() is not None:
+                return True, "stopped"
+            # killpg signals every process in the recorder's group: `ros2 run` AND RecordRun.py, which
+            # closes the bag. (`ros2 run` alone would not pass the signal on; see launch_recording.py.)
+            try:
+                os.killpg(recorder.pid, signal.SIGINT)
+            except ProcessLookupError:
+                return False, "the recorder had already exited"
+            try:
+                recorder.wait(timeout=STOP_WAIT_S)
+            except subprocess.TimeoutExpired:
+                return False, f"the recorder did not stop within {STOP_WAIT_S:.0f} s"
+            return True, "stopped"
+
+    def run_names(self):
+        """The run folders' names in the log root (a run folder holds a run.yaml), oldest first. The names start with
+        the date and time, so sorting them sorts by age."""
         try:
-            os.killpg(recorder.pid, signal.SIGINT)
-        except ProcessLookupError:
-            return False, "the recorder had already exited"
-        try:
-            recorder.wait(timeout=25)
-        except subprocess.TimeoutExpired:
-            return False, "the recorder did not stop within 25 s"
-        return True, "stopped"
+            names = sorted(os.listdir(self.log_root))
+        except OSError:
+            return []
+        return [name for name in names if os.path.isfile(os.path.join(self.log_root, name, "run.yaml"))]
 
     def runs(self):
-        """The run folders in the log root, newest first: [{"name", "size_mb", "closed"}]."""
+        """The run folders, newest first: [{"name", "size_mb", "closed", "files": [{"path", "size_mb"}]}]. A file's
+        path is relative to its run folder, with "/" between folders (bag/bag_0.mcap)."""
         found = []
-        try:
-            names = sorted(os.listdir(self.log_root), reverse=True)
-        except OSError:
-            return found
-        for name in names:
+        for name in reversed(self.run_names()):
             folder = os.path.join(self.log_root, name)
-            if not os.path.isfile(os.path.join(folder, "run.yaml")):
-                continue
-            size = sum(os.path.getsize(os.path.join(root, f)) for root, _, files in os.walk(folder) for f in files)
+            files = []
+            for root, _, file_names in os.walk(folder):
+                for file_name in sorted(file_names):
+                    full = os.path.join(root, file_name)
+                    files.append({"path": os.path.relpath(full, folder).replace(os.sep, "/"),
+                                  "size_mb": round(os.path.getsize(full) / 1e6, 2)})
             closed = os.path.isfile(os.path.join(folder, "bag", "metadata.yaml"))
-            found.append({"name": name, "size_mb": round(size / 1e6, 2), "closed": closed})
+            found.append({"name": name, "size_mb": round(sum(f["size_mb"] for f in files), 2), "closed": closed,
+                          "files": sorted(files, key=lambda f: f["path"])})
         return found
 
 
@@ -478,6 +588,10 @@ def make_handler(dashboard, page):
                 self.send_json(dashboard.runs())
             elif path.startswith("/api/runs/") and path.endswith(".tar"):
                 self.send_run(path[len("/api/runs/"):-len(".tar")])
+            elif path.startswith("/api/files/"):
+                # /api/files/<run name>/<path in the run folder>, both percent-encoded by the page.
+                name, _, inner = urllib.parse.unquote(path[len("/api/files/"):]).partition("/")
+                self.send_file(name, inner)
             else:
                 self.send_json({"error": "not found"}, 404)
 
@@ -498,6 +612,25 @@ def make_handler(dashboard, page):
             # memory first would hold a whole bag (hundreds of MB) in the Pi's RAM per download.
             with tarfile.open(fileobj=self.wfile, mode="w|") as tar:
                 tar.add(os.path.join(dashboard.log_root, name), arcname=name)
+
+        def send_file(self, name, inner):
+            """One file of a closed run, e.g. bag/bag_0.mcap for Foxglove. Only a (run, path) pair that runs() lists:
+            the path is compared with that list, never joined blindly, so "../" cannot reach outside the run."""
+            run = next((run for run in dashboard.runs() if run["name"] == name), None)
+            if run is None or inner not in [f["path"] for f in run["files"]]:
+                self.send_json({"error": "no such file"}, 404)
+                return
+            if not run["closed"]:
+                self.send_json({"error": "this run is still being recorded, or was never closed"}, 409)
+                return
+            full = os.path.join(dashboard.log_root, name, *inner.split("/"))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(os.path.getsize(full)))
+            self.send_header("Content-Disposition", f'attachment; filename="{name}_{os.path.basename(full)}"')
+            self.end_headers()
+            with open(full, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)   # a block at a time, never the whole bag in memory
 
         def do_POST(self):
             # A page on some OTHER website must not be able to press Record through the visitor's

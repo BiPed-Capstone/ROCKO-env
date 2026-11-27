@@ -21,7 +21,8 @@ So:
 - **A missing part is not a crash.** The node keeps running, logs the error once, reports it (below) and tries its
   hardware again every 30 s (`health.RETRY_PERIOD_S`), so a sensor plugged in later is found without a restart.
 - **Nothing the robot needs waits on an extra.** The only service an extra offers, `/rocko/set_buzzer_muted`, is
-  called by the dashboard's and the screen's mute buttons. The supervisor *reads* the battery voltage when it has one
+  called by the dashboard's and the screen's mute buttons. The screen's record button calls the dashboard; without
+  one the button reads `Rec ?` and does nothing. The supervisor *reads* the battery voltage when it has one
   (see [the battery rule](#battery)), and an unknown voltage never refuses anything.
 - **None of them is on the 100 Hz path.** They are separate Python processes; the screen also lowers its own
   priority. The battery sensor has its own I²C bus, so it cannot delay the IMU's read on bus 1.
@@ -47,6 +48,7 @@ BatteryMonitor.py ──/rocko/battery (BatteryState, 1 Hz)──> Supervisor.py
 Buzzer.py ─────────┼──/diagnostics──> Dashboard.py ──> the extras cards in the browser
 StatusScreen.py ───┘         └──────> StatusScreen.py (System page), Buzzer.py (battery level)
 Dashboard.py, StatusScreen.py ──/rocko/set_buzzer_muted (std_srvs/SetBool)──> Buzzer.py
+StatusScreen.py ──/rocko/record (std_srvs/SetBool)──> Dashboard.py ──/diagnostics (rocko/recording)──> StatusScreen.py
 ```
 
 ## Battery
@@ -121,17 +123,30 @@ so a muted robot stays quiet after a reboot. Unmuting plays one short chirp.
 The panel is 480 x 320 pixels, driven over SPI by the Linux `fbtft` driver, which makes it a *framebuffer*: a file,
 `/dev/fbN`, whose bytes are the pixels. `StatusScreen.py` draws a picture twice a second with Pillow, converts it to the
 panel's 16-bit pixel format (5 bits red, 6 green, 5 blue) and writes it there; it skips the write when nothing changed,
-because the SPI link is slow. The touch chip (ADS7846) is read from `/dev/input/eventN`. The bottom bar is three large
-buttons: left and right change page, the middle one mutes or unmutes. They are large because an uncalibrated resistive
-panel can be off by tens of pixels.
+because the SPI link is slow. The touch chip (ADS7846) is read from `/dev/input/eventN`. The bottom bar is four large
+buttons: previous page, mute, **record**, next page. They are a quarter of the width each because an uncalibrated
+resistive panel can be off by tens of pixels.
+
+**The record button** records for one minute (the dashboard's `record_button_s`), then stops by itself; a tap while it
+records stops it early. While it records the button is red and reads `Stop 0:59`,
+`Stop 0:58` and so on. The screen does not record: it asks the
+dashboard, through the dashboard's service `/rocko/record` (`std_srvs/SetBool`: true = record for the button's time,
+false = stop), so there is only ever one recorder, whether the dashboard's Record button or the screen's started it.
+The dashboard reports once a second on `/diagnostics` (`rocko/recording`) whether a recording runs, its folder and the
+time left; that report is how the screen knows. Without the dashboard the button reads `Rec ?` and does nothing.
+Recordings are saved **on the robot**; to get one onto a laptop, download it from the dashboard
+([Record a run](../guides/record-a-run.md#copy-the-runs-to-your-laptop-and-look-at-them)).
 
 | Page | Shows |
 | --- | --- |
 | Main | ENABLED (green) / DISABLED (red) / NO SUPERVISOR (grey) and the mode across the top; pitch; battery; gamepad connected; tipover cutoff; the supervisor's phase and fault message; the pitch and speed loops' `p`, `i`, `d`; the IP address |
-| System | CPU, memory, temperature, uptime, hostname, every IP address, and each extra's health |
+| System | CPU and temperature, memory, **storage** (the SD card: used, total and free, red when there is less room than the recorder needs to start), uptime, hostname, every IP address, and each extra's health |
+| Record | whether a recording runs (its time left and folder), the folder recordings are saved in on the robot, the free space there, and the dashboard's address for downloading them |
 | ROS | every expected controller with its state and expected state, and every expected node, from `/rocko/state` (a wrong one in red) |
 
 ![The System page, with the buzzer reporting an error](images/status-screen-system-disabled.png)
+
+![The Record page while the record button's minute runs](images/status-screen-record-enabled.png)
 
 The gains come from the installed `rocko_controllers.yaml` (what balance mode loads), so a value changed while running
 with `ros2 param set` is not shown. **To change the screen, edit `rocko_env/extras/screen_layout.py` only:** a line on

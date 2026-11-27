@@ -139,8 +139,10 @@ write the `.0`, the setting is a decimal number).
 If the card says `is not an INA226`, the board at that address is another chip (an INA219 breakout looks almost the
 same): the code reads the INA226 only.
 
-**Screen.** The top strip turns red with DISABLED, and green with ENABLED when you press LB + RB. Tap the right third of
-the bottom bar: the System page; again: the ROS page. If the picture is sideways or upside down, set `rotate_deg` in
+**Screen.** The top strip turns red with DISABLED, and green with ENABLED when you press LB + RB. Tap the rightmost button of
+the bottom bar: the System page (check the storage line against `df -h /` on the Pi); again: the Record page; again: the
+ROS page. Tap **Rec 1 min**: it turns red and reads `Stop 0:59`, counting down, and the dashboard's Record a run card says a
+recording runs; tap it again to stop early, or let it stop by itself. The run then appears in the dashboard's list. If the picture is sideways or upside down, set `rotate_deg` in
 `extras.yaml`. If a tap on the right lands on the left button (or a tap at the bottom does nothing), set
 `touch_swap_xy`, then `touch_invert_x` or `touch_invert_y`, one at a time, until the right buttons respond. The file is
 `rocko_env/rocko_env/extras/extras.yaml` in the checkout; uncomment the line you change (delete only its leading
@@ -164,5 +166,6 @@ worse, find which extra did it by starting the robot without it (`screen:=false`
 | Buzzer card OK, but silent | Muted, wrong pin, or a magnetic buzzer with no transistor | Unmute; check pin 32; step 2 |
 | Screen card: `no panel framebuffer` | The panel driver did not load | Step 3's `dmesg` check |
 | Screen card: `cannot draw: No module named 'PIL'` | Pillow is missing where the robot's Python looks | Step 4 |
+| The record button reads `Rec ?` | The dashboard is not running (it does the recording) | Start the robot with the dashboard on, as the boot service does |
 | Screen card WARN: `touch: ...` | The picture works but the touch device was not found | `cat /proc/bus/input/devices` should list an `ADS7846` |
 | Motors do not move after the change | The xacro pins and the wires do not match | Step 1 |

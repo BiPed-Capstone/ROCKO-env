@@ -112,7 +112,9 @@ A status screen, a buzzer and a battery monitor, each optional: a missing or bro
 dashboard ([the robot extras](../architecture/robot-extras.md), [journal](2026-11-27-robot-extras.md)). The dashboard's
 state card turned green for enabled and red for disabled. Not yet fitted to the robot: the screen first needs the
 motor wires moved off its pins. The same day the battery monitor went to 50 readings a second, recorded and plotted
-beside the control effort, to catch brown-outs while balancing ([journal](2026-11-27-battery-50hz.md)).
+beside the control effort, to catch brown-outs while balancing ([journal](2026-11-27-battery-50hz.md)). Then the screen
+gained the Pi's storage, a one-minute record button and a Record page, and the dashboard lists each recorded file for
+download ([journal](2026-11-27-screen-recording-storage.md)).
 
 ## Where it stands
 

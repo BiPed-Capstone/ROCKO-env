@@ -8,8 +8,10 @@ wiring and Pi setup in docs/guides/fit-the-extras.md.
 
 How it reaches the panel: the panel's kernel driver (fbtft, enabled by a line in the Pi's config.txt) makes it a
 framebuffer, /dev/fbN: a file whose bytes are the pixels. This node draws a picture and writes its bytes there.
-Touch: the panel's touch chip (ADS7846) appears as /dev/input/eventN; a tap on the bottom bar's left or right third
-changes page, the middle third mutes or unmutes the buzzer (through /rocko/set_buzzer_muted).
+Touch: the panel's touch chip (ADS7846) appears as /dev/input/eventN. The bottom bar has four buttons: previous page,
+mute (the buzzer's /rocko/set_buzzer_muted), record, next page. Record asks the dashboard (/rocko/record) to record
+for a minute, or to stop; the dashboard does the recording, and its "rocko/recording" report on /diagnostics tells
+this screen whether one is running.
 
 preview_png:=/some/file.png draws into that file instead of a panel: how to see the screen on a laptop.
 Not on the 100 Hz path: a separate process, at lowered priority.
@@ -168,6 +170,8 @@ class StatusScreen(Node):
         self.create_subscription(DiagnosticArray, "/diagnostics", self.on_diagnostics, 10)
         self.mute_client = self.create_client(SetBool, "/rocko/set_buzzer_muted")
         self.mute_future = None         # the mute request in flight; a tap while one is unanswered is ignored
+        self.record_client = self.create_client(SetBool, "/rocko/record")
+        self.record_future = None       # the same, for the record button
         self.health_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 5)
         self.create_timer(period_s, self.refresh)
         self.create_timer(health.REPORT_PERIOD_S, self.report)
@@ -211,6 +215,14 @@ class StatusScreen(Node):
             self.get_logger().warning(f"status screen: cannot read the gains: {error}")
             return None
 
+    def recording_values(self):
+        """The dashboard's newest "rocko/recording" report values, or None (no dashboard) once the report is older
+        than health.STALE_AFTER_S: an old "recording" could be wrong."""
+        at = self.report_s.get("recording")
+        if at is None or time.monotonic() - at > health.STALE_AFTER_S:
+            return None
+        return self.reports["recording"]["values"]
+
     # ---- the view ---------------------------------------------------------------------------------------
     def make_view(self):
         now = time.monotonic()
@@ -251,6 +263,8 @@ class StatusScreen(Node):
                        "hostname": socket.gethostname()},
             "extras": extras,
             "muted": None if muted_text is None else muted_text == "true",
+            "disk": sysinfo.read_disk_gb("/"),
+            "recording": self.recording_values(),
         }
 
     # ---- drawing ----------------------------------------------------------------------------------------
@@ -321,6 +335,17 @@ class StatusScreen(Node):
                 return   # the last tap is not answered yet: do not pile up requests behind a stuck buzzer
             # The answer is not needed: the buzzer's next report shows the new setting on the button.
             self.mute_future = self.mute_client.call_async(SetBool.Request(data=muted != "true"))
+        elif button == "record":
+            recording = self.recording_values()
+            if recording is None or not self.record_client.service_is_ready():
+                self.get_logger().warning("status screen: record tapped, but the dashboard is not running")
+                return
+            if self.record_future is not None and not self.record_future.done():
+                return
+            # true = record for the dashboard's record_button_s, false = stop. The answer is not needed here: the
+            # dashboard's next report turns the button red (or back).
+            self.record_future = self.record_client.call_async(
+                SetBool.Request(data=recording.get("running") != "true"))
         self.last_bytes = None   # redraw now
 
     def touch_reader(self):

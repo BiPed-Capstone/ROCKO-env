@@ -43,6 +43,11 @@ recorder closes the file and prints
 `RecordRun: stopped (signal SIGINT). The run is in ...`. **Wait for that line** before switching the
 robot off: a recording that was not closed has no `bag/metadata.yaml`, and some tools will not open it.
 
+**From the robot's status screen:** tap **Rec 1 min** in the bottom bar. The dashboard records for one minute and stops
+by itself; a second tap stops early. Its run is labelled `screen`, and the screen's Record page shows the folder it
+went to. This needs the dashboard (the boot service runs it). [The robot extras](../architecture/robot-extras.md#status-screen)
+explains how it works.
+
 To record without restarting a launch that is already running, start the recorder by hand in a second
 terminal on the Pi, opened with `pi/rocko_shell.sh` (so it is root and in the same `ROS_DOMAIN_ID` as the
 launch); Ctrl-C stops it. It records into root's `~/rocko_logs` (`/root/rocko_logs`) unless you add
@@ -91,7 +96,11 @@ A topic that does not exist in the mode you launched is not written.
 
 ## Copy the runs to your laptop and look at them
 
-On the **laptop**, from the repo root:
+**One run, from the browser:** open the dashboard (`http://<robot-ip>:8080`); the *Record a run* card lists every run
+on the robot with its files. Click `bag/bag_0.mcap` (or **all, as .tar** for the whole folder) and the browser saves it
+in the laptop's Downloads folder ([Use the dashboard](use-the-dashboard.md#record-from-the-page)).
+
+**Every run at once, from a terminal:** on the **laptop**, from the repo root:
 
 ```bash
 tools/fetch_logs.sh <user>@<robot-ip>

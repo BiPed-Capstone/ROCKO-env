@@ -42,7 +42,10 @@ def view(robot_state):
             "extras": {"battery": {"state": "OK", "message": "13.12 V, ok", "values": {}},
                        "buzzer": {"state": "ERROR", "message": "no PWM output", "values": {}},
                        "screen": {"state": "OK", "message": "page Main", "values": {}}},
-            "muted": False}
+            "muted": False, "disk": {"used_gb": 12.3, "total_gb": 58.0, "free_gb": 45.7},
+            "recording": {"running": "true", "seconds_left": "42", "folder": "20261127_101500_screen",
+                          "log_root": "/home/rocko/rocko_logs", "free_gb": "45.7", "low_space": "false", "port": "8080",
+                          "button_s": "60"}}
 
 
 out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/rocko_screen")
@@ -55,6 +58,11 @@ for label, state, colour in (("enabled", robot(True), L.GREEN), ("disabled", rob
         image.save(path)
         check(f"{label} / {name}: 480x320, top strip {colour}",
               image.size == (L.WIDTH, L.HEIGHT) and image.getpixel((5, 5)) == colour, str(path))
+
+# The record button (third quarter of the bar) is red while recording.
+image = screen_draw.render(view(robot(True)), 0)
+inside = (L.WIDTH * 2 // 4 + 10, L.BAR_Y + 10)
+check("the record button is red while recording", image.getpixel(inside) == L.RED, str(image.getpixel(inside)))
 
 # RGB565: compare numpy's conversion with the formula written out for single pixels.
 image = screen_draw.render(view(robot(True)), 0)
