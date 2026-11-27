@@ -6,6 +6,9 @@ belong to this project.
 
 ## Robotics and ROS words
 
+- **Brown-out.** The battery voltage sagging for a moment (tens of milliseconds) under a large current, such as the
+  motors catching a fall. Deep enough, it can reset the Pi or the motor drivers. `/rocko/battery_raw` records it:
+  [Look at a brown-out](guides/record-a-run.md#look-at-a-brown-out).
 - **Cascade (cascaded control).** One feedback loop whose output is the *target* of a second, inner loop. ROCKO's
   outer loop turns a speed error into a target lean angle; the inner loop turns a lean error into wheel speed.
   [The control cascade](architecture/control-cascade.md).

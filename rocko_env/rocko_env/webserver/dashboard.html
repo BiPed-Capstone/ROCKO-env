@@ -163,6 +163,9 @@
     <div class="legend"><b style="color:var(--a)">■</b> left wheel &nbsp; <b style="color:var(--c)">■</b> right wheel &nbsp; <b style="color:var(--b)">■</b> velocity reference</div></div>
   <div class="card"><h2>Wheel command from the pitch loop [rad/s]</h2><canvas id="plot-command"></canvas>
     <div class="legend"><b style="color:var(--a)">■</b> pitch loop output, before the feedforward is added</div></div>
+  <div class="card"><h2>Battery [V], lowest reading in each 50 ms</h2><canvas id="plot-battery"></canvas>
+    <div class="legend"><b style="color:var(--a)">■</b> battery voltage under load (needs the battery monitor); a dip
+      while the wheel command swings is a brown-out</div></div>
 </div>
 
 <div class="two">
@@ -205,11 +208,13 @@ const TILES = [
   ["right_velocity_m_s", "Right wheel", "m/s", 2, "joint_states"],
   ["velocity_reference_m_s", "Velocity reference", "m/s", 2, "reference"],
   ["wheel_command_rad_s", "Pitch loop output", "rad/s", 1, "pitch_pid"],
+  ["battery_low_v", "Battery (lowest)", "V", 2, "battery"],
 ];
 const PLOTS = [
   ["plot-pitch", [["pitch_deg", "--a"], ["target_pitch_deg", "--b"]]],
   ["plot-speed", [["left_velocity_m_s", "--a"], ["right_velocity_m_s", "--c"], ["velocity_reference_m_s", "--b"]]],
   ["plot-command", [["wheel_command_rad_s", "--a"]]],
+  ["plot-battery", [["battery_low_v", "--a"]]],
 ];
 const WINDOW_S = 30;       // [s] how much history the plots show. Must be <= HISTORY_S in Dashboard.py (60 s)
 const KEEP_EXTRA_S = 5;    // [s] points kept beyond the window, so a redraw never starts with a gap
@@ -347,10 +352,14 @@ function showExtras(extras) {
     if (name === "battery" && info.values.voltage !== undefined && info.state !== "ERROR")
       text = `${Number(info.values.voltage).toFixed(2)} V · ~${info.values.percent} %` +
              (info.values.level === "ok" ? "" : ` · ${info.values.level.toUpperCase()}`);
+    // The battery monitor's own figures: readings per second it reached (about 50 expected), and bad ones skipped.
+    let why = info.message;
+    if (name === "battery" && info.values.sample_rate_hz !== undefined)
+      why += ` · ${info.values.sample_rate_hz} readings/s · ${info.values.skipped_readings} skipped`;
     if (name === "buzzer" && info.values.muted !== undefined)
       text = info.state === "OK" ? (info.values.muted === "true" ? "muted" : "sound on") : info.state;
     $("x-" + name).innerHTML = `<span class="${EXTRA_CLASSES[info.state] || "bad-text"}">${escapeHtml(text)}</span>`;
-    $("x-" + name + "-why").textContent = info.message;
+    $("x-" + name + "-why").textContent = why;
   }
   const muted = extras && extras.buzzer && extras.buzzer.values.muted;
   buzzerMuted = muted === undefined ? null : muted === "true";
@@ -418,7 +427,9 @@ function drawPlot(canvasId, series) {
   ctx.strokeStyle = css("--line"); ctx.fillStyle = css("--dim"); ctx.lineWidth = 1; ctx.font = "11px system-ui";
   for (const v of [low + pad, (low + high) / 2, high - pad]) {
     ctx.beginPath(); ctx.moveTo(left, y(v)); ctx.lineTo(width - 4, y(v)); ctx.stroke();
-    ctx.fillText(v.toFixed(Math.abs(v) < 10 ? 2 : 0), 2, y(v) + 4);
+    // Decimals when the values are small, or span less than 5 units (a battery between 12.4 and 12.9 V), where
+    // whole-number labels would all read the same.
+    ctx.fillText(v.toFixed(Math.abs(v) < 10 || high - low < 5 ? 2 : 0), 2, y(v) + 4);
   }
   if (low < 0 && high > 0) { ctx.strokeStyle = css("--dim"); ctx.beginPath(); ctx.moveTo(left, y(0)); ctx.lineTo(width - 4, y(0)); ctx.stroke(); }
   ctx.fillText(`last ${WINDOW_S} s`, left, height - 3);

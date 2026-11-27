@@ -70,6 +70,10 @@ RECORDED_TOPICS = [
     "/controller_manager/activity",
     "/controller_manager/statistics/full",
     "/diagnostics",
+    # The battery: every reading, unsmoothed (50 Hz, for brown-outs against the control effort), and the smoothed
+    # once-a-second value the supervisor uses. Absent when the battery monitor is not fitted.
+    "/rocko/battery_raw",
+    "/rocko/battery",
     # Tank mode's odometry, and what a viewer needs to draw the robot.
     "/diffbot_base_controller/odom",
     "/robot_description",

@@ -40,7 +40,8 @@ an old "OK" could be wrong. The code is `rocko_env/extras/health.py`; its errors
 list through `/rosout` like any other log line.
 
 ```
-BatteryMonitor.py ──/rocko/battery (BatteryState)──> Supervisor.py (refuses enable when flat)
+BatteryMonitor.py ──/rocko/battery (BatteryState, 1 Hz)──> Supervisor.py (refuses enable when flat)
+        ├──/rocko/battery_raw (BatteryState, 50 Hz)──> recordings, Foxglove, Dashboard.py (battery plot)
         │
         └──────────┐
 Buzzer.py ─────────┼──/diagnostics──> Dashboard.py ──> the extras cards in the browser
@@ -51,8 +52,26 @@ Dashboard.py, StatusScreen.py ──/rocko/set_buzzer_muted (std_srvs/SetBool)�
 ## Battery
 
 The battery is a 12 V (four-cell, 12.8 V nominal) 10 Ah LiFePO4. A TI INA226 measures its voltage on its **own** I²C
-bus (`/dev/i2c-3`, made by a line in the Pi's config.txt). `BatteryMonitor.py` reads it once a second and publishes
-`/rocko/battery` (`sensor_msgs/BatteryState`).
+bus (`/dev/i2c-3`, made by a line in the Pi's config.txt). `BatteryMonitor.py` reads it **50 times a second**
+(`sample_rate_hz` in `extras.yaml`, at most 100) and publishes two topics, both `sensor_msgs/BatteryState`:
+
+Before it reads anything, the monitor checks the chip is an INA226 (its manufacturer and die ID registers): the
+arithmetic is that chip's, and an INA219 or INA228 at the same address would give wrong voltages without an error.
+
+- **`/rocko/battery_raw`: every reading**, unsmoothed, stamped when it was read. This is for seeing a **brown-out**
+  (the voltage sagging for tens of milliseconds while the motors pull hard) next to the control effort that caused
+  it: it is in every recording, Foxglove's battery layout plots it above the control effort and the pitch, and the
+  dashboard plots its lowest value in each 50 ms ([Record a run](../guides/record-a-run.md#look-at-a-brown-out)).
+  The INA226 averages 4 conversions per reading (`battery.CONFIG_AVG4_CONTINUOUS`), so each reading covers about
+  9 ms of the battery and a sag is not averaged away.
+- **`/rocko/battery`: once a second**, the smoothed voltage and the rough percentage. The supervisor, the screen and
+  the buzzer use this one; they do not need 50 messages a second.
+
+One failed or implausible reading skips that sample and is counted: the dashboard's battery card shows the readings
+per second the monitor reached and how many it skipped. A second with no good reading at all reports WARN and leaves
+`/rocko/battery` quiet; only readings that keep failing for `battery.GIVE_UP_AFTER_S` (1 s) make it an error,
+retried every 30 s. Why: a brown-out can upset the I²C bus for a moment, and that is exactly when
+the readings matter.
 
 - **The voltage is smoothed** (a first-order low-pass filter with a 10 s time constant, `battery.SMOOTHING_S`), so one
   hard acceleration's sag does not set off a warning.
@@ -143,5 +162,9 @@ nothing else. Not a gain or limit file: nothing in it can move the wheels.
   browser connected ([loop timing](../journal/2026-11-24-loop-timing-on-the-pi.md)); measure the screen the same way
   before a balance test.
 - The battery thresholds and charge table are from a typical chart, not this battery.
+- What reading the battery 50 times a second costs on the Pi is not measured. The battery bus is a software
+  (bit-banged) I²C bus, on which the kernel busy-waits while it clocks out each bit, so the cost is CPU time on top
+  of the Python process. Whether the bus keeps up at 50 Hz is not known either: the battery card's readings per second
+  say what it reached.
 - **The screen cannot be fitted with today's motor wiring**: the panel uses the same header pins as all four motor
   driver lines. The guide has the conflict and the pin moves; the code still has the old pins until the owner rewires.

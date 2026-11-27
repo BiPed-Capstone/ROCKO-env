@@ -83,7 +83,8 @@ The recording holds these signals (the list is `RECORDED_TOPICS` in
 | `/rocko/state`, `/balance_teleop/enabled`, `/tank_teleop/enabled` | the supervisor's mode and enabled flag, and whether that mode's teleop node is passing the sticks on |
 | `/diff_drive_controller/command_timed_out`, `/tipover_rearm` | the teleop watchdog's state and tipover re-arm requests |
 | `/rosout` | every node's log lines, including the tipover and time-out messages |
-| `/controller_manager/statistics/full`, `/controller_manager/activity`, `/diagnostics` | how long each control cycle took, and controller state changes |
+| `/controller_manager/statistics/full`, `/controller_manager/activity`, `/diagnostics` | how long each control cycle took, controller state changes, and the optional extras' health |
+| `/rocko/battery_raw`, `/rocko/battery` | the battery voltage: every reading, unsmoothed, and the smoothed once-a-second value. Only with the battery monitor fitted; the reading rate is in [the robot extras](../architecture/robot-extras.md#battery) |
 | `/joint_states`, `/tf`, `/tf_static`, `/robot_description`, `/diffbot_base_controller/odom` | what a viewer needs to draw the robot; tank mode's odometry |
 
 A topic that does not exist in the mode you launched is not written.
@@ -106,6 +107,31 @@ Open `bag_0.mcap` in [Foxglove](https://foxglove.dev) (File, Open local file) an
 `ros2 bag info <run folder>/bag` lists the topics and message counts.
 
 Then free the Pi's disk: `ssh <user>@<robot-ip> 'rm -r ~/rocko_logs/<run folder>'`.
+
+## Look at a brown-out
+
+A **brown-out** is the battery voltage sagging for a moment while the motors pull hard, for example when the
+balance loop swings the wheels to catch a fall. To see one next to the control effort that caused it, the battery
+monitor must be fitted ([Fit the screen, buzzer and battery monitor](fit-the-extras.md)).
+
+**After the run, in Foxglove (laptop).** Open the run's `bag_0.mcap` as above, then load the layout
+`foxglove/rocko_battery_layout.json` from the repo (Foxglove: the layout menu, Import from file). Three plots share one
+time axis: the battery voltage (every reading, and the smoothed value), the control effort (the pitch loop's wheel
+velocity command and the two feedforward terms, rad/s), and the pitch. A brown-out is a dip in the top plot under a
+large swing in the middle one. `foxglove/rocko_balance_layout.json` is the general balancing layout. **The layout files
+have not been opened in Foxglove** (a check in the simulation confirms every signal they name exists; whether
+Foxglove imports them as written is not known). If the import fails, make the plots by hand from the names in the
+file: `/rocko/battery_raw.voltage`, `/pitch_pid_controller/controller_state.dof_states[0].output`, and so on.
+
+The battery readings are plotted at the time each was read (`header.stamp`); the control effort, which carries no
+time of its own, at the time the recorder received it, a few milliseconds late at most. That is close enough for a
+sag lasting tens of milliseconds.
+
+**Live, on the dashboard.** The *Battery [V], lowest reading in each 50 ms* plot sits next to the *Wheel command*
+plot; a sag shorter than one dashboard sample still shows as a dip, and a moment with no reading shows as a gap.
+
+The control effort here is the wheel velocity command, not the PWM duty sent to the motors: the motor plugin turns
+the command into duty and publishes nothing about it.
 
 ## What commonly goes wrong
 

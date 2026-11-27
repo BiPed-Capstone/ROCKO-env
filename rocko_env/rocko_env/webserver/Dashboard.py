@@ -54,7 +54,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rocko_interfaces.msg import RobotState
 from rocko_interfaces.srv import SetEnabled, SetMode
 from rclpy.serialization import deserialize_message
-from sensor_msgs.msg import Joy
+from sensor_msgs.msg import BatteryState, Joy
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
 
@@ -67,7 +67,8 @@ from rocko_env.teleop import gamepad
 
 DEFAULT_PORT = 8080
 SAMPLE_PERIOD_S = 0.05   # [s] the history gets one point this often: 20 per second is plenty for a
-                         #   plot a person watches, and a fifth of the 100 Hz the robot produces
+                         #   plot a person watches, and a fifth of the 100 Hz the robot produces.
+                         #   The battery plot's title in dashboard.html says "50 ms": change both
 HISTORY_S = 60.0         # [s] how far back the page's plots can go
 NICENESS = 10            # added to this process's "nice" value: higher = lower priority (0 = normal)
 STALE_AFTER_S = 1.0      # [s] a value older than this is shown as stale: its publisher has gone quiet
@@ -104,6 +105,7 @@ class Dashboard(Node):
         self.recording_label = ""
         self.extra_reports = {}  # extra -> its newest health.report(), from /diagnostics
         self.extra_report_s = {} # extra -> time.monotonic() when it arrived
+        self.battery_low_v = None  # the lowest battery reading since the last sample() [V], or None
 
         # The fast topics (100 Hz) are subscribed RAW: the callback only keeps the newest message's
         # bytes, and sample() decodes that one message 20 times a second. Decoding every message in
@@ -143,6 +145,11 @@ class Dashboard(Node):
         self.set_mode_client = self.create_client(SetMode, "/rocko/set_mode")
         self.create_subscription(DiagnosticArray, "/diagnostics", self.on_diagnostics, 10)
         self.mute_client = self.create_client(SetBool, "/rocko/set_buzzer_muted")
+        # Every battery reading (50 Hz, BatteryMonitor.py), so the plot can show the LOWEST one in each sample: a
+        # brown-out shorter than SAMPLE_PERIOD_S would be missed by plotting only the newest. Decoded here: one
+        # small message 50 times a second. Absent when the battery monitor is not fitted.
+        self.create_subscription(BatteryState, "/rocko/battery_raw", self.on_battery_raw,
+                                 QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.create_timer(SAMPLE_PERIOD_S, self.sample)
 
     # --- ROS callbacks: keep bytes, or copy a number; nothing slow ---------------------------------
@@ -255,6 +262,12 @@ class Dashboard(Node):
             if self.tipover_by_node:
                 self.latest["tipover_tripped"] = any(self.tipover_by_node.values())
 
+    def on_battery_raw(self, msg):
+        with self.lock:
+            low = self.battery_low_v
+            self.battery_low_v = msg.voltage if low is None else min(low, msg.voltage)
+            self.updated_s["battery"] = time.monotonic()
+
     def on_diagnostics(self, msg):
         now = time.monotonic()
         with self.lock:
@@ -274,6 +287,13 @@ class Dashboard(Node):
             with self.lock:
                 self.latest.update(values)
         with self.lock:
+            if self.battery_low_v is not None:
+                self.latest["battery_low_v"] = self.battery_low_v
+                self.battery_low_v = None   # start the next sample's lowest reading afresh
+            else:
+                # No reading in this sample (a skipped read during a brown-out, or no monitor): a gap in the plot,
+                # never the previous value, which would draw a flat line straight through the sag.
+                self.latest.pop("battery_low_v", None)
             point = {key: value for key, value in self.latest.items()
                      if isinstance(value, float) and math.isfinite(value)}
             self.history.append((time.time(), point))

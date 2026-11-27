@@ -111,7 +111,8 @@ fix, waiting on the owner, clamps the target lean to ±5 degrees
 A status screen, a buzzer and a battery monitor, each optional: a missing or broken one only reports its error on the
 dashboard ([the robot extras](../architecture/robot-extras.md), [journal](2026-11-27-robot-extras.md)). The dashboard's
 state card turned green for enabled and red for disabled. Not yet fitted to the robot: the screen first needs the
-motor wires moved off its pins.
+motor wires moved off its pins. The same day the battery monitor went to 50 readings a second, recorded and plotted
+beside the control effort, to catch brown-outs while balancing ([journal](2026-11-27-battery-50hz.md)).
 
 ## Where it stands
 

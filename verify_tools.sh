@@ -108,9 +108,14 @@ sleep "$DASH_START_S"
 python3 "$here/sim/check_dashboard.py" --port "$DASH_PORT" --record-s "$DASH_RECORD_S" \
   --tolerance-deg "$DASH_TOLERANCE_DEG" --min-pitch-deg "$DASH_MIN_PITCH_DEG"
 dash_status=$?
-# --- 3. Foxglove: the bridge listens, and every message path in the layout is real ---
+# --- 3. Foxglove: the bridge listens, and every message path in both layouts is real ---
 python3 "$here/sim/check_foxglove_layout.py" "$here/foxglove/rocko_balance_layout.json" --bridge-port "$FOXGLOVE_PORT"
 fox_status=$?
+# The battery layout: the simulation has no battery monitor (an optional extra), so its two topics are checked for
+# real field names only.
+python3 "$here/sim/check_foxglove_layout.py" "$here/foxglove/rocko_battery_layout.json" \
+  --optional-topic /rocko/battery_raw=sensor_msgs/msg/BatteryState \
+  --optional-topic /rocko/battery=sensor_msgs/msg/BatteryState || fox_status=1
 stop_launch
 if [ "$dash_status" -eq 2 ]; then echo "COULD NOT JUDGE (tools: dashboard). Kept: $out"; exit 2; fi
 # shellcheck disable=SC2086

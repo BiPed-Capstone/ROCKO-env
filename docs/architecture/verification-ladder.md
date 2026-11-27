@@ -273,7 +273,15 @@ recording; the recorder needs about 3 s to find the topics). How the page looks 
 was looked at once in a browser with made-up data.
 
 It cannot show anything about the Pi: not that recording or the dashboard work there, and not what they
-cost the control loop or the SD card. `tools/record_run_test.py` (host, 3 checks, no ROS) covers the folder name, the
+cost the control loop or the SD card.
+
+**The Foxglove part** (since 2026-11-16; the battery layout since 2026-11-27) runs `sim/check_foxglove_layout.py`
+on both layouts in `foxglove/`: `foxglove_bridge` accepts a connection, and every signal a layout names is a
+published topic with that field. The battery layout's two battery topics have no publisher in the simulation (the
+battery monitor is an optional extra), so for those only the field names are checked, against `BatteryState`. It
+cannot show that Foxglove imports or draws the layouts: they have never been opened in Foxglove.
+
+`tools/record_run_test.py` (host, 3 checks, no ROS) covers the folder name, the
 contents of `run.yaml` and the refusal to record on a nearly full disk.
 
 ### The host unit test of the plant model (not a tier)
@@ -327,12 +335,14 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
 ### The checks of the robot extras (not tiers)
 
 The status screen, buzzer and battery monitor ([robot-extras.md](robot-extras.md)), beyond section 12 of the supervisor
-check above. Both run in `tools/run_ladder.sh`; how many checks, and the deliberate breaks that turned them red, are in
-the [journal](../journal/2026-11-27-robot-extras.md).
+check above. All three run in `tools/run_ladder.sh`; how many checks, and the deliberate breaks that turned them red,
+are in the journals ([the extras](../journal/2026-11-27-robot-extras.md), [the 50 Hz battery
+readings](../journal/2026-11-27-battery-50hz.md)).
 
 | Check | Checks | Cannot show |
 | --- | --- | --- |
 | `tools/extras_test.py` (host, no ROS) | `battery.py`: the INA226 register arithmetic, the charge table, the smoothing, the levels with their hysteresis, the enable rule (unknown allowed, at `CRITICAL_V` refused); `sounds.py`: each event plays once, on the change, and not while disabled for a silent gamepad; `health.py`: a report older than 5 s reads NOT RUNNING; `screen_layout.py`: the colours, unknown values shown as unknown, the main page fits, the touch thirds; the `/proc` parsers | The I²C, PWM, framebuffer and touch I/O; the panel driver on a Pi 5; the real battery's voltage curve |
+| `tools/battery_monitor_check.py` (container, needs ROS) | The real `BatteryMonitor` node against a fake INA226: every reading goes out on `/rocko/battery_raw` at roughly the sample rate (at least 60 % of the nominal count), unsmoothed, with rising stamps; `/rocko/battery` still once a second; one failed and one implausible reading are skipped and counted, the monitor staying OK; a second with no good reading reports WARN and publishes no smoothed voltage; readings failing for `GIVE_UP_AFTER_S` turn it to ERROR with the cause; a TI chip with another die ID (an INA228's) is refused | The real chip and the software I²C bus; whether 50 Hz is reached on the Pi, and what it costs there |
 | `tools/screen_render_check.py` (container, where Pillow is) | Every page draws at 480 x 320 for an enabled, a disabled and an unknown robot, with the top strip green, red or grey; the RGB565 conversion matches the formula, low byte first. It writes the pictures for a person to look at | How the panel shows them (colour order, rotation), the touch, the CPU cost on the Pi |
 
 The supervisor's flat-battery rule is also in `tools/supervisor_state_machine_test.py`.
@@ -659,7 +669,8 @@ because they show what each tier is for.
 - **The gain guard reads lines, not YAML.** It cannot see a quoted key (`{"p": 5}`), a `gains: |` block
   scalar, or an edit that moves a line out of its map. Closing that needs a YAML parser (PyYAML),
   which the host may not have; see the hook's docstring.
-- **`foxglove_bridge` starts but nothing checks it.**
+- **Nothing opens the Foxglove layouts in Foxglove.** `verify_tools.sh` checks that the bridge listens and that
+  every signal the layouts name exists, not that Foxglove accepts the files.
 - **No tier opens RViz.** The RViz layouts are installed now (finding **L-4**; after a build,
   `install/rocko_env/share/rocko_env/rviz/` holds `rocko.rviz` and `rocko_view.rviz`), but that RViz
   starts with them needs a display, and `view_robot.launch.py` has not been run since its default

@@ -48,6 +48,19 @@ check("level: hysteresis holds warn just above WARN_V, releases above WARN_V + H
       battery.level(12.9, "warn") == "warn" and battery.level(13.05, "warn") == "ok")
 check("level: hysteresis holds critical just above CRITICAL_V",
       battery.level(12.1, "critical") == "critical" and battery.level(12.3, "critical") == "warn")
+check("INA226 identity: manufacturer 'TI' and die id 0x2260 (datasheet SBOS547)",
+      battery.MANUFACTURER_TI == 0x5449 and battery.DIE_ID_INA226 == 0x2260 and battery.REG_DIE_ID == 0xFF)
+check("INA226 config: average of 4, 1.1 ms conversions, continuous = 0x4327", battery.CONFIG_AVG4_CONTINUOUS == 0x4327)
+check("INA226 makes a new reading faster than the default and the highest sample rate (no repeated readings)",
+      battery.READING_EVERY_S < 1.0 / battery.MAX_SAMPLE_RATE_HZ < 1.0 / battery.DEFAULT_SAMPLE_RATE_HZ)
+bad = battery.BadReadings()
+check("bad readings: one glitch does not give up", bad.bad(100.0) is False and bad.bad(100.5) is False)
+bad.good()
+check("bad readings: a good one in between starts the count again",
+      bad.bad(101.0) is False and bad.bad(101.0 + battery.GIVE_UP_AFTER_S - 0.01) is False)
+check("bad readings: GIVE_UP_AFTER_S of nothing but bad readings gives up",
+      bad.bad(101.0 + battery.GIVE_UP_AFTER_S) is True)
+check("bad readings: every one is counted", bad.count == 5)
 check("enable rule: unknown battery allowed, critical refused, just above allowed",
       battery.enable_allowed(None) and not battery.enable_allowed(12.0) and battery.enable_allowed(12.01))
 

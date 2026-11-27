@@ -1,0 +1,113 @@
+{
+  "configById": {
+    "Plot!battery": {
+      "paths": [
+        {
+          "value": "/rocko/battery_raw.voltage",
+          "enabled": true,
+          "timestampMethod": "headerStamp",
+          "label": "battery, each reading [V]"
+        },
+        {
+          "value": "/rocko/battery.voltage",
+          "enabled": true,
+          "timestampMethod": "headerStamp",
+          "label": "battery, smoothed [V]"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30,
+      "foxglovePanelTitle": "Battery [V]: every reading (50 Hz) and the smoothed value"
+    },
+    "Plot!effort": {
+      "paths": [
+        {
+          "value": "/pitch_pid_controller/controller_state.dof_states[0].output",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "pitch loop output [rad/s]"
+        },
+        {
+          "value": "/left_feedforward.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "left feedforward [rad/s]"
+        },
+        {
+          "value": "/right_feedforward.data",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "right feedforward [rad/s]"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30,
+      "foxglovePanelTitle": "Control effort [rad/s]: pitch loop output and feedforward"
+    },
+    "Plot!pitch": {
+      "paths": [
+        {
+          "value": "/pitch_pid_controller/controller_state.dof_states[0].feedback",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "measured pitch [deg]"
+        },
+        {
+          "value": "/pitch_pid_controller/controller_state.dof_states[0].reference",
+          "enabled": true,
+          "timestampMethod": "receiveTime",
+          "label": "target pitch [deg]"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "showLegend": true,
+      "legendDisplay": "floating",
+      "showPlotValuesInLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "sidebarDimension": 240,
+      "followingViewWidth": 30,
+      "foxglovePanelTitle": "Pitch [deg]: measured and target"
+    },
+    "RosOut!log": {
+      "searchTerms": [],
+      "minLogLevel": 3,
+      "foxglovePanelTitle": "Warnings and errors (/rosout)"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "direction": "row",
+    "splitPercentage": 72,
+    "first": {
+      "direction": "column",
+      "splitPercentage": 34,
+      "first": "Plot!battery",
+      "second": {
+        "direction": "column",
+        "first": "Plot!effort",
+        "second": "Plot!pitch"
+      }
+    },
+    "second": "RosOut!log"
+  }
+}

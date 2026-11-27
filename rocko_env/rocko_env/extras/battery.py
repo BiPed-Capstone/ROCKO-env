@@ -1,7 +1,8 @@
 """Battery arithmetic: the INA226's registers, voltage to charge, and the warning levels. No ROS, no I/O.
 
 The battery is a 12 V (12.8 V nominal, four cells) 10 Ah LiFePO4. BatteryMonitor.py reads its voltage with a
-TI INA226 on its own I2C bus and uses these functions; the supervisor uses CRITICAL_V to refuse an enable.
+TI INA226 on its own I2C bus, 50 times a second, and uses these functions; the supervisor uses CRITICAL_V to refuse
+an enable.
 Design: docs/architecture/robot-extras.md.
 
 Why the percentage is rough: a LiFePO4 cell's voltage is almost flat from about 90 % down to 20 %, so a
@@ -16,11 +17,17 @@ REG_CONFIG = 0x00
 REG_SHUNT_VOLTAGE = 0x01       # signed, 2.5 uV per count
 REG_BUS_VOLTAGE = 0x02         # unsigned, 1.25 mV per count: the battery voltage, wired as the guide says
 REG_MANUFACTURER_ID = 0xFE
-MANUFACTURER_TI = 0x5449       # "TI" in ASCII: what a real INA226 answers
-# Configuration register: bit 14 is always 1; averaging 16 samples (AVG=010), 1.1 ms per bus and per shunt
-# conversion (100, 100), continuous shunt and bus (MODE=111). A new reading is ready every ~35 ms; we read once a
-# second, so each reading is already the average of 16.
-CONFIG_AVG16_CONTINUOUS = (1 << 14) | (0b010 << 9) | (0b100 << 6) | (0b100 << 3) | 0b111   # = 0x4527
+MANUFACTURER_TI = 0x5449       # "TI" in ASCII: what every TI chip of this family answers
+REG_DIE_ID = 0xFF
+DIE_ID_INA226 = 0x2260         # what an INA226 answers. Checked too, because other TI chips (an INA228, say) also
+                               # answer "TI" but count volts differently. An INA219 has neither register.
+# Configuration register: bit 14 is always 1; averaging 4 samples (AVG=001), 1.1 ms per bus and per shunt conversion
+# (100, 100), continuous shunt and bus (MODE=111). A new reading is ready every 4 x (1.1 + 1.1) ms = 8.8 ms
+# (READING_EVERY_S), faster than BatteryMonitor.py reads (every 20 ms at 50 Hz), so every read is a fresh average.
+# Why only 4: each reading then covers under 10 ms of the battery, short enough that a brown-out (a sag lasting tens
+# of milliseconds while the motors pull hard) is not averaged away. 16 would cover 35 ms.
+CONFIG_AVG4_CONTINUOUS = (1 << 14) | (0b001 << 9) | (0b100 << 6) | (0b100 << 3) | 0b111   # = 0x4327
+READING_EVERY_S = 4 * (1.1e-3 + 1.1e-3)   # [s] samples averaged x (bus + shunt conversion time)
 BUS_VOLTS_PER_COUNT = 1.25e-3
 SHUNT_VOLTS_PER_COUNT = 2.5e-6
 
@@ -74,6 +81,38 @@ CRITICAL_V = 12.0
 HYSTERESIS_V = 0.2
 # The battery's levels. Not the same thing as health.OK/WARN/ERROR, which say whether the MONITOR works.
 LEVEL_OK, LEVEL_WARN, LEVEL_CRITICAL = "ok", "warn", "critical"
+
+# ---- how often, and what a bad reading does ------------------------------------------------------------------
+# [Hz] How often BatteryMonitor.py reads the chip (parameter sample_rate_hz). 50 Hz shows a brown-out's shape; every
+# reading goes out unsmoothed on /rocko/battery_raw for recording and plotting. The smoothed voltage, the levels and
+# the supervisor's check still update once a second (health.REPORT_PERIOD_S).
+DEFAULT_SAMPLE_RATE_HZ = 50.0
+# [Hz] Rounded down from 1 / READING_EVERY_S = 113 Hz: faster than that, some reads would get the same reading twice.
+MAX_SAMPLE_RATE_HZ = 100.0
+# [s] One failed or implausible reading skips that sample only. Only bad readings for this long close the sensor and
+# report an error (then retried every health.RETRY_PERIOD_S). Why: a brown-out can upset the I2C bus for a moment,
+# and that is exactly when the readings matter.
+GIVE_UP_AFTER_S = 1.0
+
+
+class BadReadings:
+    """Counts bad readings, and says when they have gone on for GIVE_UP_AFTER_S without a good one between."""
+
+    def __init__(self):
+        self.since_s = None     # [monotonic s] the first bad reading since the last good one, or None
+        self.count = 0          # bad readings since the monitor started (reported on /diagnostics)
+
+    def bad(self, now_s):
+        """Record a bad reading. True means give up: no good reading for GIVE_UP_AFTER_S."""
+        self.count += 1
+        if self.since_s is None:
+            self.since_s = now_s
+        return now_s - self.since_s >= GIVE_UP_AFTER_S
+
+    def good(self):
+        """A good reading: the run of bad ones is over (the count is kept)."""
+        self.since_s = None
+
 
 # [s] Time constant of the smoothing: a step change in voltage shows about 63 % of the way after this long.
 SMOOTHING_S = 10.0

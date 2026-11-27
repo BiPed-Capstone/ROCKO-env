@@ -9,6 +9,7 @@ battery_monitor:
     # i2c_device: /dev/i2c-3     # the battery's own I2C bus (the guide's config.txt line makes bus 3)
     # i2c_address: 64            # 0x40 written in decimal: the INA226 with A0 and A1 to ground
     # shunt_ohms: 0.002          # only if ALL the motor current flows through a shunt of this many ohms
+    # sample_rate_hz: 20.0       # readings per second (default 50, at most 100): lower it if the bus cannot keep up
 
 buzzer:
   ros__parameters:

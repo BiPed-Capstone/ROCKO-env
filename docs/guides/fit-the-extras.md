@@ -130,7 +130,14 @@ silent; **Unmute** plays one short chirp. Restart the service while muted: no bo
 **Battery.** Measure the battery with a multimeter at its terminals, and compare with the dashboard's battery card
 within a minute (the reading is smoothed over about 10 s). Write both numbers in the journal or tell an agent. They
 should agree within about 0.05 V; a bigger difference means a wiring or address problem. A reading of 0 V, or above
-16 V, shows as an error and is not used.
+16 V, is skipped and counted; if it lasts a second the card shows an error. The card's second line ends with the
+readings per second the monitor reached and how many it skipped: the first should be close to the rate in
+[the robot extras](../architecture/robot-extras.md#battery) (50), the second at or near 0 while the robot stands still.
+Far fewer readings means the bus cannot keep up; set `sample_rate_hz: 20.0` in `extras.yaml` (this step's file;
+write the `.0`, the setting is a decimal number).
+
+If the card says `is not an INA226`, the board at that address is another chip (an INA219 breakout looks almost the
+same): the code reads the INA226 only.
 
 **Screen.** The top strip turns red with DISABLED, and green with ENABLED when you press LB + RB. Tap the right third of
 the bottom bar: the System page; again: the ROS page. If the picture is sideways or upside down, set `rotate_deg` in
@@ -141,9 +148,10 @@ the bottom bar: the System page; again: the ROS page. If the picture is sideways
 only `sudo systemctl restart rocko.service`. To check the link: `ls -l install/rocko_env/share/rocko_env/extras/extras.yaml`
 shows `->` pointing into `rocko_env/rocko_env/extras/`.
 
-**The CPU cost, before a balance test.** Measure the loop's timing with the screen running, the same way as
+**The CPU cost, before a balance test.** Measure the loop's timing with the screen and the battery monitor running, the same way as
 [the loop timing journal](../journal/2026-11-24-loop-timing-on-the-pi.md), and compare. If the loop's timing got
-worse, set `refresh_period_s: 1.0` or start the robot with `screen:=false`.
+worse, find which extra did it by starting the robot without it (`screen:=false`, then `battery:=false`), then set
+`refresh_period_s: 1.0` for the screen or `sample_rate_hz: 20.0` for the battery.
 
 ## What commonly goes wrong
 
