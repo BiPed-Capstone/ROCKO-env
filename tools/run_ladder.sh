@@ -58,6 +58,7 @@ if [ "$DO_CONTAINER" = 1 ]; then
   step "Tier 2 verify_mock.sh balance" "${CTR[@]}" /ros2_ws/src/ROCKO-env/verify_mock.sh
   step "Tier 2 verify_mock.sh tank" "${CTR[@]}" /ros2_ws/src/ROCKO-env/verify_mock.sh tank
   step "Tier 2 verify_supervisor.sh (supervisor rules, combos, fault)" "${CTR[@]}" /ros2_ws/src/ROCKO-env/verify_supervisor.sh
+  step "status screen drawing (Pillow, container)" "${CTR[@]}" env PYTHONDONTWRITEBYTECODE=1 python3 /ros2_ws/src/ROCKO-env/tools/screen_render_check.py
   step "compile-only motor plugin" "${CTR[@]}" bash -c 'cd /ros2_ws/src/ROCKO-env && ./check_motor_plugin_compiles.sh'
   # Compiler warnings in the Tier 1 build are a finding (CLAUDE.md §4): count them separately.
   warn=$(grep -c "warning:" "$LOG_DIR/Tier_1_build_ros.sh.log" 2>/dev/null || true)

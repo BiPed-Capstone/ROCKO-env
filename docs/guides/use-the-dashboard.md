@@ -1,8 +1,9 @@
 # Watch the robot in a browser: the dashboard
 
 Use this to see what the robot is doing from another machine (the supervisor's state, pitch, wheel speeds, what
-the controllers are asking for, warnings), to **enable, disable and switch mode** (tank or balance), and to start and
-stop a recording, without a terminal on the Pi.
+the controllers are asking for, warnings), to **enable, disable and switch mode** (tank or balance), to start and
+stop a recording, and to see and mute the [robot extras](../architecture/robot-extras.md) (status screen, buzzer,
+battery monitor), without a terminal on the Pi.
 
 **What has been checked:** the dashboard was run against the simulated robot (`verify_tools.sh`, in
 [the verification ladder](../architecture/verification-ladder.md)), and the page was looked at once in
@@ -31,7 +32,7 @@ adds it. **Those launches have no supervisor**, so the state card says NO SUPERV
 Success looks like this line in the launch output:
 
 ```text
-[Dashboard.py-N] [INFO] [...] [rocko_dashboard]: dashboard: open http://<this machine's address>:8080 in a browser (read-only apart from Record/Stop and the supervisor's Enable/Disable/mode buttons; no login)
+[Dashboard.py-N] [INFO] [...] [rocko_dashboard]: dashboard: open http://<this machine's address>:8080 in a browser (read-only apart from Record/Stop, the supervisor's Enable/Disable/mode buttons and the buzzer's Mute; no login)
 ```
 
 Then, on **any machine on the same network**, open `http://<robot-ip>:8080` in a browser (`hostname -I`
@@ -73,7 +74,8 @@ How it behaves under the supervisor:
 | Pitch loop output [rad/s] | the wheel velocity the pitch loop commands, before the feedforward is added | `/pitch_pid_controller/controller_state` (its output) |
 | Teleop link | `driving` while commands arrive; `no commands` when the teleop watchdog has zeroed the speed | `/diff_drive_controller/command_timed_out` |
 | Tipover cutoff | `TRIPPED` while either wheel's controller has logged a trip and not a re-arm; `re-armed` after both have logged a re-arm; `no trip seen` if neither line has arrived since the dashboard started. **`no trip seen` is not "armed"**: a trip logged before the dashboard started cannot be known to it | `/rosout` |
-| State card (top of the page) | what the supervisor says: **mode** (tank or balance), **ENABLED** or **DISABLED**, **phase** (`starting`, `ready`, `stopping`, `fault`, and `-> balance` while a change is under way), the **message** (why the last request was refused, or what the fault is) and the **last source** of a change (`gamepad`, `dashboard`, or `supervisor` for an automatic disable). It is the only place that says whether the wheels may move. `NO SUPERVISOR` and `UNKNOWN` when no state has arrived for 2 s | `/rocko/state` ([the supervisor](../architecture/robot-supervisor.md)) |
+| State card (top of the page) | **the whole card is green while ENABLED, red while DISABLED, grey when unknown**, with the Enable button green and Disable red, so it reads at a glance. What the supervisor says: **mode** (tank or balance), **ENABLED** or **DISABLED**, **phase** (`starting`, `ready`, `stopping`, `fault`, and `-> balance` while a change is under way), the **message** (why the last request was refused, or what the fault is) and the **last source** of a change (`gamepad`, `dashboard`, or `supervisor` for an automatic disable). It is the only place that says whether the wheels may move. `NO SUPERVISOR` and `UNKNOWN` when no state has arrived for 2 s | `/rocko/state` ([the supervisor](../architecture/robot-supervisor.md)) |
+| Battery, Buzzer, Screen on the robot (the three cards under the state card) | what each optional extra reports: **OK**, **WARN**, **ERROR** with its reason, or **NOT RUNNING** (no report for 5 s: never started, or crashed). The battery card shows the smoothed voltage, a rough percentage and LOW or CRITICAL; the buzzer card says muted or sound on and has the **Mute / Unmute** button (`/rocko/set_buzzer_muted`; the screen on the robot has the same button). None of them can stop the robot | `/diagnostics` ([the robot extras](../architecture/robot-extras.md)) |
 | Nodes and controllers table | each node and controller the current mode expects, and whether it is up (`alive` or `MISSING`; a controller's actual state against its expected one). A wrong row is highlighted; during a mode change most rows are wrong for a few seconds, which is what the table is for | `/rocko/state` |
 | Controller card | the USB game controller, drawn live: both sticks (the dot is the stick's position; up and left read +1), the triggers, every button, with **LB** and **RB** (the enable combo) marked, and next to it what the teleop node is doing. `driving` only while the robot is enabled **and** the sticks have been centred since; otherwise it says why (disabled, or sticks must centre); `No controller` when nothing arrives on `/joy`; `Teleop not running` when the current mode's teleop node is silent. The drawing turns grey when `/joy` is stale | `/joy`, `/tank_teleop/enabled` ([Drive ROCKO with a USB controller](drive-with-usb-controller.md)) |
 | Three plots | the last 30 s of pitch and target pitch, the wheel speeds and the reference, and the pitch loop's output | the same topics, 20 points a second |
@@ -158,5 +160,6 @@ web server answers the page itself, the newest values, the history since a given
 four kinds of request that do something. The page is one HTML file with its own small plotting code,
 no outside scripts; it asks for the newest values every quarter of a second and for new history every
 half second. Record and Stop make the node start and stop `RecordRun.py`, the program `record:=true` runs; Enable,
-Disable and the mode buttons make it call the supervisor's `/rocko/set_enabled` and `/rocko/set_mode` services. The node
-creates no publisher, and its only service clients are those two, which is what "cannot drive the robot" rests on.
+Disable and the mode buttons make it call the supervisor's `/rocko/set_enabled` and `/rocko/set_mode` services. The buzzer card's Mute
+button calls the buzzer's `/rocko/set_buzzer_muted`. The node creates no publisher, and its only service clients are
+those three, which is what "cannot drive the robot" rests on: the mute switch can only silence a buzzer.

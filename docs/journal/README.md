@@ -111,3 +111,4 @@ Exact commands a stranger runs to get the same result.
 | 2026-11-26 | [Cleanup while the robot is away: remove dead code and files, bring stale docs up to date](2026-11-26-cleanup.md) |
 | 2026-11-26 | [Rename the IMU plugin from `ICM20948` to `BNO055` (finding L-2)](2026-11-26-rename-imu-plugin-bno055.md) |
 | 2026-11-26 | [Make the repo easier to start in: fewer files, a shorter path to the open decisions](2026-11-26-repo-tidy.md) |
+| 2026-11-27 | [Robot extras: a status screen, a buzzer and a battery monitor, none of which can stop the robot](2026-11-27-robot-extras.md) |

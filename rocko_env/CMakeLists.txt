@@ -151,10 +151,15 @@ install(PROGRAMS
   rocko_env/supervisor/Supervisor.py
   rocko_env/recording/RecordRun.py
   rocko_env/webserver/Dashboard.py
+  rocko_env/extras/BatteryMonitor.py
+  rocko_env/extras/Buzzer.py
+  rocko_env/extras/StatusScreen.py
   DESTINATION lib/${PROJECT_NAME}
 )
 # The dashboard's one page; Dashboard.py reads it from share/rocko_env/web/.
 install(FILES rocko_env/webserver/dashboard.html DESTINATION share/${PROJECT_NAME}/web)
+# The optional extras' settings; launch_extras.py reads it from share/rocko_env/extras/.
+install(FILES rocko_env/extras/extras.yaml DESTINATION share/${PROJECT_NAME}/extras)
 
 ## EXPORTS
 ament_export_targets(export_rocko_env HAS_LIBRARY_TARGET)

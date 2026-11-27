@@ -1,7 +1,7 @@
 """The robot's base launch: starts at boot and stays up (docs/architecture/robot-supervisor.md).
 
 It runs what every mode shares (the supervisor, the game controller's joy node, the dashboard,
-foxglove_bridge). The supervisor then starts the current mode's own launch file as a child process
+foxglove_bridge, and the optional extras: battery monitor, buzzer, status screen). The supervisor then starts the current mode's own launch file as a child process
 with supervised:=true, and stops and restarts it when the mode changes. Do not start a mode's launch
 file by hand while this runs: two stacks fight over the motors.
 """
@@ -13,6 +13,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
+from rocko_env.extras.launch_extras import extras_arguments, extras_nodes
 from rocko_env.recording.launch_recording import real_or_mock, recording_arguments
 from rocko_env.supervisor import modes
 from rocko_env.teleop import gamepad
@@ -53,6 +54,8 @@ def generate_launch_description():
     # (docs/journal/2026-11-24-loop-timing-on-the-pi.md).
     declared_arguments += dashboard_arguments(default="true")
     declared_arguments += foxglove_arguments(default="true")
+    # battery:=, buzzer:=, screen:= (all true): optional, so a missing one only logs and shows on the dashboard.
+    declared_arguments += extras_arguments()
 
     # Speed caps for each mode's teleop node, passed through by the supervisor, e.g. for a first stand test:
     #   pi/launch.sh robot tank_max_speed:=0.3 balance_max_speed:=0.02
@@ -99,5 +102,6 @@ def generate_launch_description():
     # The dashboard's recordings write the config path into run.yaml; the mode's own YAML is chosen by
     # the supervisor, so name the launch instead.
     nodes.append(dashboard_node("rocko_robot.launch.py", real_or_mock(use_mock_hardware), "(per mode)"))
+    nodes += extras_nodes()
 
     return LaunchDescription(declared_arguments + nodes)

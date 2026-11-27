@@ -17,6 +17,7 @@ Time is passed in as `now_s` [s, any steady clock] so the tests control it.
 """
 import math
 
+from rocko_env.extras import battery
 from rocko_env.supervisor import modes
 from rocko_env.teleop import gamepad
 
@@ -85,9 +86,11 @@ class StateMachine:
         return actions
 
     # --- requests from a person (gamepad or dashboard) ------------------------------------------
-    def request_enable(self, enabled, source, pitch_deg=None, rearm_max_pitch_deg=None, pitch_rate_deg_s=None):
+    def request_enable(self, enabled, source, pitch_deg=None, rearm_max_pitch_deg=None, pitch_rate_deg_s=None,
+                       battery_v=None):
         """Enable or disable. pitch_deg [deg], rearm_max_pitch_deg [deg] and pitch_rate_deg_s [deg/s, + while
-        pitch increases] matter only for enabling balance mode; None means "unknown". Returns (ok, message)."""
+        pitch increases] matter only for enabling balance mode; None means "unknown". battery_v [V] is the newest
+        battery voltage, None when there is no fresh reading (the battery monitor is optional). Returns (ok, message)."""
         if not enabled:
             # Rule 4: disabling is always allowed, in any phase.
             if self.enabled:
@@ -100,6 +103,11 @@ class StateMachine:
         # Rule 2: only a ready stack can be enabled.
         if self.phase != PHASE_READY:
             return self._refuse(f"cannot enable while the stack is {self.phase}")
+        # A flat battery: in any mode. Unknown (no monitor fitted, or it failed) is allowed, unlike an unknown pitch:
+        # the robot ran without a battery reading before the monitor existed, and an optional part must not stop it.
+        if not battery.enable_allowed(battery_v):
+            return self._refuse(f"cannot enable: battery {battery_v:.2f} V is at or below {battery.CRITICAL_V:.1f} V; "
+                                f"charge it")
         if self.mode == "balance":
             # Never assume upright: an unknown pitch is a refusal, not a pass.
             if pitch_deg is None or not math.isfinite(pitch_deg):
@@ -266,7 +274,8 @@ class StateMachine:
         self._disable_unconfirmed = False
 
     # --- the game controller --------------------------------------------------------------------
-    def joy_message(self, held, now_s, pitch_deg=None, rearm_max_pitch_deg=None, pitch_rate_deg_s=None):
+    def joy_message(self, held, now_s, pitch_deg=None, rearm_max_pitch_deg=None, pitch_rate_deg_s=None,
+                    battery_v=None):
         """One /joy message. `held` is gamepad.pressed_inputs(). Returns (ok, message) if it
         completed a combo, else None."""
         self._last_joy_s = now_s
@@ -274,7 +283,7 @@ class StateMachine:
         result = None
         if combo == "toggle_enable":
             result = self.request_enable(not self.enabled, SOURCE_GAMEPAD, pitch_deg, rearm_max_pitch_deg,
-                                         pitch_rate_deg_s)
+                                         pitch_rate_deg_s, battery_v)
         elif combo == "toggle_mode":
             names = modes.mode_names()
             other = names[(names.index(self.mode) + 1) % len(names)]

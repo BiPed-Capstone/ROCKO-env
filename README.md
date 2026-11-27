@@ -144,6 +144,7 @@ ROCKO-env
         ├── bringup/launch/   rocko_robot.launch.py (what boots), rocko.launch.py, rocko_tank_mode.launch.py, rocko_sim.launch.py
         ├── controllers/      add_feedforward (C++), diffdrive, tank_teleop, balance_teleop
         ├── supervisor/       Supervisor.py, with its rules in state_machine.py and the mode table in modes.py
+        ├── extras/           Optional status screen, buzzer and battery monitor; none can stop the robot
         ├── teleop/gamepad.py The controller layout, stick shaping and button combos, shared by everything that reads /joy
         ├── description/      The robot's URDF/xacro, which plugin drives which joint, RViz layouts
         ├── hardware/         motors/ (PWM and encoders), sensors/bno055/ (the IMU), sim/ (SimPlant, the simulated robot)

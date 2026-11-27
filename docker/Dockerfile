@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y \
     python3-colcon-common-extensions \
     python3-rosdep \
     iputils-ping \
+    python3-pil \
+    python3-numpy \
     git \
     vim \
     && rm -rf /var/lib/apt/lists/*

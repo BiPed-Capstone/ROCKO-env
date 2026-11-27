@@ -14,10 +14,11 @@ What it can change: (1) it can start and stop a recording (it runs RecordRun.py,
 record:=true runs) and hand recorded runs to the browser; (2) it can ASK the robot supervisor
 (Supervisor.py, docs/architecture/robot-supervisor.md) to enable or disable the motion controllers
 and to switch between tank and balance mode, through the services /rocko/set_enabled and
-/rocko/set_mode. That is ALL. It publishes on no topic and calls no other service, so it cannot
-drive the robot, re-arm the tipover cutoff or touch a controller itself: the supervisor decides, and
+/rocko/set_mode; (3) it can ask the buzzer to mute or unmute (/rocko/set_buzzer_muted). That is ALL.
+It publishes on no topic and calls no other service, so it cannot drive the robot, re-arm the tipover cutoff or touch a controller itself: the supervisor decides, and
 refuses what its rules forbid (for example a mode change while enabled). It shows the supervisor's
-state (/rocko/state) at the top of the page.
+state (/rocko/state) at the top of the page, and what each optional extra (battery monitor, buzzer,
+status screen) reports on /diagnostics (docs/architecture/robot-extras.md).
 
 It is NOT on the 100 Hz control path: it is a separate process, and it lowers its own priority
 (NICENESS) so the control loop is served first. What it costs the Pi's CPU is not measured.
@@ -46,6 +47,7 @@ import rclpy
 import rclpy.executors
 from ament_index_python.packages import get_package_share_directory
 from control_msgs.msg import DynamicJointState, MultiDOFCommand, MultiDOFStateStamped
+from diagnostic_msgs.msg import DiagnosticArray
 from rcl_interfaces.msg import Log
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -54,9 +56,12 @@ from rocko_interfaces.srv import SetEnabled, SetMode
 from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool
+from std_srvs.srv import SetBool
 
 # The folder the recorder writes is the folder the run list reads: one constant, RecordRun.py's.
 from rocko_env.recording.RecordRun import DEFAULT_LOG_ROOT
+# The optional extras' reports, and the tipover cutoff's log phrases (shared with the screen and the buzzer).
+from rocko_env.extras import health, log_phrases
 # The controller's layout (which /joy index is which stick or button): the shared teleop module.
 from rocko_env.teleop import gamepad
 
@@ -97,6 +102,8 @@ class Dashboard(Node):
         self.robot_at_s = None  # time.monotonic() when it arrived
         self.recorder = None    # the running RecordRun.py process, or None
         self.recording_label = ""
+        self.extra_reports = {}  # extra -> its newest health.report(), from /diagnostics
+        self.extra_report_s = {} # extra -> time.monotonic() when it arrived
 
         # The fast topics (100 Hz) are subscribed RAW: the callback only keeps the newest message's
         # bytes, and sample() decodes that one message 20 times a second. Decoding every message in
@@ -134,6 +141,8 @@ class Dashboard(Node):
             QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.set_enabled_client = self.create_client(SetEnabled, "/rocko/set_enabled")
         self.set_mode_client = self.create_client(SetMode, "/rocko/set_mode")
+        self.create_subscription(DiagnosticArray, "/diagnostics", self.on_diagnostics, 10)
+        self.mute_client = self.create_client(SetBool, "/rocko/set_buzzer_muted")
         self.create_timer(SAMPLE_PERIOD_S, self.sample)
 
     # --- ROS callbacks: keep bytes, or copy a number; nothing slow ---------------------------------
@@ -235,18 +244,22 @@ class Dashboard(Node):
         level = {Log.WARN: "WARN", Log.ERROR: "ERROR", Log.FATAL: "FATAL"}.get(msg.level, "WARN")
         with self.lock:
             self.log_lines.append({"t": time.time(), "level": level, "node": msg.name, "text": msg.msg})
-            # These two phrases are AddFeedforwardController.cpp's log lines. If they are reworded
-            # there, reword them here: no check ties them together.
+            # The phrases are AddFeedforwardController.cpp's log lines (log_phrases.py).
             # Each wheel's controller trips and re-arms on its own, so the state is kept per node
             # and the page shows TRIPPED while ANY of them is. Until a line has been seen there is
             # no entry at all, and the page says so: a trip logged before this node started cannot
             # be known here, and "armed" would be a safe-looking guess (the mistake of finding C-2).
-            if "TIPOVER CUTOFF TRIPPED" in msg.msg:
-                self.tipover_by_node[msg.name] = True
-            elif "Tipover cutoff RE-ARMED" in msg.msg:
-                self.tipover_by_node[msg.name] = False
+            change = log_phrases.tipover_change(msg.msg)
+            if change is not None:
+                self.tipover_by_node[msg.name] = change
             if self.tipover_by_node:
                 self.latest["tipover_tripped"] = any(self.tipover_by_node.values())
+
+    def on_diagnostics(self, msg):
+        now = time.monotonic()
+        with self.lock:
+            for extra, status in health.from_message(msg).items():
+                self.extra_reports[extra], self.extra_report_s[extra] = status, now
 
     def sample(self):
         """Every SAMPLE_PERIOD_S: decode the newest message of each fast topic, then add one point
@@ -274,12 +287,14 @@ class Dashboard(Node):
             ages = {group: now - t for group, t in self.updated_s.items()}
             logs = list(self.log_lines)
             controller = self.controller
+            extras = health.summary(self.extra_reports, {k: now - t for k, t in self.extra_report_s.items()})
         return {
             "controller": controller,
             "time": time.time(), "values": latest, "age_s": ages, "stale_after_s": STALE_AFTER_S,
             "logs": logs, "recording": self.recording_status(),
             "launch": self.launch_name, "hardware": self.hardware,
             "robot": self.robot_snapshot(),
+            "extras": extras,
         }
 
     def history_since(self, since):
@@ -287,8 +302,8 @@ class Dashboard(Node):
             return [{"t": t, **point} for t, point in self.history if t > since]
 
     # --- asking the supervisor ---------------------------------------------------------------------
-    def call_supervisor(self, client, request):
-        """Send `request` to a supervisor service and wait up to SERVICE_TIMEOUT_S for the answer.
+    def call_supervisor(self, client, request, who="supervisor"):
+        """Send `request` to a supervisor service (or `who` else's) and wait up to SERVICE_TIMEOUT_S for the answer.
         Returns (success, message).
 
         Why waiting here does not block ROS: this runs in an HTTP handler thread (ThreadingHTTPServer
@@ -298,17 +313,17 @@ class Dashboard(Node):
         complete() from here would be wrong: the first can hang if the executor is busy, the second
         would start a second executor on the same node."""
         if not client.service_is_ready():
-            return False, "supervisor did not answer (service not available)"
+            return False, f"{who} did not answer (service not available)"
         done = threading.Event()
         future = client.call_async(request)
         future.add_done_callback(lambda _: done.set())
         if not done.wait(SERVICE_TIMEOUT_S):
             client.remove_pending_request(future)  # forget it, so a late answer is not kept forever
-            return False, "supervisor did not answer"
+            return False, f"{who} did not answer"
         try:
             response = future.result()
         except Exception as error:  # the call failed (for example the supervisor went away)
-            return False, f"supervisor call failed: {error}"
+            return False, f"{who} call failed: {error}"
         return bool(response.success), response.message
 
     def set_enabled(self, enabled):
@@ -322,6 +337,9 @@ class Dashboard(Node):
         request.mode = mode
         request.source = SOURCE
         return self.call_supervisor(self.set_mode_client, request)
+
+    def set_muted(self, muted):
+        return self.call_supervisor(self.mute_client, SetBool.Request(data=muted), who="buzzer")
 
     def launch_label(self):
         """launch_name, plus the mode when the supervisor is heard, so run.yaml says which stack ran
@@ -485,6 +503,10 @@ def make_handler(dashboard, page):
                     str(body.get("surface") or "")[:60])
             elif self.path == "/api/record/stop":
                 ok, message = dashboard.stop_recording()
+            elif self.path == "/api/mute":
+                ok, message = dashboard.set_muted(bool(body.get("muted")))
+                self.send_json({"success": ok, "message": message}, 200 if ok else 504)
+                return
             elif self.path in ("/api/enable", "/api/disable", "/api/mode"):
                 # The supervisor decides: a refusal comes back as success false with its reason.
                 if self.path == "/api/mode":
@@ -530,7 +552,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     dashboard.get_logger().info(
         f"dashboard: open http://<this machine's address>:{dashboard.port} in a browser "
-        "(read-only apart from Record/Stop and the supervisor's Enable/Disable/mode buttons; no login)")
+        "(read-only apart from Record/Stop, the supervisor's Enable/Disable/mode buttons and the buzzer's Mute; no login)")
     try:
         rclpy.spin(dashboard)
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):

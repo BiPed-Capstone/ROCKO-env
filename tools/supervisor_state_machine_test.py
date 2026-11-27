@@ -17,6 +17,7 @@ from rocko_env.supervisor import modes  # noqa: E402
 from rocko_env.supervisor import state_machine  # noqa: E402
 from rocko_env.supervisor.state_machine import (  # noqa: E402
     CM_UNANSWERED_FAULT_S, CM_UNANSWERED_KILL_S, DEACTIVATE_CONFIRM_S, StateMachine)
+from rocko_env.extras import battery  # noqa: E402
 from rocko_env.teleop import gamepad  # noqa: E402
 
 LB_RB = {"lb", "rb"}
@@ -85,6 +86,26 @@ def test_tank_enable_ignores_pitch_rate():
     m = ready_machine("tank")
     ok, _ = m.request_enable(True, "dashboard", None, None, None)
     check(ok and m.enabled, "tank mode does not look at pitch or its rate")
+
+
+def test_flat_battery_refuses_enable():
+    # The battery monitor is optional: no reading (None) must never stop the robot; a critical reading refuses an
+    # ENABLE in any mode, and never refuses a disable.
+    critical = battery.CRITICAL_V
+    for mode, args in (("tank", (None, None, None)), ("balance", (0.0, 5.0, 0.0))):
+        m = ready_machine(mode)
+        ok, msg = m.request_enable(True, "dashboard", *args, battery_v=critical)
+        check(not ok and not m.enabled and "battery" in msg and m.take_actions() == [], f"{mode}: refused at CRITICAL_V")
+        m.joy_message(set(), 0.0, *args, battery_v=critical)
+        m.joy_message(LB_RB, 0.1, *args, battery_v=critical)
+        check(not m.enabled, f"{mode}: the gamepad combo is refused too")
+        ok, _ = m.request_enable(True, "dashboard", *args, battery_v=None)
+        check(ok and m.enabled, f"{mode}: no battery reading -> allowed (the monitor is optional)")
+        ok, _ = m.request_enable(False, "dashboard", battery_v=critical - 1.0)
+        check(ok and not m.enabled, f"{mode}: disabling is never refused for the battery")
+        m.take_actions()
+        ok, _ = m.request_enable(True, "dashboard", *args, battery_v=critical + 0.01)
+        check(ok and m.enabled, f"{mode}: just above CRITICAL_V -> allowed")
 
 
 def test_rule3_mode_change():

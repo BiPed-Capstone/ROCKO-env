@@ -59,12 +59,24 @@
   #pad.stale { opacity:.35; }
   .drive-state { font-size:22px; font-weight:700; margin-bottom:6px; }
   /* The robot state card (top of the page): what the supervisor says, and the buttons that ask it. */
-  .state-card { margin-bottom:12px; border-width:2px; }
+  /* Glanceable: the whole card is GREEN while enabled, RED while disabled, GREY when the state is unknown. The
+     same colours in light and dark themes, and the same as the robot's own screen (screen_layout.py). */
+  :root { --enabled:#178a4c; --disabled:#c0281b; --unknown:#667085; }
+  .state-card { margin-bottom:12px; border-width:2px; color:#fff; background:var(--unknown); border-color:var(--unknown); }
+  .state-card.enabled { background:var(--enabled); border-color:var(--enabled); }
+  .state-card.disabled { background:var(--disabled); border-color:var(--disabled); }
+  .state-card .sub { color:rgba(255,255,255,.85); }
+  .state-detail { background:var(--card); color:var(--ink); border-radius:8px; padding:6px 8px; }
   .state-head { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
   .state-mode { font-size:40px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
-  .badge { font-size:18px; font-weight:800; padding:4px 12px; border-radius:6px; background:var(--line); color:var(--ink); }
-  .badge.on { background:var(--bad); color:#fff; }
+  .badge { font-size:40px; font-weight:900; letter-spacing:.04em; padding:2px 14px; border-radius:8px;
+           border:3px solid #fff; color:#fff; }
   .state-buttons { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 6px; }
+  /* Enable is green and Disable red wherever they are; the white border keeps each visible on the card. */
+  .state-buttons button { border:2px solid #fff; font-size:17px; padding:9px 18px; }
+  #btn-enable { background:var(--enabled); color:#fff; }
+  #btn-disable { background:var(--disabled); color:#fff; }
+  .extra-state { font-size:20px; font-weight:700; }
   tr.wrong td { background:color-mix(in srgb, var(--bad) 18%, transparent); font-weight:600; }
   .nums { font:13px/1.6 ui-monospace, Menlo, Consolas, monospace; color:var(--dim); }
 </style>
@@ -82,16 +94,24 @@
   </div>
   <div class="sub" id="s-message" style="margin:6px 0 0"></div>
   <div class="state-buttons">
-    <button class="stop" id="btn-enable">Enable</button>
+    <button id="btn-enable">Enable</button>
     <button id="btn-disable">Disable</button>
     <button id="btn-tank">Tank</button>
     <button id="btn-balance">Balance</button>
   </div>
   <div class="sub" id="s-action" style="margin:0 0 8px"></div>
-  <div class="two">
+  <div class="two state-detail">
     <table><thead><tr><th>node</th><th>group</th><th>alive</th></tr></thead><tbody id="s-nodes"></tbody></table>
     <table><thead><tr><th>controller</th><th>expected</th><th>state</th></tr></thead><tbody id="s-controllers"></tbody></table>
   </div>
+</div>
+
+<!-- The optional extras on the robot (docs/architecture/robot-extras.md): each says whether it works. -->
+<div class="grid" id="extras">
+  <div class="card"><h2>Battery</h2><div class="extra-state" id="x-battery">–</div><div class="sub" id="x-battery-why"></div></div>
+  <div class="card"><h2>Buzzer</h2><div class="extra-state" id="x-buzzer">–</div><div class="sub" id="x-buzzer-why"></div>
+    <button id="btn-mute" disabled>Mute</button></div>
+  <div class="card"><h2>Screen on the robot</h2><div class="extra-state" id="x-screen">–</div><div class="sub" id="x-screen-why"></div></div>
 </div>
 
 <div class="grid" id="tiles"></div>
@@ -172,6 +192,7 @@
 //   every RUNS_PERIOD_MS     ask for the list of recorded runs;
 //   the state card          shows /api/state's "robot" (the supervisor's /rocko/state); its four buttons POST to
 //                            /api/enable, /api/disable, /api/mode, and the supervisor decides (see buttonRules);
+//   the extras cards        show /api/state's "extras" (battery, buzzer, screen); Mute POSTs to /api/mute;
 //   Record / Stop            send one POST each; the robot's Dashboard.py starts or stops the recorder.
 // To show one more signal: Dashboard.py must send it under some name (see its *_values functions);
 // add a row with that name to TILES, and to a plot's list in PLOTS if it should be drawn.
@@ -251,6 +272,7 @@ function showState(state) {
   }).join("") || '<span class="sub">none</span>';
   showController(state);
   showRobot(state.robot);
+  showExtras(state.extras);
   $("record").disabled = state.recording.running;
   $("stop").disabled = !state.recording.running;
   if (state.recording.running) $("record-status").textContent = `recording "${state.recording.label}" …`;
@@ -288,14 +310,15 @@ function buttonRules(robot) {
 function showRobot(robot) {
   if (!robot.present) {
     $("s-mode").textContent = "NO SUPERVISOR";
-    $("s-enabled").textContent = "UNKNOWN"; $("s-enabled").className = "badge";
+    $("s-enabled").textContent = "UNKNOWN";
+    $("state-card").className = "card state-card";
     $("s-phase").textContent = "–"; $("s-source").textContent = "";
     $("s-message").textContent = "No /rocko/state heard in the last 2 s: this launch was started by hand, or the supervisor has stopped. The buttons below cannot work; Disable is still sent.";
     $("s-nodes").innerHTML = ""; $("s-controllers").innerHTML = "";
   } else {
     $("s-mode").textContent = robot.mode;
     $("s-enabled").textContent = robot.enabled ? "ENABLED" : "DISABLED";
-    $("s-enabled").className = "badge" + (robot.enabled ? " on" : "");
+    $("state-card").className = "card state-card " + (robot.enabled ? "enabled" : "disabled");
     const changing = robot.requested_mode ? ` → ${robot.requested_mode}` : "";
     $("s-phase").textContent = "phase: " + robot.phase + changing;
     $("s-source").textContent = robot.last_source ? `(last change: ${robot.last_source})` : "";
@@ -312,6 +335,27 @@ function showRobot(robot) {
   const can = buttonRules(robot);
   $("btn-enable").disabled = !can.enable; $("btn-disable").disabled = !can.disable;
   $("btn-tank").disabled = !can.tank; $("btn-balance").disabled = !can.balance;
+}
+
+// Each extra's report (Dashboard.py: health.summary). An extra that is broken or missing never stops the robot;
+// this only says so. The battery card shows the reading itself when there is one.
+const EXTRA_CLASSES = {"OK": "ok", "WARN": "warn-text", "ERROR": "bad-text", "NOT RUNNING": "unit"};
+let buzzerMuted = null;    // true / false from the buzzer's report, null when it is not running
+function showExtras(extras) {
+  for (const [name, info] of Object.entries(extras || {})) {
+    let text = info.state;
+    if (name === "battery" && info.values.voltage !== undefined && info.state !== "ERROR")
+      text = `${Number(info.values.voltage).toFixed(2)} V · ~${info.values.percent} %` +
+             (info.values.level === "ok" ? "" : ` · ${info.values.level.toUpperCase()}`);
+    if (name === "buzzer" && info.values.muted !== undefined)
+      text = info.state === "OK" ? (info.values.muted === "true" ? "muted" : "sound on") : info.state;
+    $("x-" + name).innerHTML = `<span class="${EXTRA_CLASSES[info.state] || "bad-text"}">${escapeHtml(text)}</span>`;
+    $("x-" + name + "-why").textContent = info.message;
+  }
+  const muted = extras && extras.buzzer && extras.buzzer.values.muted;
+  buzzerMuted = muted === undefined ? null : muted === "true";
+  $("btn-mute").disabled = buzzerMuted === null;
+  $("btn-mute").textContent = buzzerMuted ? "Unmute" : "Mute";
 }
 
 function showController(state) {
@@ -441,6 +485,16 @@ $("btn-enable").onclick = () => ask("/api/enable", {});
 $("btn-disable").onclick = () => ask("/api/disable", {});
 $("btn-tank").onclick = () => ask("/api/mode", {mode: "tank"});
 $("btn-balance").onclick = () => ask("/api/mode", {mode: "balance"});
+// Mute asks the buzzer (Dashboard.py -> /rocko/set_buzzer_muted); the robot's screen has the same button.
+$("btn-mute").onclick = async () => {
+  if (buzzerMuted === null) return;
+  $("btn-mute").disabled = true;
+  try {
+    const answer = await post("/api/mute", {muted: !buzzerMuted});
+    $("x-buzzer-why").textContent = (answer.success ? "done: " : "refused: ") + answer.message;
+  } catch (error) { $("x-buzzer-why").textContent = "no answer from the dashboard: " + error; }
+  pollState();
+};
 
 $("record").onclick = async () => {
   $("record").disabled = true;

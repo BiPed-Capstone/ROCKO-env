@@ -35,7 +35,10 @@ expected **nodes** and **controllers** with whether each is up.
    number has one home (`add_feedforward_controller_parameters.yaml`); and only when the robot is nearly still:
    `|pitch_rate|` known and within `ENABLE_MAX_PITCH_RATE_DEG_S` (`state_machine.py`, PROPOSED), because once the
    pitch loop takes its D term from the gyro, the rate at enable stays in it as a constant offset (finding L-8,
-   [proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md)).
+   [proposal 0016](../proposals/0016-pitch-d-term-from-the-gyro.md)). In **any** mode, not when the battery is flat: a
+   fresh `/rocko/battery` voltage at or below `CRITICAL_V` (`extras/battery.py`) refuses. No fresh reading (no
+   monitor fitted, or none for `BATTERY_MAX_AGE_S` in `Supervisor.py`) does **not** refuse: the battery monitor is optional
+   ([the robot extras](robot-extras.md#battery)). A flat battery never disables a robot that is already enabled.
 3. **Change mode** only when **disabled** and `phase` is `ready` or `fault`. A change stops the old stack, then
    starts the new one: `stopping` → `starting` → `ready`.
 4. **Disable** is always allowed, in any phase. Disabling never needs anything to go right first.
@@ -140,7 +143,9 @@ systemd: rocko.service ──> pi/launch.sh robot ──> ros2 launch rocko_env 
                                                     ├── Supervisor.py        (state, services, starts/stops stacks)
                                                     ├── game_controller_node (joy: /joy, always on, every mode)
                                                     ├── Dashboard.py         (web page, port 8080)
-                                                    └── foxglove_bridge
+                                                    ├── foxglove_bridge
+                                                    └── BatteryMonitor.py, Buzzer.py, StatusScreen.py
+                                                        (optional extras: robot-extras.md)
                               Supervisor.py ──child──> ros2 launch rocko_env <mode's launch file> supervised:=true
 ```
 
@@ -181,6 +186,7 @@ All in `rocko_interfaces`:
 | `/rocko/state` | topic, `rocko_interfaces/msg/RobotState`, reliable, transient-local (a new subscriber gets the last one) | The state above. Published on every change and at 2 Hz |
 | `/rocko/set_enabled` | service, `rocko_interfaces/srv/SetEnabled` (`bool enabled`, `string source` → `bool success`, `string message`) | Enable or disable |
 | `/rocko/set_mode` | service, `rocko_interfaces/srv/SetMode` (`string mode`, `string source` → `bool success`, `string message`) | Change mode. Returns as soon as the change is accepted or refused; watch `phase` for the rest |
+| `/rocko/battery` | topic, `sensor_msgs/BatteryState`, **read** by the supervisor (published by `BatteryMonitor.py`) | The battery voltage for rule 2's flat-battery refusal |
 
 The supervisor is **not** on the 100 Hz path: it is a separate process that only changes which controllers are active.
 It never blocks its own callbacks (service calls to `controller_manager` are asynchronous), so a slow

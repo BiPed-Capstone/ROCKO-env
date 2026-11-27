@@ -29,7 +29,7 @@ from control_msgs.msg import DynamicJointState
 from rcl_interfaces.srv import GetParameters
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Joy
+from sensor_msgs.msg import BatteryState, Joy
 from std_msgs.msg import Empty
 
 from rocko_interfaces.msg import ControllerStatus, NodeStatus, RobotState
@@ -45,6 +45,10 @@ PITCH_MAX_AGE_S = 1.0                            # [s] older than this, pitch co
 # [s] older than this, the pitch rate counts as unknown. Short, because the hold-still check (L-8) is about the rate
 # right at enable; joint_state_broadcaster publishes it every control cycle (10 ms), so 0.2 s is 20 missed messages.
 PITCH_RATE_MAX_AGE_S = 0.2
+# [s] older than this, the battery voltage counts as unknown (BatteryMonitor.py publishes once a second), and the
+# enable is not refused for it: the battery monitor is optional. Same as health.STALE_AFTER_S, the age at which the
+# dashboard calls an extra NOT RUNNING.
+BATTERY_MAX_AGE_S = 5.0
 IGNORE_POLL_AFTER_START_S = 2.0                  # [s] the graph may still list the old stack's nodes
 SWITCH_GRACE_S = 5.0                             # [s] after enable/disable, a controller mid-change is not a fault
 CALL_GIVE_UP_S = 3.0                             # [s] an unanswered list/get call is dropped and re-asked
@@ -96,6 +100,8 @@ class Supervisor(Node):
         self.pitch_rate_deg_s = None   # [deg/s] + while pitch increases; for request_enable's hold-still check (L-8)
         self.pitch_rate_time_s = 0.0
         self.rearm_max_pitch_deg = None
+        self.battery_v = None            # [V] smoothed, from /rocko/battery (optional; see battery_input)
+        self.battery_time_s = 0.0
         # In-flight async calls (one at a time each, so a slow service cannot pile up requests)
         self.list_future = None
         self.param_future = None
@@ -114,6 +120,7 @@ class Supervisor(Node):
         self.create_service(SetEnabled, "/rocko/set_enabled", self.on_set_enabled)
         self.create_subscription(Joy, "/joy", self.on_joy, 10)
         self.create_subscription(DynamicJointState, "/dynamic_joint_states", self.on_joint_states, 10)
+        self.create_subscription(BatteryState, "/rocko/battery", self.on_battery, 5)
         self.list_client = self.create_client(ListControllers, "/controller_manager/list_controllers")
         self.switch_client = self.create_client(SwitchController, "/controller_manager/switch_controller")
         self.param_client = self.create_client(GetParameters, f"/{REARM_CONTROLLER}/get_parameters")
@@ -137,7 +144,8 @@ class Supervisor(Node):
     # ------------------------------------------------------------------ requests
     def on_set_enabled(self, request, response):
         source = request.source or "dashboard"
-        ok, message = self.sm.request_enable(request.enabled, source, *self.balance_inputs())
+        ok, message = self.sm.request_enable(request.enabled, source, *self.balance_inputs(),
+                                             battery_v=self.battery_input())
         response.success, response.message = ok, message
         self.after_change()
         return response
@@ -151,7 +159,7 @@ class Supervisor(Node):
 
     def on_joy(self, msg):
         held = gamepad.pressed_inputs(msg.axes, msg.buttons)
-        self.sm.joy_message(held, time.monotonic(), *self.balance_inputs())
+        self.sm.joy_message(held, time.monotonic(), *self.balance_inputs(), battery_v=self.battery_input())
         self.after_change()
 
     def on_joint_states(self, msg):
@@ -165,6 +173,16 @@ class Supervisor(Node):
                 elif name == "pitch_rate":
                     self.pitch_rate_deg_s = value
                     self.pitch_rate_time_s = time.monotonic()
+
+    def on_battery(self, msg):
+        self.battery_v = msg.voltage
+        self.battery_time_s = time.monotonic()
+
+    def battery_input(self):
+        """The battery voltage [V] for the enable check, or None if no reading is fresh (no monitor fitted, or it
+        stopped): then the enable is not refused for the battery."""
+        fresh = self.battery_v is not None and time.monotonic() - self.battery_time_s < BATTERY_MAX_AGE_S
+        return self.battery_v if fresh and math.isfinite(self.battery_v) else None
 
     def balance_inputs(self):
         """(pitch [deg], re-arm band [deg], pitch rate [deg/s]) for the state machine; None for anything not

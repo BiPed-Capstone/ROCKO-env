@@ -19,15 +19,21 @@ belong to this project.
   cycle. ROCKO's are the two PID controllers, the two feedforward controllers, and in tank mode `diff_drive_controller`.
 - **controller_manager.** The ROS process that loads the hardware plugins and the controllers and runs
   `read()`, `update()`, `write()` on a fixed clock: 100 times a second here (`update_rate` in the controller YAML).
+- **Diagnostics (`/diagnostics`).** The standard ROS topic on which a part reports whether it is healthy: a level
+  (OK, WARN, ERROR), a message and a few values. The robot extras report there.
 - **Encoder (quadrature).** A sensor on each motor that produces pulses as the wheel turns; counting them gives the
   wheel's angle and speed. Read in the motor plugin: [encoders in C++](architecture/encoders-in-cpp.md).
 - **Feedforward.** A term added to a controller's output from what is *expected* (here, the commanded wheel speed),
   instead of from a measured error. It lets the feedback loops correct only what the prediction missed.
+- **Framebuffer.** A Linux device file, `/dev/fbN`, whose bytes are a screen's pixels: write a picture's bytes to
+  it and the screen shows it. The status screen's driver makes the panel one.
 - **Hardware interface (hardware plugin).** C++ code that owns a real device and exposes its values to
   ros2_control. `Motor12VoltQuadEncoder` (motor and encoder) and `BNO055` (the IMU) are the only code that touches
   the Pi's pins.
 - **IMU.** Inertial measurement unit: the sensor that measures the robot's lean (pitch) and how fast it is changing
   (pitch rate). ROCKO's is a Bosch BNO055, read over I²C (a two-wire bus for chips on the same board): [the IMU read](architecture/imu-i2c-read.md).
+- **INA226.** A small chip that measures a voltage (and, through a shunt resistor, a current) and reports it over
+  I²C. The battery monitor reads the battery voltage with one.
 - **Launch file.** A Python file that starts a set of ROS programs with their settings, run with `ros2 launch`.
   ROCKO's are in `rocko_env/rocko_env/bringup/launch/`.
 - **Node.** One running ROS program that does one job. Nodes talk over topics.
@@ -60,6 +66,8 @@ belong to this project.
   (2) the low duties at which a motor hums but does not turn, because friction wins. [Proposal 0013](proposals/0013-tank-mode-motor-breakaway.md).
 - **Enabled, disabled.** Whether the motion controllers are active. The robot boots disabled; LB + RB on the
   gamepad, or the dashboard's Enable button, toggles it. [The robot supervisor](architecture/robot-supervisor.md).
+- **Extras (robot extras).** The optional status screen, buzzer and battery monitor. Each runs as its own program,
+  reports its health on `/diagnostics`, and none can stop the robot: [the robot extras](architecture/robot-extras.md).
 - **Finding (C-1, H-3, M-5, L-2 ...).** A numbered problem in
   [the balance-loop findings](claude-analysis/balance-loop-findings.md). The letter is the severity: critical, high,
   medium, low. Cite the ID rather than describing the problem again.

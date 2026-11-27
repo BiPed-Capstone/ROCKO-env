@@ -215,8 +215,10 @@ trivially (seen, in a scratch copy; see the table of deliberate breaks below).
 `verify_supervisor.sh` (repo root, runs in the container, after a Tier 1 build) starts `rocko_robot.launch.py
 use_mock_hardware:=true` and runs `tools/supervisor_flow_check.py` against it, which drives the supervisor through its
 two services and a simulated `/joy`: boot into tank, disabled, ready; enable and disable; a refused mode change while
-enabled; tank to balance and back; both controller combos; and what happens when a stack node is killed and when the
-launch is stopped. [`tools/run_ladder.sh`](../../tools/run_ladder.sh) runs it. Run it from the repo root on the laptop:
+enabled; tank to balance and back; both controller combos; what happens when a stack node is killed and when the
+launch is stopped; and (section 12, since 2026-11-27) the optional extras: with none of their hardware in the container,
+each must report ERROR while the robot still enables, a made-up flat battery on `/rocko/battery` must refuse an enable
+and stop refusing once the readings stop, and a killed `Buzzer.py` must change nothing. [`tools/run_ladder.sh`](../../tools/run_ladder.sh) runs it. Run it from the repo root on the laptop:
 
 ```bash
 docker compose -f docker/compose.yml exec -T ros2 /ros2_ws/src/ROCKO-env/verify_supervisor.sh
@@ -261,8 +263,8 @@ stop and kept recording after it (`FAIL: processes outlived the launch`; fixed i
 when: the page loads and names no outside address; `/api/state` has fresh values and says `sim`; every
 pitch point in the dashboard's history is within 0.5 deg of the pitch the checker itself heard on
 `/dynamic_joint_states` at that moment, and the history shows the start-up lean (at least 1 deg, or two
-flat lines at zero would prove nothing); the dashboard node publishes on no topic but ROS's own two and
-has no service client; a POST from another site's `Origin`, a second Record and a path that climbs out of
+flat lines at zero would prove nothing); the dashboard node publishes on no topic but ROS's own two, and
+has no service client but the supervisor's two and the buzzer's mute switch; a POST from another site's `Origin`, a second Record and a path that climbs out of
 the log folder are refused; and Record then Stop over HTTP make one closed run, listed and downloadable,
 that `check_recording.py` accepts. Seen to fail (2026-11-16), each for a real fault since fixed: `only 37
 history points overlap the 6.0 s` (the node decoded every 100 Hz message in Python and fell behind: its
@@ -321,6 +323,19 @@ g++ -std=c++17 -Wall -Wextra -I rocko_env/rocko_env/controllers/add_feedforward/
 | `tools/imu_snapshot_check_test.cpp` (9 test functions) | `ImuSnapshotCheck.hpp`, the rule the IMU plugin applies to each 12-byte BNO055 burst (findings C-1, C-2, H-3, H-6; [how the IMU is read](imu-i2c-read.md)): the offset is added to pitch and the rate is sign x gyro[axis]; a still gyro (0, 0, 0) is accepted; an all-equal (start-up, all-zero) block, a non-decoded burst, angles beyond 180/360 deg (offset included) and a pitch rate beyond 2000 deg/s on the chosen axis reject the WHOLE sample and leave the output untouched; a bad axis or sign is refused; the pitch-jump check (`pitch_step_plausible`: a 32 deg step in one still cycle is rejected, a real 300 deg/s fall is not, only the last rate sets the allowance, a rate step of 256 deg/s in 10 ms is rejected, no check after a 0.1 s gap). Red on 9 deliberate breaks (2026-11-24) | The I2C transaction, the BNO055's register map and start-up, timing, anything on the robot |
 | `tools/zero_commands_test.cpp` (4 test functions) | `ZeroCommands.hpp`, the zero-on-deactivate of `AddFeedforwardController` (row 4.14): every interface is tried even after one fails, and the count of failed writes is returned (which makes `on_deactivate` return `ERROR`). Red on 2 deliberate breaks (2026-11-24) | That `on_deactivate` returns `ERROR` on a non-zero count, and what `controller_manager` then does (read from the code; the failure cannot be provoked on the mock) |
 | `tools/wheel_encoder_test.cpp` (10 test functions) | `WheelEncoder.hpp`, the arithmetic of the motor plugin's encoder counting (finding C-1, encoder half; [how the encoders are read](encoders-in-cpp.md)): the quadrature table equals the Python `Encoder` library's in all 16 cases; 4 counts per A/B cycle, the sign reverses with direction and with A and B swapped; the scale equals `QuadEncoders.py`'s 145 x 1.355 counts per turn at 0.06 m; the speed filter (first cycle 0.0, a steady speed read in full, the same speed at 10 and 20 ms cycles, alpha 0.05 after one cycle, a zero, negative or NaN period holds the speed and keeps the reference, reset). Red on 5 deliberate breaks (2026-11-24) | The GPIO interrupts, WiringPi's threads, the pin numbers, missed edges, that the plugin calls it, the robot |
+
+### The checks of the robot extras (not tiers)
+
+The status screen, buzzer and battery monitor ([robot-extras.md](robot-extras.md)), beyond section 12 of the supervisor
+check above. Both run in `tools/run_ladder.sh`; how many checks, and the deliberate breaks that turned them red, are in
+the [journal](../journal/2026-11-27-robot-extras.md).
+
+| Check | Checks | Cannot show |
+| --- | --- | --- |
+| `tools/extras_test.py` (host, no ROS) | `battery.py`: the INA226 register arithmetic, the charge table, the smoothing, the levels with their hysteresis, the enable rule (unknown allowed, at `CRITICAL_V` refused); `sounds.py`: each event plays once, on the change, and not while disabled for a silent gamepad; `health.py`: a report older than 5 s reads NOT RUNNING; `screen_layout.py`: the colours, unknown values shown as unknown, the main page fits, the touch thirds; the `/proc` parsers | The I²C, PWM, framebuffer and touch I/O; the panel driver on a Pi 5; the real battery's voltage curve |
+| `tools/screen_render_check.py` (container, where Pillow is) | Every page draws at 480 x 320 for an enabled, a disabled and an unknown robot, with the top strip green, red or grey; the RGB565 conversion matches the formula, low byte first. It writes the pictures for a person to look at | How the panel shows them (colour order, rotation), the touch, the CPU cost on the Pi |
+
+The supervisor's flat-battery rule is also in `tools/supervisor_state_machine_test.py`.
 
 ### The host test of the Pi helper scripts (not a tier)
 

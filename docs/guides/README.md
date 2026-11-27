@@ -12,6 +12,7 @@ Procedures: do this, get that. For *why* something is built the way it is, see
 | [`run-on-the-pi.md`](run-on-the-pi.md) | Running anything on the Pi: why every `ros2` command there runs as root, and the scripts in `pi/` that do it (`launch.sh`, `rocko_shell.sh`, `rocko_run.sh`); the boot service (`rocko.service`); the workspace is `~/ROCKO-env` |
 | [`bench-test-tank-mode.md`](bench-test-tank-mode.md) | First run of tank mode with the wheels off the ground: do both wheels turn, at what command do they start, and why small commands only make the motors hum |
 | [`record-a-run.md`](record-a-run.md) | Recording a run on the robot with `record:=true`: what is recorded, the `run.yaml` that describes it, copying runs to a laptop |
+| [`fit-the-extras.md`](fit-the-extras.md) | Wiring and setting up the 3.5" status screen, the buzzer and the INA226 battery monitor on the Pi, the header's pin map, and checking each one. Not yet done on the robot |
 | [`use-the-dashboard.md`](use-the-dashboard.md) | Watching the robot's state and values in a browser on another machine, enabling/disabling and switching mode from the page (no login), and recording from it |
 | [`measure-inertia.md`](measure-inertia.md) | Measuring the robot (mass, centre of mass, inertia, wheel radius, motor constants, IMU delay, encoder scale) to replace the simulator's estimates |
 

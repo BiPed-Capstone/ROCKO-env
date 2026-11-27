@@ -7,6 +7,10 @@ Everything is waited on by polling /rocko/state (or /joint_states) with a bounde
 fixed sleep for an event this script does not control. The few fixed delays are the ones this script
 itself controls: how long a simulated button is held down, and how long it is then released.
 
+Section 12 is about the optional extras (battery monitor, buzzer, screen; docs/architecture/robot-extras.md):
+in the container none of their hardware exists, which is exactly the case to check: each must report its error and
+the robot must work regardless.
+
 What it cannot show: the mock echoes each wheel command back as the wheel's velocity and holds pitch at
 0.0, so this is a check of wiring and rules, not of balance. See docs/architecture/robot-supervisor.md.
 """
@@ -20,10 +24,12 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Joy, JointState
+from diagnostic_msgs.msg import DiagnosticArray
+from sensor_msgs.msg import BatteryState, Joy, JointState
 
 from rocko_interfaces.msg import RobotState
 from rocko_interfaces.srv import SetEnabled, SetMode
+from rocko_env.extras import battery, health
 
 BOOT_TIMEOUT_S = 60.0       # [s] the supervisor's own start_timeout_s default
 SWITCH_TIMEOUT_S = 60.0     # [s] a mode change (stop one stack, start the other)
@@ -36,6 +42,8 @@ JOY_RATE_HZ = 20.0
 HOLD_S = 0.4                # [s] a simulated combo is held this long, then released this long
 MOVING_RAD_S = 0.5          # [rad/s] a wheel faster than this counts as moving (a full stick is far above)
 STILL_RAD_S = 1e-3          # [rad/s] a wheel slower than this counts as stopped
+EXTRA_REPORT_TIMEOUT_S = 15.0  # [s] every extra reports once a second; allow for a slow start
+FAKE_BATTERY_PERIOD_S = 0.5    # [s] how often section 12 publishes its made-up battery voltage
 
 TANK_MOTION = ["diffbot_base_controller"]
 CASCADE = ["left_add_feedforward_controller", "right_add_feedforward_controller",
@@ -57,6 +65,9 @@ class Flow(Node):
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
                          durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(RobotState, "/rocko/state", self.on_state, qos)
+        self.extras = {}             # extra -> its newest health report (section 12)
+        self.create_subscription(DiagnosticArray, "/diagnostics", self.on_diagnostics, 10)
+        self.battery_pub = self.create_publisher(BatteryState, "/rocko/battery", 5)
         self.joints_sub = None       # /joint_states (100 Hz) is heard only while a check needs it, see watch_wheels
         self.set_enabled_client = self.create_client(SetEnabled, "/rocko/set_enabled")
         self.set_mode_client = self.create_client(SetMode, "/rocko/set_mode")
@@ -74,6 +85,10 @@ class Flow(Node):
         with self.lock:
             self.state = msg
             self.history.append((time.monotonic(), msg))
+
+    def on_diagnostics(self, msg):
+        with self.lock:
+            self.extras.update(health.from_message(msg))
 
     def on_joints(self, msg):
         speeds = [abs(v) for n, v in zip(msg.name, msg.velocity) if n.endswith("wheel_joint")]
@@ -377,6 +392,44 @@ def run_checks(f):
     response = f.set_mode("tank")
     ok, _ = f.ready_in("tank", SWITCH_TIMEOUT_S)
     f.check("11 set_mode tank from fault -> ready", response is not None and response.success and ok, f.describe())
+
+    # ---- 12. the optional extras: broken or missing, the robot still works ----------------------------
+    ok, _ = f.wait_until(lambda: set(f.extras) >= set(health.EXTRAS), EXTRA_REPORT_TIMEOUT_S)
+    with f.lock:
+        reports = {name: (r["level"], r["message"]) for name, r in f.extras.items()}
+    f.check("12 every extra reports ERROR (no hardware in the container) and the supervisor is still ready",
+            ok and all(reports.get(n, (None,))[0] == health.ERROR for n in health.EXTRAS)
+            and f.now_state().phase == "ready", str(reports))
+    response = f.set_enabled(True)
+    f.check("12 enable works with every extra failing", response is not None and response.success, f.describe())
+    f.set_enabled(False)
+
+    # A made-up flat battery: published here, where BatteryMonitor.py would publish it on the robot.
+    flat = BatteryState(voltage=battery.CRITICAL_V - 0.5)
+    timer = f.create_timer(FAKE_BATTERY_PERIOD_S, lambda: f.battery_pub.publish(flat))
+    time.sleep(2 * FAKE_BATTERY_PERIOD_S)   # this script's own publisher: two messages, so one has arrived
+    response = f.set_enabled(True)
+    f.check(f"12 battery at {flat.voltage:.1f} V -> enable refused, with the voltage in the reason",
+            response is not None and not response.success and "battery" in response.message
+            and not f.now_state().enabled, response.message if response else "no answer")
+    f.destroy_timer(timer)
+    # The supervisor forgets a reading older than its BATTERY_MAX_AGE_S (5 s): poll until enable is allowed again.
+    start = time.monotonic()
+    response = f.set_enabled(True)
+    while (response is None or not response.success) and time.monotonic() - start < 10.0:
+        time.sleep(0.5)
+        response = f.set_enabled(True)
+    took = time.monotonic() - start
+    f.check("12 battery readings stop -> unknown -> enable allowed again within 10 s (the monitor is optional)",
+            response is not None and response.success, f"{took:.1f} s")
+    f.set_enabled(False)
+
+    killed = subprocess.run(["pkill", "-KILL", "-f", "lib/rocko_env/Buzzer.py"]).returncode == 0
+    time.sleep(1.0)
+    response = f.set_enabled(True)
+    f.check("12 Buzzer.py killed -> supervisor still ready, enable still works",
+            killed and f.now_state().phase == "ready" and response is not None and response.success, f.describe())
+    f.set_enabled(False)
 
 
 def build_joy(frame):

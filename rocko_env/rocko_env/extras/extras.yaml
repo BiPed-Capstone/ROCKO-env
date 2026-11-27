@@ -1,0 +1,26 @@
+# Settings for the optional extras (docs/architecture/robot-extras.md), the ones you may need to change on the robot.
+# Each node's code has a default for every setting; a line here overrides it. Uncomment a line (delete only its
+# leading "# ", keep the indent) to use it, then
+# restart the robot launch (sudo systemctl restart rocko.service). Not a gain or limit file: nothing here can move
+# the wheels. The wiring the defaults expect is in docs/guides/fit-the-extras.md.
+battery_monitor:
+  ros__parameters:
+    use_sim_time: false        # every ROS node has this; here so the block is never empty
+    # i2c_device: /dev/i2c-3     # the battery's own I2C bus (the guide's config.txt line makes bus 3)
+    # i2c_address: 64            # 0x40 written in decimal: the INA226 with A0 and A1 to ground
+    # shunt_ohms: 0.002          # only if ALL the motor current flows through a shunt of this many ohms
+
+buzzer:
+  ros__parameters:
+    use_sim_time: false        # every ROS node has this; here so the block is never empty
+    # pwm_chip: /sys/class/pwm/pwmchip0   # if `ls /sys/class/pwm` shows more than one chip
+    # pwm_channel: 0                       # GPIO 12 is channel 0 of the Pi's PWM
+
+status_screen:
+  ros__parameters:
+    use_sim_time: false        # every ROS node has this; here so the block is never empty
+    # rotate_deg: 90             # 0, 90, 180 or 270: turn the picture to match how the panel is mounted
+    # touch_swap_xy: true        # taps land on the wrong button: swap, then invert, until they are right
+    # touch_invert_x: true
+    # touch_invert_y: true
+    # refresh_period_s: 1.0      # redraw less often, if the screen costs too much CPU

@@ -12,8 +12,8 @@ It listens to /dynamic_joint_states itself while it asks the dashboard for its h
   * every pitch point in the dashboard's history is within --tolerance-deg of the robot's own
     pitch at that moment, and the history really shows the start-up lean (>= --min-pitch-deg);
   * the dashboard node publishes on no topic except ROS's own /rosout and /parameter_events, and its
-    only service clients are the supervisor's two (/rocko/set_enabled, /rocko/set_mode): it cannot
-    command the robot itself. This launch has no supervisor, so /api/state must answer fast with
+    only service clients are the supervisor's two (/rocko/set_enabled, /rocko/set_mode) and the buzzer's mute
+    switch (/rocko/set_buzzer_muted, which can only silence a buzzer): it cannot command the robot itself. This launch has no supervisor, so /api/state must answer fast with
     robot.present false ("no supervisor"), and Enable must be refused fast, not hang;
   * Record over HTTP starts a recording, a second Record is refused, Stop closes it, the run is
     listed as closed and its .tar downloads; a POST from another website's Origin, or whose Host
@@ -38,7 +38,9 @@ from sensor_msgs.msg import Joy
 from std_msgs.msg import Bool
 
 OWN_TOPICS = {"/rosout", "/parameter_events"}  # every ROS node publishes these
-SUPERVISOR_SERVICES = {"/rocko/set_enabled", "/rocko/set_mode"}  # the only services the dashboard may call
+# The only services the dashboard may call: the supervisor's two, and the buzzer's mute switch (docs/architecture/
+# robot-extras.md), which can only silence a buzzer.
+ALLOWED_SERVICES = {"/rocko/set_enabled", "/rocko/set_mode", "/rocko/set_buzzer_muted"}
 FAST_S = 2.0  # [s] an answer that needs no ROS round trip (no supervisor, state after Record) comes this fast
 
 
@@ -159,8 +161,8 @@ def main():
     # --- it cannot command the robot ---
     if publishers - OWN_TOPICS:
         problems.append(f"the dashboard node publishes on {sorted(publishers - OWN_TOPICS)}; it must publish nothing")
-    if {name for name, _ in clients} - SUPERVISOR_SERVICES:
-        problems.append(f"the dashboard node has service clients {clients}; only the supervisor's two are allowed")
+    if {name for name, _ in clients} - ALLOWED_SERVICES:
+        problems.append(f"the dashboard node has service clients {clients}; only {sorted(ALLOWED_SERVICES)} are allowed")
     # No supervisor in this launch: the state says so at once, and a button press is refused at once.
     start = time.monotonic()
     status, body = http(args.port, "/api/state")

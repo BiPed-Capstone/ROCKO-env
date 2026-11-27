@@ -34,7 +34,7 @@ set -u
 # (the checks would talk to whichever one answers).
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 command -v pgrep >/dev/null || { echo "ERROR: pgrep (procps) is missing." >&2; exit 2; }
-if pgrep -f '/ros2_control_node|Supervisor\.py|ros2 launch rocko_env|DiffDriveController\.py' >/dev/null; then
+if pgrep -f '/ros2_control_node|Supervisor\.py|ros2 launch rocko_env|DiffDriveController\.py|Buzzer\.py' >/dev/null; then
   echo "ERROR: a controller_manager, supervisor or ROCKO launch is already running. Stop it first." >&2
   exit 2
 fi
@@ -47,7 +47,7 @@ launch_pid=$!
 
 # Names of processes this launch (or the stack the supervisor starts) must not leave behind.
 leftovers() {
-  pgrep -af '/ros2_control_node|ros2 launch rocko_env|Supervisor\.py|game_controller_node|TankTeleop\.py|BalanceTeleop\.py|DiffDriveController\.py|robot_state_publisher'
+  pgrep -af '/ros2_control_node|ros2 launch rocko_env|Supervisor\.py|game_controller_node|TankTeleop\.py|BalanceTeleop\.py|DiffDriveController\.py|robot_state_publisher|BatteryMonitor\.py|Buzzer\.py|StatusScreen\.py'
 }
 
 forced=""

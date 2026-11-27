@@ -106,6 +106,13 @@ fix, waiting on the owner, clamps the target lean to ±5 degrees
 - The repo was made easier to start in: a getting-started guide, a glossary, and a proposals index sorted by what
   waits on the owner ([tidy](2026-11-26-repo-tidy.md)).
 
+## November 27: extras the robot can run without
+
+A status screen, a buzzer and a battery monitor, each optional: a missing or broken one only reports its error on the
+dashboard ([the robot extras](../architecture/robot-extras.md), [journal](2026-11-27-robot-extras.md)). The dashboard's
+state card turned green for enabled and red for disabled. Not yet fitted to the robot: the screen first needs the
+motor wires moved off its pins.
+
 ## Where it stands
 
 The current state and the next steps are in the handoff box at the top of [next-steps.md](../next-steps.md). This
